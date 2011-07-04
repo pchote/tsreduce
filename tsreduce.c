@@ -385,7 +385,8 @@ int update_reduction(char *dataPath)
         fprintf(data, "%.1f ", starttime);
 
         // Target stars
-        double comparison, target;
+        double comparison = 0;
+        double target = 0;
         for (int i = 0; i < numtargets; i++)
         {
             double2 xy = converge_aperture(targets[i], &frame);

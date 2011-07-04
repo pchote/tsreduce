@@ -206,43 +206,6 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     return 0;
 }
 
-
-double2 process_target(target r, framedata *frame, double exptime)
-{
-    double2 ret = {0,0};
-    double2 bg, xy;
-    target last;
-    int n = 0;
-    // Iterate until we move less than 2px, or reach 10 iterations
-    do
-    {
-        last = r;
-        bg = calculate_background(r, frame);
-        xy = center_aperture(r, bg, frame);
-        printf("%d: (%f,%f) -> (%f,%f) [%f,%f]\n", n, r.x, r.y, xy.x, xy.y, bg.x, bg.y);
-        
-        r.x = (int)xy.x;
-        r.y = (int)xy.y;
-        
-        if (r.x - r.r < 0 || r.x + r.r >= frame->cols || r.y - r.r < 0 || r.y + r.r >= frame->rows)
-        {
-            fprintf(stderr, "Aperture outside chip - skipping\n");
-            return ret;
-        }
-    } while (++n < 10 && (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y) >= 4);
-    
-    if (n >= 10)
-    {
-        printf("Aperture centering did not converge - skipping\n");
-        return ret;
-    }
-    
-    ret.y = bg.x*M_PI*r.r*r.r / exptime;
-    ret.x = integrate_aperture(xy,r.r, frame) / exptime - ret.y;
-    
-    return ret;
-}
-
 int update_reduction(char *dataPath)
 {
     target targets[MAX_TARGETS];
@@ -277,6 +240,7 @@ int update_reduction(char *dataPath)
     char darkbuf[128]; darkbuf[0] = '\0';
     char flatbuf[128]; flatbuf[0] = '\0';
     
+    int dataVersion = 0;
     // Read any existing config and data
     while (fgets(linebuf, sizeof(linebuf)-1, data) != NULL)
     {            
@@ -311,20 +275,42 @@ int update_reduction(char *dataPath)
             strptime(linebuf, "# ReferenceTime: %Y-%m-%d %H:%M:%S\n", &t);
             start_time = timegm(&t);
         }
-        else if (linebuf[0] == '#')
+        else if (!strncmp(linebuf,"# Version:", 10))
+            sscanf(linebuf, "# Version: %d\n", &dataVersion);
+
+        if (linebuf[0] == '#')
             continue;
         
-        sscanf(linebuf, "%lf %lf %lf %lf %lf %lf %lf %lf %s\n",
-               &records[numrecords].time,
-               &records[numrecords].star[0],
-               &records[numrecords].sky[0],
-               &records[numrecords].star[1],
-               &records[numrecords].sky[1],
-               &records[numrecords].star[2],
-               &records[numrecords].sky[2],
-               &records[numrecords].ratio,
-               records[numrecords].filename
-               );
+        // Require a version to be defined before any data is read
+        if (dataVersion != 2)
+            return error("Invalid data file version `%d'. Requires version `%d'", dataVersion, 2);
+
+        //
+        // Parse target data
+        //
+
+        // Time
+        char *ctx;
+        records[numrecords].time = atof(strtok_r(linebuf, " ", &ctx));
+
+        // Target intensity / sky / aperture x / aperture y
+        for (int i = 0; i < 3; i++)
+        {
+            records[numrecords].star[i] = atof(strtok_r(NULL, " ", &ctx));
+            records[numrecords].sky[i] = atof(strtok_r(NULL, " ", &ctx));
+            records[numrecords].pos[i].x = atof(strtok_r(NULL, " ", &ctx));
+            records[numrecords].pos[i].y = atof(strtok_r(NULL, " ", &ctx));
+        }
+
+        // Ratio
+        records[numrecords].ratio = atof(strtok_r(NULL, " ", &ctx));
+
+        // Filename
+        strncpy(records[numrecords].filename, strtok_r(NULL, " ", &ctx), sizeof(records[numrecords].filename));
+
+        // Strip newline
+        records[numrecords].filename[strlen(records[numrecords].filename)-1] = '\0';
+
         numrecords++;
     }
     
@@ -363,69 +349,64 @@ int update_reduction(char *dataPath)
         framedata frame = framedata_new(filename, FRAMEDATA_DBL);
         
         int exptime = framedata_get_header_int(&frame, "EXPTIME");
-        
-        // Calculate time at the middle of the exposure relative to ReferenceTime
-        double midtime = 0;
+
+        // Calculate time at the *start* of the exposure relative to ReferenceTime
+        double starttime = 0;
+
+        char datebuf[128], timebuf[128], datetimebuf[257];
+        struct tm t;
         if (framedata_has_header_string(&frame, "UTC-BEG"))
         {
-            char datebuf[128], timebuf[128], datetimebuf[257];
-            struct tm t;
             framedata_get_header_string(&frame, "UTC-DATE", datebuf);
             framedata_get_header_string(&frame, "UTC-BEG", timebuf);
             
             sprintf(datetimebuf, "%s %s", datebuf, timebuf);
-            strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
-            time_t frame_time = timegm(&t);
-            double start = difftime(frame_time, start_time);
-            
-            framedata_get_header_string(&frame, "UTC-END", timebuf);
-            sprintf(datetimebuf, "%s %s", datebuf, timebuf);
-            strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
-            frame_time = timegm(&t);
-            double end = difftime(frame_time, start_time);
-            
-            midtime = (start + end)/2;
         }
-        
-        // Handle oldstyle frames
         else if (framedata_has_header_string(&frame, "GPSTIME"))
-        {
-            char datebuf[128];
-            struct tm t;
-            framedata_get_header_string(&frame, "GPSTIME", datebuf);
-            strptime(datebuf, "%Y-%m-%d %H:%M:%S", &t);
-            time_t frame_time = timegm(&t);
-            
-            midtime = difftime(frame_time, start_time) + exptime/2;
-        }
-        else
-        {
-            fprintf(stderr, "%s: no valid time header found - skipping\n", filename);
-            continue;
-        }
-        
+            framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
+
+        strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
+        time_t frame_time = timegm(&t);
+        starttime = difftime(frame_time, start_time);
+
         // Subtract dark counts
         if (dark.dbl_data != NULL)
             framedata_subtract(&frame, &dark);
-        
+
         // Flat field image
         if (flat.dbl_data != NULL)
             framedata_divide(&frame, &flat);
-        
-        // Process targets
-        fprintf(data, "%f ", midtime);
-        double2 target = process_target(targets[0], &frame, exptime);
-        fprintf(data, "%f %f ", target.x, target.y);
-        double comparison = 0;
-        for (int i = 1; i < numtargets; i++)
+
+        //
+        // Process frame
+        //
+
+        // Observation start time
+        fprintf(data, "%.1f ", starttime);
+
+        // Target stars
+        double comparison, target;
+        for (int i = 0; i < numtargets; i++)
         {
-            double2 ret = process_target(targets[i], &frame, exptime);
-            comparison += ret.x;
-            fprintf(data, "%f %f ", ret.x, ret.y);
+            double2 xy = converge_aperture(targets[i], &frame);
+            double r = targets[i].r;
+            double2 bg = calculate_background(targets[i], &frame);
+
+            double sky = bg.x*M_PI*r*r / exptime;
+            double intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
+            fprintf(data, "%f ", intensity); // intensity (ADU/s)
+            fprintf(data, "%f ", sky); // sky intensity (ADU/s)
+            fprintf(data, "%f %f ", xy.x, xy.y); // Aperture center
+
+            if (i == 0)
+                target = intensity;
+            else
+                comparison += intensity;
         }
-        
-        fprintf(data, "%f %s\n", target.x / comparison, filename);
-        
+
+        // Ratio, Filename
+        fprintf(data, "%f %s\n", target / comparison, filename);
+
         framedata_free(frame);
     }
     if (dark.data != NULL)

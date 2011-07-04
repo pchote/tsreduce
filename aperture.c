@@ -58,18 +58,7 @@ double2 center_aperture(target reg, double2 bg2, framedata *frame)
             ym[j] += px;
             total += px;
         }
-/*
-    printf("total: %f\n",total);
-    printf("xm: { %f", xm[0]);
-    for (int i = 1; i < 2*r; i++)
-        printf(", %f", xm[i]);
-    printf("}\n");
 
-    printf("ym: { %f", ym[0]);
-    for (int i = 1; i < 2*r; i++)
-        printf(", %f", ym[i]);
-    printf("}\n");
-*/
     // Calculate x and y moments
     double xc = 0;
     double yc = 0;
@@ -85,6 +74,45 @@ double2 center_aperture(target reg, double2 bg2, framedata *frame)
     double2 ret = {xc + x - r,yc + y - r};
     return ret;
 }
+
+
+// Iterate center_aperture to converge on the best aperture position
+double2 converge_aperture(target r, framedata *frame)
+{
+    double2 error = {-1,-1};
+    double2 bg, xy;
+    target last;
+
+    int n = 0;
+    double move = 0;
+    // Iterate until we move less than 2px or reach 10 iterations
+    do
+    {
+        if (n == 10)
+        {
+            printf("Aperture centering did not converge - skipping\n");
+            return error;
+        }
+
+        if (r.x - r.r < 0 || r.x + r.r >= frame->cols || r.y - r.r < 0 || r.y + r.r >= frame->rows)
+        {
+            fprintf(stderr, "Aperture outside chip - skipping\n");
+            return error;
+        }
+
+        last = r;
+        bg = calculate_background(r, frame);
+        xy = center_aperture(r, bg, frame);
+        printf("%d: (%f,%f) -> (%f,%f) [%f,%f]\n", n, r.x, r.y, xy.x, xy.y, bg.x, bg.y);
+        r.x = (int)xy.x;
+        r.y = (int)xy.y;
+
+        move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
+    } while (move >= 4);
+
+    return xy;
+}
+
 
 // Calculate the mode intensity and standard deviation within an annulus
 double2 calculate_background(target r, framedata *frame)

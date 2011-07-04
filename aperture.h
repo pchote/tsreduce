@@ -31,16 +31,6 @@ typedef struct
     double s2;
 } target;
 
-typedef struct
-{
-    double star[3];
-    double sky[3];
-    double2 pos[2];
-    double time;
-    double ratio;
-    char filename[64];
-} record;
-
 double2 center_aperture(target reg, double2 bg2, framedata *frame);
 double2 converge_aperture(target r, framedata *frame);
 double2 calculate_background(target r, framedata *frame);

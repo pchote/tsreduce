@@ -14,19 +14,11 @@
 #include <string.h>
 #include <fitsio.h>
 
+#include "tsreduce.h"
 #include "framedata.h"
 #include "helpers.h"
 #include "aperture.h"
 
-
-// Maximum number of frames to load when creating a flat or dark frame
-#define MAX_FRAMES 100
-
-// Maximum number of observations to process in a single run
-#define MAX_OBS 10000
-
-// Maximum number of targets to track
-#define MAX_TARGETS 10
 
 // Subtracts the dark count, then normalizes the frame to average to unity
 // (not that we actually care about the total photometric counts)
@@ -206,123 +198,124 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     return 0;
 }
 
-int update_reduction(char *dataPath)
+// Read the header section from the data file
+// defined as all the lines at the top of the file
+// that start with #
+datafile read_data_header(char *dataFile)
 {
-    target targets[MAX_TARGETS];
-    int numtargets = 0;
+    datafile h;
+    h.file = NULL;
+    h.frame_dir[0] = '\0';
+    h.frame_pattern[0] = '\0';
+    h.dark_template[0] = '\0';
+    h.flat_template[0] = '\0';
     
-    // basename and dirname may modify underlying memory
-    char dirbuf[PATH_MAX];
-    strncpy(dirbuf, dataPath, sizeof(dirbuf));
-    
-    // Open the data file (created with `tsreduce init`
-    FILE *data = fopen(dataPath, "r+");
-    if (data == NULL)
-        return error("Error opening data file");
-    
-    record records[MAX_OBS];
-    int numrecords = 0;
-    
-    char pattern[128];
-    pattern[0] = '\0';
-    
-    time_t start_time = 0;
-    
-    // Processed dark template
-    framedata dark;
-    dark.data = NULL;
-    dark.dbl_data = NULL;
-    
-    framedata flat;
-    flat.dbl_data = NULL;
-    
+    // Open the data file (created with `tsreduce init`)
+    h.file = fopen(dataFile, "r+");
+    if (h.file == NULL)
+        return h;
+
     char linebuf[1024];
-    char darkbuf[128]; darkbuf[0] = '\0';
-    char flatbuf[128]; flatbuf[0] = '\0';
-    
-    int dataVersion = 0;
-    // Read any existing config and data
-    while (fgets(linebuf, sizeof(linebuf)-1, data) != NULL)
-    {            
+    while (fgets(linebuf, sizeof(linebuf)-1, h.file) != NULL)
+    {
+        //
+        // Header
+        //
         if (!strncmp(linebuf,"# FramePattern:", 15))
-            sscanf(linebuf, "# FramePattern: %s\n", pattern);
+            sscanf(linebuf, "# FramePattern: %128s\n", h.frame_pattern);
+
         else if (!strncmp(linebuf,"# FrameDir:", 11))
-        {
-            char datadir[PATH_MAX];
-            sscanf(linebuf, "# FrameDir: %s\n", datadir);
-            chdir(datadir);
-        }
+            sscanf(linebuf, "# FrameDir: %1024s\n", h.frame_dir);
+
         else if (!strncmp(linebuf,"# DarkTemplate:", 15))
-            sscanf(linebuf, "# DarkTemplate: %s\n", darkbuf);
-        
+            sscanf(linebuf, "# DarkTemplate: %128s\n", h.dark_template);
+
         else if (!strncmp(linebuf,"# FlatTemplate:", 15))
-            sscanf(linebuf, "# FlatTemplate: %s\n", flatbuf);
-        
+            sscanf(linebuf, "# FlatTemplate: %128s\n", h.flat_template);
+
         else if (!strncmp(linebuf,"# Target:", 9))
         {
             sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf)\n",
-                   &targets[numtargets].x,
-                   &targets[numtargets].y,
-                   &targets[numtargets].r,
-                   &targets[numtargets].s1,
-                   &targets[numtargets].s2
-                   );
-            numtargets++;
+                   &h.targets[h.num_targets].x,
+                   &h.targets[h.num_targets].y,
+                   &h.targets[h.num_targets].r,
+                   &h.targets[h.num_targets].s1,
+                   &h.targets[h.num_targets].s2);
+            h.num_targets++;
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
         {
             struct tm t;
             strptime(linebuf, "# ReferenceTime: %Y-%m-%d %H:%M:%S\n", &t);
-            start_time = timegm(&t);
+            h.reference_time = timegm(&t);
         }
         else if (!strncmp(linebuf,"# Version:", 10))
-            sscanf(linebuf, "# Version: %d\n", &dataVersion);
-
+            sscanf(linebuf, "# Version: %d\n", &h.version);
+        
         if (linebuf[0] == '#')
             continue;
         
-        // Require a version to be defined before any data is read
-        if (dataVersion != 2)
-            return error("Invalid data file version `%d'. Requires version `%d'", dataVersion, 2);
-
         //
-        // Parse target data
+        // Observations
         //
-
+        
         // Time
         char *ctx;
-        records[numrecords].time = atof(strtok_r(linebuf, " ", &ctx));
-
+        h.obs[h.num_obs].time = atof(strtok_r(linebuf, " ", &ctx));
+        
         // Target intensity / sky / aperture x / aperture y
         for (int i = 0; i < 3; i++)
         {
-            records[numrecords].star[i] = atof(strtok_r(NULL, " ", &ctx));
-            records[numrecords].sky[i] = atof(strtok_r(NULL, " ", &ctx));
-            records[numrecords].pos[i].x = atof(strtok_r(NULL, " ", &ctx));
-            records[numrecords].pos[i].y = atof(strtok_r(NULL, " ", &ctx));
+            h.obs[h.num_obs].star[i] = atof(strtok_r(NULL, " ", &ctx));
+            h.obs[h.num_obs].sky[i] = atof(strtok_r(NULL, " ", &ctx));
+            h.obs[h.num_obs].pos[i].x = atof(strtok_r(NULL, " ", &ctx));
+            h.obs[h.num_obs].pos[i].y = atof(strtok_r(NULL, " ", &ctx));
         }
-
+        
         // Ratio
-        records[numrecords].ratio = atof(strtok_r(NULL, " ", &ctx));
-
+        h.obs[h.num_obs].ratio = atof(strtok_r(NULL, " ", &ctx));
+        
         // Filename
-        strncpy(records[numrecords].filename, strtok_r(NULL, " ", &ctx), sizeof(records[numrecords].filename));
-
+        strncpy(h.obs[h.num_obs].filename, strtok_r(NULL, " ", &ctx), sizeof(h.obs[h.num_obs].filename));
+        
         // Strip newline
-        records[numrecords].filename[strlen(records[numrecords].filename)-1] = '\0';
+        h.obs[h.num_obs].filename[strlen(h.obs[h.num_obs].filename)-1] = '\0';
+        
+        h.num_obs++;
 
-        numrecords++;
     }
+    return h;
+}
+
+int update_reduction(char *dataPath)
+{
+    // Processed dark and flat templates
+    framedata dark;
+    dark.data = NULL;
+    dark.dbl_data = NULL;
+    framedata flat;
+    flat.dbl_data = NULL;
     
-    if (flatbuf != NULL)
-        flat = framedata_new(flatbuf, FRAMEDATA_DBL);
+    // Read file header
+    datafile data = read_data_header(dataPath);
     
-    if (darkbuf != NULL)
-        dark = framedata_new(darkbuf, FRAMEDATA_DBL);
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    if (data.version != 2)
+        return error("Invalid data file version `%d'. Requires version `%d'", data.version, 2);
+
+    chdir(data.frame_dir);
+    
+    if (data.flat_template != NULL)
+        flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
+    
+    if (data.dark_template != NULL)
+        dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
 
     // Iterate through the list of files matching the filepattern
     char filenamebuf[PATH_MAX+8];
-    sprintf(filenamebuf, "/bin/ls %s", pattern);
+    sprintf(filenamebuf, "/bin/ls %s", data.frame_pattern);
     FILE *ls = popen(filenamebuf, "r");
     if (ls == NULL)
         return error("failed to list directory");
@@ -335,8 +328,8 @@ int update_reduction(char *dataPath)
         
         // Check whether the frame has been processed
         int processed = FALSE;
-        for (int i = 0; i < numrecords; i++)
-            if (strcmp(filename, records[i].filename) == 0)
+        for (int i = 0; i < data.num_obs; i++)
+            if (strcmp(filename, data.obs[i].filename) == 0)
             {
                 processed = TRUE;
                 break;
@@ -367,7 +360,7 @@ int update_reduction(char *dataPath)
 
         strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
         time_t frame_time = timegm(&t);
-        starttime = difftime(frame_time, start_time);
+        starttime = difftime(frame_time, data.reference_time);
 
         // Subtract dark counts
         if (dark.dbl_data != NULL)
@@ -382,29 +375,29 @@ int update_reduction(char *dataPath)
         //
 
         // Observation start time
-        fprintf(data, "%.1f ", starttime);
+        fprintf(data.file, "%.1f ", starttime);
 
         // Target stars
         double comparison = 0;
         double target = 0;
-        for (int i = 0; i < numtargets; i++)
+        for (int i = 0; i < data.num_targets; i++)
         {
-            double2 xy = converge_aperture(targets[i], &frame);
+            double2 xy = converge_aperture(data.targets[i], &frame);
             double sky = 0;
             double intensity = 0;
 
             if (xy.x > 0) // converge_aperture returns negative on error
             {
-                double r = targets[i].r;
-                double2 bg = calculate_background(targets[i], &frame);
+                double r = data.targets[i].r;
+                double2 bg = calculate_background(data.targets[i], &frame);
 
                 sky = bg.x*M_PI*r*r / exptime;
                 intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
             }
 
-            fprintf(data, "%f ", intensity); // intensity (ADU/s)
-            fprintf(data, "%f ", sky); // sky intensity (ADU/s)
-            fprintf(data, "%f %f ", xy.x, xy.y); // Aperture center
+            fprintf(data.file, "%f ", intensity); // intensity (ADU/s)
+            fprintf(data.file, "%f ", sky); // sky intensity (ADU/s)
+            fprintf(data.file, "%f %f ", xy.x, xy.y); // Aperture center
 
             if (i == 0)
                 target = intensity;
@@ -413,7 +406,7 @@ int update_reduction(char *dataPath)
         }
 
         // Ratio, Filename
-        fprintf(data, "%f %s\n", target / comparison, filename);
+        fprintf(data.file, "%f %s\n", target / comparison, filename);
 
         framedata_free(frame);
     }
@@ -421,7 +414,7 @@ int update_reduction(char *dataPath)
         framedata_free(dark);
     
     pclose(ls);
-    fclose(data);
+    fclose(data.file);
     
     return 0;
 }

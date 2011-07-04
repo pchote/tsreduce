@@ -389,11 +389,18 @@ int update_reduction(char *dataPath)
         for (int i = 0; i < numtargets; i++)
         {
             double2 xy = converge_aperture(targets[i], &frame);
-            double r = targets[i].r;
-            double2 bg = calculate_background(targets[i], &frame);
+            double sky = 0;
+            double intensity = 0;
 
-            double sky = bg.x*M_PI*r*r / exptime;
-            double intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
+            if (xy.x > 0) // converge_aperture returns negative on error
+            {
+                double r = targets[i].r;
+                double2 bg = calculate_background(targets[i], &frame);
+
+                sky = bg.x*M_PI*r*r / exptime;
+                intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
+            }
+
             fprintf(data, "%f ", intensity); // intensity (ADU/s)
             fprintf(data, "%f ", sky); // sky intensity (ADU/s)
             fprintf(data, "%f %f ", xy.x, xy.y); // Aperture center

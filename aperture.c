@@ -12,7 +12,8 @@
 #include <string.h>
 #include <fitsio.h>
 
-#include "reduction.h"
+#include "aperture.h"
+#include "helpers.h"
 #include "framedata.h"
 
 // Find the center of the star within the inner circle
@@ -283,29 +284,4 @@ double integrate_aperture(double2 xy, double r, framedata *frame)
             total += pixel_aperture_intesection(xy.x-i, xy.y-j, r)*frame->dbl_data[i + frame->cols*j];
 
     return total;
-}
-
-// Write the first numFiles filenames that match the system command cmd into
-// the array files (allocated by the caller). len gives the maximum filepath length
-int get_matching_files(const char *cmd, char **files, int len, int numFiles)
-{    
-    FILE *p = popen(cmd, "r");
-    if (p == NULL)
-        error("failed to run command `%s`", cmd);
-
-    int n = 0;
-    char *buf = (char *)malloc(len*sizeof(char));
-    while (fgets(buf, len-1, p) != NULL && n < numFiles)
-    {
-        int len = strlen(buf);
-        if (len <= 0)
-            continue;
-        // Copy then strip the trailing newline
-        strncpy(files[n], buf, len);
-        files[n][len-1] = '\0';
-        n++;
-    }
-    free(buf);
-    pclose(p);
-    return n;
 }

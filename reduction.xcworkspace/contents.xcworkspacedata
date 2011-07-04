@@ -2,9 +2,6 @@
 <Workspace
    version = "1.0">
    <FileRef
-      location = "group:frameadd.c">
-   </FileRef>
-   <FileRef
       location = "group:framedata.c">
    </FileRef>
    <FileRef
@@ -14,12 +11,18 @@
       location = "group:Makefile">
    </FileRef>
    <FileRef
-      location = "group:reduce.c">
+      location = "group:tsreduce.c">
    </FileRef>
    <FileRef
-      location = "group:reduction.c">
+      location = "group:helpers.h">
    </FileRef>
    <FileRef
-      location = "group:reduction.h">
+      location = "group:helpers.c">
+   </FileRef>
+   <FileRef
+      location = "group:aperture.h">
+   </FileRef>
+   <FileRef
+      location = "group:aperture.c">
    </FileRef>
 </Workspace>

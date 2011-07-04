@@ -1,22 +1,21 @@
+# Copyright 2010, 2011 Paul Chote
+# This file is part of Puoko-nui, which is free software. It is made available
+# to you under the terms of version 3 of the GNU General Public License, as
+# published by the Free Software Foundation. For more information, see LICENSE.
+
 CC = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
 LFLAGS = -lcfitsio
 
-RSRC = reduce.c framedata.c reduction.c
-ROBJ = $(RSRC:.c=.o)
+SRC = tsreduce.c framedata.c helpers.c aperture.c
+OBJ = $(SRC:.c=.o)
 
-FSRC = frameadd.c framedata.c reduction.c
-FOBJ = $(FSRC:.c=.o)
 
-all: reduction frametool
-reduction: $(ROBJ)
-	$(CC) $(LFLAGS) $(ROBJ) -o $@
-
-frametool: $(FOBJ)
-	$(CC) $(LFLAGS) $(FOBJ) -o $@
+tsreduce: $(OBJ)
+	$(CC) $(LFLAGS) $(OBJ) -o $@
 
 clean:
-	-rm $(OBJ) reduction frametool reduction.o framedata.o reduce.o frameadd.o
+	-rm $(OBJ) tsreduce
 
 .SUFFIXES: .c
 .c.o:

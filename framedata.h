@@ -10,7 +10,6 @@
 #ifndef FRAMEDATA_H
 #define FRAMEDATA_H
 
-void error(const char * format, ...);
 typedef enum
 {
     FRAMEDATA_INT,

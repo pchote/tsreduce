@@ -24,9 +24,9 @@
 
 typedef struct
 {
-    double star[3];
-    double sky[3];
-    double2 pos[2];
+    double star[MAX_TARGETS];
+    double sky[MAX_TARGETS];
+    double2 pos[MAX_TARGETS];
     double time;
     double ratio;
     char filename[64];
@@ -35,7 +35,6 @@ typedef struct
 typedef struct
 {
     FILE *file;
-    
     int version;
     char frame_dir[PATH_MAX];
     char frame_pattern[HEADER_MAXLENGTH];

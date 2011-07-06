@@ -13,6 +13,7 @@
 #include <time.h>
 #include <string.h>
 #include <fitsio.h>
+#include <xpa.h>
 
 #include "tsreduce.h"
 #include "framedata.h"
@@ -419,6 +420,86 @@ int update_reduction(char *dataPath)
     return 0;
 }
 
+int display_targets(char *dataPath, int obsIndex)
+{
+    // Read file header
+    datafile data = read_data_header(dataPath);
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    if (obsIndex >= data.num_obs)
+        return error("Requested observation is out of range: max is %d", data.num_obs-1);
+
+    chdir(data.frame_dir);
+
+    if (!init_ds9("tsreduce"))
+        return error("Unable to launch ds9");
+
+    char command[128];
+    char filenamebuf[PATH_MAX+8];
+    if (obsIndex < 0)
+    {
+        // Load the first matching fits image
+        sprintf(filenamebuf, "/bin/ls %s", data.frame_pattern);
+        FILE *ls = popen(filenamebuf, "r");
+        if (ls == NULL)
+            return error("failed to list directory");
+
+        if (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) == NULL)
+            return error("No matching files found");
+        
+        // Remove newline char
+        filenamebuf[strlen(filenamebuf)-1] = '\0';
+        pclose(ls);
+    }
+    else // Load the requested file
+        strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
+    
+    snprintf(command, 128, "file %s", filenamebuf);
+    if (!command_ds9("tsreduce", command, NULL, 0))
+        return error("ds9 command failed: %s", command);
+
+
+    // Set scaling mode
+    if (!command_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+        return error("ds9 command failed: scale mode 99.5");
+
+    // Flip X axis
+    if (!command_ds9("tsreduce", "orient x", NULL, 0))
+        return error("ds9 command failed: orient x");
+
+    for (int i = 0; i < data.num_targets; i++)
+    {
+        double x, y;
+        // Use the specified target aperture
+        // DS9 starts labelling pixels at 1
+        if (obsIndex < 0)
+        {
+            x = data.targets[i].x + 1;
+            y = data.targets[i].y + 1;
+        }
+        // Use the centered observation
+        else
+        {
+            x = data.obs[obsIndex].pos[i].x + 1;
+            y = data.obs[obsIndex].pos[i].y + 1;
+        }
+
+        snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data.targets[i].r);
+        if (!command_ds9("tsreduce", command, NULL, 0))
+            return error("ds9 command failed: %s", command);
+        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s1);
+        if (!command_ds9("tsreduce", command, NULL, 0))
+            return error("ds9 command failed: %s", command);
+        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s2);
+        if (!command_ds9("tsreduce", command, NULL, 0))
+            return error("ds9 command failed: %s", command);
+    }
+
+    fclose(data.file);
+    return 0;
+}
+
 int main( int argc, char *argv[] )
 {
     // `tsreduce create-flat "/bin/ls dome-*.fits.gz" 5 master-dark.fits.gz master-dome.fits.gz`
@@ -437,6 +518,13 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strncmp(argv[1], "update", 6) == 0)
         return update_reduction(argv[2]);
     
+    // `tsreduce display-targets ~/data/20110704/gwlib.dat`
+    else if ((argc == 3 || argc == 4) && strncmp(argv[1], "display-targets", 15) == 0)
+    {
+        int obs = argc == 4 ? atoi(argv[3]) : -1;
+        return display_targets(argv[2], obs);
+    }
+
     else
         error("Invalid args");
     return 0;

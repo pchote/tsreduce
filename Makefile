@@ -5,14 +5,14 @@
 
 CC = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
-LFLAGS = -lcfitsio
+LFLAGS = -lcfitsio -lxpa
 
 SRC = tsreduce.c framedata.c helpers.c aperture.c
 OBJ = $(SRC:.c=.o)
 
 
 tsreduce: $(OBJ)
-	$(CC) $(LFLAGS) $(OBJ) -o $@
+	$(CC) $(LFLAGS) $(OBJ) libxpa.a -o $@
 
 clean:
 	-rm $(OBJ) tsreduce

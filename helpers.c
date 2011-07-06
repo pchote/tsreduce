@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <xpa.h>
+#include <unistd.h>
 
 #include "helpers.h"
 
@@ -61,4 +63,55 @@ void die(const char * format, ...)
 	va_end(args);
 	fprintf(stderr, "\n");
     exit(1);
+}
+
+static int ds9_available(char *title)
+{
+    char *names[1];
+    char *errs[1];
+    int valid = XPAAccess(NULL, title, NULL, NULL, names, errs, 1);
+    if (errs[0] != NULL)
+    {
+        valid = 0;
+        free(errs[0]);
+    }
+    if (names[0]) free(names[0]);
+
+    return valid;
+}
+
+int init_ds9(char *title)
+{
+    if (!ds9_available(title))
+    {
+        char buf[128];
+        snprintf(buf, 128, "ds9 -title %s&", title);
+        system(buf);
+
+        int wait = 0;
+        while (!ds9_available(title))
+        {
+            if (wait++ == 10)
+                return 0;
+
+            printf("Waiting for ds9... %d\n", wait);
+            sleep(1);
+        }
+    }
+    return 1;
+}
+
+int command_ds9(char *title, char *command, void *data, int dataSize)
+{
+    char *names[1];
+    char *errs[1];
+    int valid = XPASet(NULL, title, command, NULL, data, dataSize, names, errs, 1);
+    if (errs[0] != NULL)
+    {
+        valid = 0;
+        printf("Error: %s", errs[0]);
+        free(errs[0]);
+    }
+    if (names[0]) free(names[0]);
+    return valid;
 }

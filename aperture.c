@@ -104,11 +104,11 @@ double2 converge_aperture(target r, framedata *frame)
         bg = calculate_background(r, frame);
         xy = center_aperture(r, bg, frame);
         printf("%d: (%f,%f) -> (%f,%f) [%f,%f]\n", n, r.x, r.y, xy.x, xy.y, bg.x, bg.y);
-        r.x = (int)xy.x;
-        r.y = (int)xy.y;
+        r.x = xy.x;
+        r.y = xy.y;
 
         move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
-    } while (move >= 4);
+    } while (move >= 0.0625);
 
     return xy;
 }

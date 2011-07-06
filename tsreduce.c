@@ -395,9 +395,9 @@ int update_reduction(char *dataPath)
                 intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
             }
 
-            fprintf(data.file, "%f ", intensity); // intensity (ADU/s)
-            fprintf(data.file, "%f ", sky); // sky intensity (ADU/s)
-            fprintf(data.file, "%f %f ", xy.x, xy.y); // Aperture center
+            fprintf(data.file, "%.2f ", intensity); // intensity (ADU/s)
+            fprintf(data.file, "%.2f ", sky); // sky intensity (ADU/s)
+            fprintf(data.file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
 
             if (i == 0)
                 target = intensity;
@@ -406,7 +406,7 @@ int update_reduction(char *dataPath)
         }
 
         // Ratio, Filename
-        fprintf(data.file, "%f %s\n", target / comparison, filename);
+        fprintf(data.file, "%.3e %s\n", target / comparison, filename);
 
         framedata_free(frame);
     }

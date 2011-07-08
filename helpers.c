@@ -101,7 +101,7 @@ int init_ds9(char *title)
     return 1;
 }
 
-int command_ds9(char *title, char *command, void *data, int dataSize)
+int tell_ds9(char *title, char *command, void *data, int dataSize)
 {
     char *names[1];
     char *errs[1];
@@ -113,5 +113,35 @@ int command_ds9(char *title, char *command, void *data, int dataSize)
         free(errs[0]);
     }
     if (names[0]) free(names[0]);
+    return valid;
+}
+
+int ask_ds9(char *title, char *command, char *outbuf, int outlen)
+{
+    char *names[1];
+    char *errs[1];
+    char *ret[1];
+    int len[1];
+
+    int valid = XPAGet(NULL, title, command, NULL, ret, len, names, errs, 1);
+
+    if( errs[0] != NULL )
+    {
+        valid = 0;
+        printf("Error: %s", errs[0]);
+        free(errs[0]);
+    }
+    else
+    {
+        if (outlen < len[0])
+        {
+            valid = 0;
+            printf("Error: message buffer too small for returned ds9 output");
+        }
+
+        strncpy(outbuf, ret[0], outlen);
+        outbuf[outlen - 1] = '\0';
+        free(ret[0]);
+    }
     return valid;
 }

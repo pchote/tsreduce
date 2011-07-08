@@ -14,5 +14,6 @@ int get_matching_files(const char *cmd, char **files, int numFiles);
 int error(const char * format, ...);
 void die(const char * format, ...);
 int init_ds9(char *);
-int command_ds9(char *title, char *command, void *data, int dataSize);
+int tell_ds9(char *title, char *command, void *data, int dataSize);
+int ask_ds9(char *title, char *command, char *outbuf, int outlen);
 #endif

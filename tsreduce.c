@@ -253,9 +253,14 @@ datafile read_data_header(char *dataFile)
         else if (!strncmp(linebuf,"# Version:", 10))
             sscanf(linebuf, "# Version: %d\n", &h.version);
         
+        // Skip header / comment lines
         if (linebuf[0] == '#')
             continue;
-        
+
+        // Skip empty lines
+        if (strlen(linebuf) == 0)
+            continue;
+
         //
         // Observations
         //
@@ -339,9 +344,9 @@ int update_reduction(char *dataPath)
         
         if (processed)
             continue;
-        
+
         framedata frame = framedata_new(filename, FRAMEDATA_DBL);
-        
+
         int exptime = framedata_get_header_int(&frame, "EXPTIME");
 
         // Calculate time at the *start* of the exposure relative to ReferenceTime
@@ -456,16 +461,16 @@ int display_targets(char *dataPath, int obsIndex)
         strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
     
     snprintf(command, 128, "file %s", filenamebuf);
-    if (!command_ds9("tsreduce", command, NULL, 0))
+    if (!tell_ds9("tsreduce", command, NULL, 0))
         return error("ds9 command failed: %s", command);
 
 
     // Set scaling mode
-    if (!command_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+    if (!tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
         return error("ds9 command failed: scale mode 99.5");
 
     // Flip X axis
-    if (!command_ds9("tsreduce", "orient x", NULL, 0))
+    if (!tell_ds9("tsreduce", "orient x", NULL, 0))
         return error("ds9 command failed: orient x");
 
     for (int i = 0; i < data.num_targets; i++)
@@ -486,17 +491,109 @@ int display_targets(char *dataPath, int obsIndex)
         }
 
         snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data.targets[i].r);
-        if (!command_ds9("tsreduce", command, NULL, 0))
+        if (!tell_ds9("tsreduce", command, NULL, 0))
             return error("ds9 command failed: %s", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s1);
-        if (!command_ds9("tsreduce", command, NULL, 0))
+        if (!tell_ds9("tsreduce", command, NULL, 0))
             return error("ds9 command failed: %s", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s2);
-        if (!command_ds9("tsreduce", command, NULL, 0))
+        if (!tell_ds9("tsreduce", command, NULL, 0))
             return error("ds9 command failed: %s", command);
     }
 
     fclose(data.file);
+    return 0;
+}
+
+// TODO: Clean up resources if we error out
+int create_reduction_file(char *filePath, char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate)
+{
+    FILE *data = fopen(filePath, "w");
+    if (data == NULL)
+        return error("Unable to creat data file: %s", filePath);
+
+    char pathBuf[PATH_MAX];
+    realpath(framePath, pathBuf);
+
+    if (chdir(pathBuf))
+        return error("Invalid frame path: %s", pathBuf);
+
+    if (!init_ds9("tsreduce"))
+        return error("Unable to launch ds9");
+
+    char command[128];
+    char filenamebuf[PATH_MAX+8];
+
+    // Load the first matching fits image
+    sprintf(filenamebuf, "/bin/ls %s", framePattern);
+    FILE *ls = popen(filenamebuf, "r");
+    if (ls == NULL)
+        return error("failed to list directory");
+
+    if (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) == NULL)
+        return error("No matching files found");
+
+    // Remove newline char
+    filenamebuf[strlen(filenamebuf)-1] = '\0';
+    pclose(ls);
+
+    snprintf(command, 128, "file %s", filenamebuf);
+    if (!tell_ds9("tsreduce", command, NULL, 0))
+        return error("ds9 command failed: %s", command);
+
+    // Set scaling mode
+    if (!tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+        return error("ds9 command failed: scale mode 99.5");
+
+    // Flip X axis
+    if (!tell_ds9("tsreduce", "orient x", NULL, 0))
+        return error("ds9 command failed: orient x");
+
+    printf("Circle the target stars in ds9 then press enter to continue...\n");
+    getchar();
+
+    char ds9buf[4096];
+    if (!ask_ds9("tsreduce", "regions", ds9buf, 4096))
+        return error("ds9 request regions failed");
+
+    // Parse the region definitions
+    target targets[MAX_TARGETS];
+    int num_targets = 0;
+    char *cur = ds9buf;
+    while ((cur = strstr(cur, "circle")) != NULL)
+    {
+        if (num_targets == MAX_TARGETS)
+        {
+            printf("Limit of %d targets reached. Remaining targets have been ignored", MAX_TARGETS);
+            break;
+        }
+
+        // Read aperture coords
+        sscanf(cur, "circle(%lf,%lf,%lf)", &targets[num_targets].x, &targets[num_targets].y, &targets[num_targets].r);
+
+        // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
+        targets[num_targets].x -= 1;
+        targets[num_targets].y -= 1;
+
+        // Set generic sky apertures
+        targets[num_targets].s1 = 20;
+        targets[num_targets].s2 = 25;
+        num_targets++;
+        // Increment by one char so strstr will find the next instance
+        cur++;
+    }
+    printf("Founds %d targets\n", num_targets);
+
+    // Write the file
+    fprintf(data, "# Puoko-nui Online reduction output\n");
+    fprintf(data, "# Version: 2\n");
+    fprintf(data, "# FrameDir: %s\n", pathBuf);
+    fprintf(data, "# FramePattern: %s\n", framePattern);
+    fprintf(data, "# DarkTemplate: %s\n", darkTemplate);
+    fprintf(data, "# FlatTemplate: %s\n", flatTemplate);
+    for (int i = 0; i < num_targets; i++)
+        fprintf(data, "# Target: (%f, %f, %f, %f, %f)\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
+    fclose(data);
     return 0;
 }
 
@@ -524,6 +621,9 @@ int main( int argc, char *argv[] )
         int obs = argc == 4 ? atoi(argv[3]) : -1;
         return display_targets(argv[2], obs);
     }
+
+    else if (argc == 7 && strncmp(argv[1], "create", 6) == 0)
+        return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
 
     else
         error("Invalid args");

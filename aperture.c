@@ -306,7 +306,7 @@ static double pixel_aperture_intesection(double x, double y, double r)
 double integrate_aperture(double2 xy, double r, framedata *frame)
 {
     double total = 0;
-    int bx = floor(xy.x), by = floor(xy.y), br = floor(r) + 1;
+    int bx = floor(xy.x), by = floor(xy.y), br = ceil(r) + 1;
     for (int i = bx-br; i < bx+br; i++)
         for (int j = by-br; j < by+br; j++)
             total += pixel_aperture_intesection(xy.x-i, xy.y-j, r)*frame->dbl_data[i + frame->cols*j];

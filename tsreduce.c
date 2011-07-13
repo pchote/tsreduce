@@ -537,6 +537,21 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     filenamebuf[strlen(filenamebuf)-1] = '\0';
     pclose(ls);
 
+    // Open the file to find the reference time
+    framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
+    char datetimebuf[257];
+    if (framedata_has_header_string(&frame, "UTC-BEG"))
+    {
+        char datebuf[128], timebuf[128];
+        framedata_get_header_string(&frame, "UTC-DATE", datebuf);
+        framedata_get_header_string(&frame, "UTC-BEG", timebuf);
+
+        sprintf(datetimebuf, "%s %s", datebuf, timebuf);
+    }
+    else if (framedata_has_header_string(&frame, "GPSTIME"))
+        framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
+    framedata_free(frame);
+
     snprintf(command, 128, "file %s", filenamebuf);
     if (!tell_ds9("tsreduce", command, NULL, 0))
         return error("ds9 command failed: %s", command);
@@ -591,6 +606,7 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     fprintf(data, "# FramePattern: %s\n", framePattern);
     fprintf(data, "# DarkTemplate: %s\n", darkTemplate);
     fprintf(data, "# FlatTemplate: %s\n", flatTemplate);
+    fprintf(data, "# ReferenceTime: %s\n", datetimebuf);
     for (int i = 0; i < num_targets; i++)
         fprintf(data, "# Target: (%f, %f, %f, %f, %f)\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
     fclose(data);

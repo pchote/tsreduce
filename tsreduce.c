@@ -651,26 +651,49 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     t.x = xy.x; t.y = xy.y;
     double2 bg = calculate_background(t, &frame);
 
-    printf("Sky: %f %f\n", bg.x, bg.y);
-
-    const int numIntensity = 100;
+    const int numIntensity = 19;
     double intensity[numIntensity];
     double radii[numIntensity];
-    for (int i = 0; i < numIntensity; i++)
+    double profile[numIntensity];
+
+    // Calculate the remaining integrated intensities
+    for (int i = 1; i < numIntensity; i++)
     {
-        radii[i] = i/2.0 + 1;
+        radii[i] = i;
         intensity[i] = integrate_aperture(xy, radii[i], &frame);
     }
 
-    // Sample the pixel value at the center
-    printf("%f %f\n", 0.0, frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x]);
+    // Normalize integrated count by area to give an intensity profile
+    // r = 0 value is sampled from the central pixel directly
+    radii[0] = 0;
+    profile[0] = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
 
-    printf("%f %f\n", radii[0], intensity[0]/(M_PI*radii[0]*radii[0]));
-    for (int i = 1; i < numIntensity; i++)
+    // Central integrated value is a disk
+    profile[1] = intensity[1]/(M_PI*radii[1]*radii[1]);
+
+    // Remaining areas are annuli
+    for (int i = 2; i < numIntensity; i++)
     {
         double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
-        printf("%f %f\n", radii[i], (intensity[i] - intensity[i-1])/area);
+        profile[i] = (intensity[i] - intensity[i-1])/area;
     }
+
+    // Print sky value
+    printf("# Sky background: %f\n", bg.x);
+    printf("# Sky stddev: %f\n", bg.y);
+
+    // Estimate FWHM by linear interpolation between points
+    for (int j = 1; j < numIntensity; j++)
+        if (profile[j] < profile[0]/2)
+        {
+            printf("# Estimated FWHM: %f\n", j - 1 + (profile[0]/2 - profile[j-1])/(profile[j] - profile[j-1]));
+            break;
+        }
+
+    // Print profile values
+    for (int i = 0; i < numIntensity; i++)
+        printf("%f %f\n", radii[i], profile[i]);
+
     return 0;
 }
 

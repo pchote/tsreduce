@@ -651,7 +651,7 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     t.x = xy.x; t.y = xy.y;
     double2 bg = calculate_background(t, &frame);
 
-    const int numIntensity = 19;
+    const int numIntensity = 21;
     double intensity[numIntensity];
     double radii[numIntensity];
     double profile[numIntensity];
@@ -660,12 +660,13 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     for (int i = 1; i < numIntensity; i++)
     {
         radii[i] = i;
-        intensity[i] = integrate_aperture(xy, radii[i], &frame);
+        intensity[i] = integrate_aperture(xy, radii[i], &frame) - bg.x*M_PI*radii[i]*radii[i];
     }
 
     // Normalize integrated count by area to give an intensity profile
     // r = 0 value is sampled from the central pixel directly
     radii[0] = 0;
+    intensity[0] = 0;
     profile[0] = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
 
     // Central integrated value is a disk
@@ -683,16 +684,23 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     printf("# Sky stddev: %f\n", bg.y);
 
     // Estimate FWHM by linear interpolation between points
-    for (int j = 1; j < numIntensity; j++)
-        if (profile[j] < profile[0]/2)
+    for (int i = 1; i < numIntensity; i++)
+        if (profile[i] < profile[0]/2)
         {
-            printf("# Estimated FWHM: %f\n", j - 1 + (profile[0]/2 - profile[j-1])/(profile[j] - profile[j-1]));
+            printf("# Estimated FWHM: %f\n", i - 1 + (profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]));
+            break;
+        }
+
+    for (int i = 0; i < numIntensity - 1; i++)
+        if (intensity[i] > 0.95*intensity[numIntensity-1])
+        {
+            printf("# Estimated 95%%: %f\n", i + (0.95*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
             break;
         }
 
     // Print profile values
     for (int i = 0; i < numIntensity; i++)
-        printf("%f %f\n", radii[i], profile[i]);
+        printf("%f %f %f\n", radii[i], profile[i], intensity[i]);
 
     return 0;
 }

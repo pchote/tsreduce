@@ -229,8 +229,14 @@ static double2 c(int k)
 // Calculate the intesection between the unit pixel (with TL corner at the origin)
 // and the aperture defined by x,y,r.
 //   Returns a number between 0 and 1 specifying the intersecting area
+// Origin is defined as the bottom-left of the pixel
 static double pixel_aperture_intesection(double x, double y, double r)
-{    
+{
+    // We don't yet handle the extra cases for r < 1
+    if (r < 1)
+        return 0;
+
+    // Determine which pixels are inside and outside the aperture
     int hit[4];
     int numhit = 0;
     for (int k = 0; k < 4; k++)
@@ -239,7 +245,34 @@ static double pixel_aperture_intesection(double x, double y, double r)
     
     switch (numhit)
     {
-        case 0: return 0;
+        // If 0 edges are inside the aperture, but aperture is inside pixel then the aperture is completely inside
+        case 0:
+        {
+            // Check that aperture doesn't intersect with each edge of the pixel in turn
+            // If so, the intersecting area is a sector
+            // See whiteboard photo from 13/7/11 for working
+
+            // Aperture must be within r distance from the pixel for it to intersect
+            if (x < -r || y < -r || x > r + 1 || y > r + 1)
+                return 0;
+
+            // Aperture is centered inside the pixel, but intersects no edges.
+            // It must be fully contained inside the pixel
+            // We don't yet handle this case, so return 0
+            if (x >= 0 && y >= 0 && x <= 1 && y <= 1)
+                return 0;
+
+            // Aperture cannot intersect the pixel without having one of the
+            // vertices inside if it lies in one of these corner regions
+            if ((x < 0 && y < 0) || (x < 0 && y > 1) || (x > 1 && y > 1) || (x > 1 && y < 0))
+                return 0;
+
+            // Remaining aperture positions may potentially intersect the pixel twice, without
+            // containing a vertex. Check each in turn.
+            // TODO: Check each edge for intersections
+
+            return 0;
+        }
         case 4: return 1;
         case 1:
         {

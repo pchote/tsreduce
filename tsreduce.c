@@ -597,6 +597,83 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     return 0;
 }
 
+int plot_profile(char *dataPath, int obsIndex, int targetIndex)
+{
+    // Read file header
+    datafile data = read_data_header(dataPath);
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    if (obsIndex >= data.num_obs)
+        return error("Requested observation is out of range: max is %d", data.num_obs-1);
+
+    chdir(data.frame_dir);
+
+    char filenamebuf[PATH_MAX+8];
+    if (obsIndex < 0)
+    {
+        // Load the first matching fits image
+        sprintf(filenamebuf, "/bin/ls %s", data.frame_pattern);
+        FILE *ls = popen(filenamebuf, "r");
+        if (ls == NULL)
+            return error("failed to list directory");
+
+        if (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) == NULL)
+            return error("No matching files found");
+
+        // Remove newline char
+        filenamebuf[strlen(filenamebuf)-1] = '\0';
+        pclose(ls);
+    }
+    else // Load the requested file
+        strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
+
+    framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
+    if (data.dark_template != NULL)
+    {
+        framedata dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
+        framedata_subtract(&frame, &dark);
+        framedata_free(dark);
+    }
+
+    if (data.flat_template != NULL)
+    {
+        framedata flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
+        framedata_divide(&frame, &flat);
+        framedata_free(flat);
+    }
+
+    if (targetIndex < 0 || targetIndex >= data.num_targets)
+        return error("Invalid target `%d' selected", targetIndex);
+
+    target t = data.targets[targetIndex];
+    double2 xy = converge_aperture(t, &frame);
+    t.x = xy.x; t.y = xy.y;
+    double2 bg = calculate_background(t, &frame);
+
+    printf("Sky: %f %f\n", bg.x, bg.y);
+
+    const int numIntensity = 100;
+    double intensity[numIntensity];
+    double radii[numIntensity];
+    for (int i = 0; i < numIntensity; i++)
+    {
+        radii[i] = i/2.0 + 1;
+        intensity[i] = integrate_aperture(xy, radii[i], &frame);
+    }
+
+    // Sample the pixel value at the center
+    printf("%f %f\n", 0.0, frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x]);
+
+    printf("%f %f\n", radii[0], intensity[0]/(M_PI*radii[0]*radii[0]));
+    for (int i = 1; i < numIntensity; i++)
+    {
+        double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
+        printf("%f %f\n", radii[i], (intensity[i] - intensity[i-1])/area);
+    }
+    return 0;
+}
+
 int main( int argc, char *argv[] )
 {
     // `tsreduce create-flat "/bin/ls dome-*.fits.gz" 5 master-dark.fits.gz master-dome.fits.gz`
@@ -624,6 +701,9 @@ int main( int argc, char *argv[] )
 
     else if (argc == 7 && strncmp(argv[1], "create", 6) == 0)
         return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
+
+    else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)
+        return plot_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
 
     else
         error("Invalid args");

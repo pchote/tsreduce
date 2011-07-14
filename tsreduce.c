@@ -707,6 +707,19 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
             break;
         }
 
+    // Estimate radius that encloses 85%, 90%, 95% intensity
+    for (int i = 0; i < numIntensity - 1; i++)
+        if (intensity[i + 1] > 0.85*intensity[numIntensity-1])
+        {
+            printf("# Estimated 85%%: %f\n", i + (0.85*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+            break;
+        }
+    for (int i = 0; i < numIntensity - 1; i++)
+        if (intensity[i + 1] > 0.90*intensity[numIntensity-1])
+        {
+            printf("# Estimated 90%%: %f\n", i + (0.90*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+            break;
+        }
     for (int i = 0; i < numIntensity - 1; i++)
         if (intensity[i + 1] > 0.95*intensity[numIntensity-1])
         {

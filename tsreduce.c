@@ -708,7 +708,7 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
         }
 
     for (int i = 0; i < numIntensity - 1; i++)
-        if (intensity[i] > 0.95*intensity[numIntensity-1])
+        if (intensity[i + 1] > 0.95*intensity[numIntensity-1])
         {
             printf("# Estimated 95%%: %f\n", i + (0.95*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
             break;

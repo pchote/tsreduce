@@ -332,6 +332,11 @@ static double pixel_aperture_intesection(double x, double y, double r)
     return 0;
 }
 
+static double pixel_value(framedata *frame, int i, int j)
+{
+    return frame->dbl_data[i + frame->cols*j];
+}
+
 // Integrates the flux within the specified aperture, 
 // accounting for partially covered pixels.
 //   Takes the aperture (x,y,r) and the image data (2d numpy array)
@@ -342,7 +347,26 @@ double integrate_aperture(double2 xy, double r, framedata *frame)
     int bx = floor(xy.x), by = floor(xy.y), br = ceil(r) + 1;
     for (int i = bx-br; i < bx+br; i++)
         for (int j = by-br; j < by+br; j++)
-            total += pixel_aperture_intesection(xy.x-i, xy.y-j, r)*frame->dbl_data[i + frame->cols*j];
+        {
+            // Split pixel into 4 subpixels using the QUADPX algorithm
+            // TODO: work through the details
+            // TODO: test different values of H
+            double H = 1; // hardness parameter
+            double PN = pixel_value(frame, i, j+1);
+            double PS = pixel_value(frame, i, j-1);
+            double PE = pixel_value(frame, i+1, j);
+            double PW = pixel_value(frame, i-1, j);
+            double PC = pixel_value(frame, i, j);
+            double S = PN + PS + PE + PW;
+            double A = (1 - H)*PC/4.0;
+            double B = (H/S)*(PC/2.0);
+            total += ((PE+PN)*B + A)*pixel_aperture_intesection(2*(xy.x-i)+1, 2*(xy.y-j)+1, 2*r);
+            total += ((PN+PW)*B + A)*pixel_aperture_intesection(2*(xy.x-i), 2*(xy.y-j)+1, 2*r);
+            total += ((PW+PS)*B + A)*pixel_aperture_intesection(2*(xy.x-i), 2*(xy.y-j), 2*r);
+            total += ((PS+PE)*B + A)*pixel_aperture_intesection(2*(xy.x-i)+1, 2*(xy.y-j), 2*r);
+        }
 
     return total;
 }
+
+

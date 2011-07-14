@@ -258,7 +258,7 @@ datafile read_data_header(char *dataFile)
             continue;
 
         // Skip empty lines
-        if (strlen(linebuf) == 0)
+        if (linebuf[0] == '\n')
             continue;
 
         //

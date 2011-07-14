@@ -12,7 +12,7 @@
 
 int get_matching_files(const char *cmd, char **files, int numFiles);
 int error(const char * format, ...);
-void die(const char * format, ...);
+void die(const char * format, ...) __attribute__ ((noreturn));
 int init_ds9(char *);
 int tell_ds9(char *title, char *command, void *data, int dataSize);
 int ask_ds9(char *title, char *command, char *outbuf, int outlen);

@@ -565,8 +565,8 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
         framedata_free(flat);
     }
 
-    snprintf(command, 128, "file %s", filenamebuf);
-    if (!tell_ds9("tsreduce", command, NULL, 0))
+    snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.rows, frame.cols);
+    if (!tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
         return error("ds9 command failed: %s", command);
 
     // Set scaling mode

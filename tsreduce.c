@@ -445,7 +445,7 @@ int display_targets(char *dataPath, int obsIndex)
     if (obsIndex < 0)
     {
         // Load the first matching fits image
-        sprintf(filenamebuf, "/bin/ls %s", data.frame_pattern);
+        sprintf(filenamebuf, "/bin/ls %s/%s", data.frame_dir, data.frame_pattern);
         FILE *ls = popen(filenamebuf, "r");
         if (ls == NULL)
             return error("failed to list directory");
@@ -460,7 +460,7 @@ int display_targets(char *dataPath, int obsIndex)
     else // Load the requested file
         strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
     
-    snprintf(command, 128, "file %s", filenamebuf);
+    snprintf(command, 128, "file %s/%s", data.frame_dir, filenamebuf);
     if (!tell_ds9("tsreduce", command, NULL, 0))
         return error("ds9 command failed: %s", command);
 

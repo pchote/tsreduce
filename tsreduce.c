@@ -727,6 +727,20 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
             break;
         }
 
+    // Estimate radius where signal reaches 5x,10x sky sigma
+    for (int i = 1; i < numIntensity; i++)
+        if (profile[i] < 5*bg.y)
+        {
+            printf("# Estimated 5 sky sigma: %f\n", i - 1 + (5*bg.y - profile[i-1])/(profile[i] - profile[i-1]));
+            break;
+        }
+    for (int i = 1; i < numIntensity; i++)
+        if (profile[i] < 10*bg.y)
+        {
+            printf("# Estimated 10 sky sigma: %f\n", i - 1 + (10*bg.y - profile[i-1])/(profile[i] - profile[i-1]));
+            break;
+        }
+
     // Print profile values
     for (int i = 0; i < numIntensity; i++)
         printf("%f %f %f\n", radii[i], profile[i], intensity[i]);

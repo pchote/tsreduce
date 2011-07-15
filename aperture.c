@@ -85,10 +85,10 @@ double2 converge_aperture(target r, framedata *frame)
 
     int n = 0;
     double move = 0;
-    // Iterate until we move less than 2px or reach 10 iterations
+    // Iterate until we move less than 1/16 of a pixel or reach 20 iterations
     do
     {
-        if (n++ == 10)
+        if (n++ == 20)
         {
             printf("Aperture centering did not converge - skipping\n");
             return error;
@@ -108,7 +108,7 @@ double2 converge_aperture(target r, framedata *frame)
         r.y = xy.y;
 
         move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
-    } while (move >= 0.0625);
+    } while (move >= 0.00390625);
 
     return xy;
 }

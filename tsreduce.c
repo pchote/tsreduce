@@ -412,7 +412,7 @@ int update_reduction(char *dataPath)
         }
 
         // Ratio, Filename
-        fprintf(data.file, "%.3e %s\n", target / comparison, filename);
+        fprintf(data.file, "%.3e %s\n",comparison > 0 ? target / comparison : 0, filename);
 
         framedata_free(frame);
     }

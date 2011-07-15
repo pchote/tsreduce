@@ -550,7 +550,20 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     }
     else if (framedata_has_header_string(&frame, "GPSTIME"))
         framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
-    framedata_free(frame);
+
+    if (darkTemplate != NULL)
+    {
+        framedata dark = framedata_new(darkTemplate, FRAMEDATA_DBL);
+        framedata_subtract(&frame, &dark);
+        framedata_free(dark);
+    }
+
+    if (flatTemplate != NULL)
+    {
+        framedata flat = framedata_new(flatTemplate, FRAMEDATA_DBL);
+        framedata_divide(&frame, &flat);
+        framedata_free(flat);
+    }
 
     snprintf(command, 128, "file %s", filenamebuf);
     if (!tell_ds9("tsreduce", command, NULL, 0))
@@ -564,7 +577,7 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     if (!tell_ds9("tsreduce", "orient x", NULL, 0))
         return error("ds9 command failed: orient x");
 
-    printf("Circle the target stars in ds9 then press enter to continue...\n");
+    printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
     getchar();
 
     char ds9buf[4096];
@@ -584,19 +597,86 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
         }
 
         // Read aperture coords
-        sscanf(cur, "circle(%lf,%lf,%lf)", &targets[num_targets].x, &targets[num_targets].y, &targets[num_targets].r);
+        target t;
+        sscanf(cur, "circle(%lf,%lf,%lf)", &t.x, &t.y, &t.s2);
 
         // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
-        targets[num_targets].x -= 1;
-        targets[num_targets].y -= 1;
+        t.x -= 1;
+        t.y -= 1;
 
-        // Set generic sky apertures
-        targets[num_targets].s1 = 20;
-        targets[num_targets].s2 = 25;
-        num_targets++;
+        //
+        // Calculate the optimum aperture positioning
+        //
+
+
+        // Set outer sky radius to selected radius, inner to outer - 5
+        t.s1 = t.s2 - 5;
+
+        // Estimate initial aperture size as inner sky radius
+        t.r = t.s1;
+
+        printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
+        // Calculate the radius that encloses 95% of the flux
+        // Calculate at integer pixel steps between 1 and the outer sky annulus
+        int numIntensity = (int)t.s2 + 1;
+        double *intensity = (double *)malloc(numIntensity*sizeof(double));
+        double *radii = (double *)malloc(numIntensity*sizeof(double));
+        double *profile = (double *)malloc(numIntensity*sizeof(double));
+        printf("Samping %d steps from %f\n", numIntensity, t.s2);
+
+        int n = 0;
+        double move = 0;
+        target last;
+        // Converge on the best aperture size and position
+        do
+        {
+            if (n++ == 20)
+                return error("Aperture centering did not converge");
+
+            last = t;
+            // Calculate a rough center and background: Estimates will improve as we converge
+            double2 xy = converge_aperture(t, &frame);
+            if (xy.x < 0)
+                return error("Aperture did not converge");
+
+            t.x = xy.x; t.y = xy.y;
+            double2 bg = calculate_background(t, &frame);
+
+            // Calculate the flux profile
+            radii[0] = 0;
+            intensity[0] = 0;
+            profile[0] = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
+            for (int i = 1; i < numIntensity; i++)
+            {
+                radii[i] = i;
+                intensity[i] = integrate_aperture(xy, radii[i], &frame) - bg.x*M_PI*radii[i]*radii[i];
+
+                double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
+                profile[i] = (intensity[i] - intensity[i-1])/area;
+            }
+
+            // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
+            for (int i = 1; i < numIntensity; i++)
+                if (profile[i] < 5*bg.y)
+                {
+                    t.r = i - 1 + (5*bg.y - profile[i-1])/(profile[i] - profile[i-1]);
+                    break;
+                }
+            printf("Iteration %d: Center: (%f, %f) Radius: %f Background: %f +/- %f\n", n, t.x, t.y, t.r, bg.x, bg.y);
+            move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
+        } while (move >= 0.00390625);
+
+        free(profile);
+        free(intensity);
+        free(radii);
+
+        // Set target parameters
+        targets[num_targets++] = t;
+
         // Increment by one char so strstr will find the next instance
         cur++;
     }
+
     printf("Founds %d targets\n", num_targets);
 
     // Write the file
@@ -609,6 +689,29 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     fprintf(data, "# ReferenceTime: %s\n", datetimebuf);
     for (int i = 0; i < num_targets; i++)
         fprintf(data, "# Target: (%f, %f, %f, %f, %f)\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
+
+    // Display results in ds9
+    snprintf(command, 128, "regions delete all");
+    if (!tell_ds9("tsreduce", command, NULL, 0))
+        return error("ds9 command failed: %s", command);
+
+    for (int i = 0; i < num_targets; i++)
+    {
+        double x = targets[i].x + 1;
+        double y = targets[i].y + 1;
+
+        snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, targets[i].r);
+        if (!tell_ds9("tsreduce", command, NULL, 0))
+            return error("ds9 command failed: %s", command);
+        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s1);
+        if (!tell_ds9("tsreduce", command, NULL, 0))
+            return error("ds9 command failed: %s", command);
+        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s2);
+        if (!tell_ds9("tsreduce", command, NULL, 0))
+            return error("ds9 command failed: %s", command);
+    }
+
+    framedata_free(frame);
     fclose(data);
     return 0;
 }

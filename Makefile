@@ -12,7 +12,7 @@ OBJ = $(SRC:.c=.o)
 
 
 tsreduce: $(OBJ)
-	$(CC) $(LFLAGS) $(OBJ) libxpa.a -o $@
+	$(CC) -o $@ $(OBJ) $(LFLAGS)
 
 clean:
 	-rm $(OBJ) tsreduce

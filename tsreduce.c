@@ -631,7 +631,10 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
         do
         {
             if (n++ == 20)
-                return error("Aperture centering did not converge");
+            {
+                printf("WARNING: Aperture centering did not converge");
+                break;
+            }
 
             last = t;
             // Calculate a rough center and background: Estimates will improve as we converge

@@ -508,9 +508,9 @@ int display_targets(char *dataPath, int obsIndex)
 // TODO: Clean up resources if we error out
 int create_reduction_file(char *filePath, char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate)
 {
-    FILE *data = fopen(filePath, "w");
+    FILE *data = fopen(filePath, "wx");
     if (data == NULL)
-        return error("Unable to creat data file: %s", filePath);
+        return error("Unable to create data file: %s. Does it already exist?", filePath);
 
     char pathBuf[PATH_MAX];
     realpath(framePath, pathBuf);

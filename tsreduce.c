@@ -510,7 +510,7 @@ int display_targets(char *dataPath, int obsIndex)
 }
 
 // TODO: Clean up resources if we error out
-int create_reduction_file(char *filePath, char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate)
+int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath)
 {
     FILE *data = fopen(filePath, "wx");
     if (data == NULL)
@@ -859,6 +859,7 @@ int main( int argc, char *argv[] )
         return display_targets(argv[2], obs);
     }
 
+    // `tsreduce create ~/data/20110307 ec04207-[0-9]+.fits.gz master-dark.fits master-skyflat-20110305.fits 20110307.dat`
     else if (argc == 7 && strncmp(argv[1], "create", 6) == 0)
         return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
 

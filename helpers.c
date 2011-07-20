@@ -9,7 +9,8 @@
 #include <limits.h>
 #include <xpa.h>
 #include <unistd.h>
-
+#include <dirent.h>
+#include <regex.h>
 #include "helpers.h"
 
 // Write the first numFiles filenames that match the system command cmd into
@@ -41,6 +42,39 @@ int get_matching_files(const char *cmd, char **files, int numFiles)
     free(buf);
     pclose(p);
     return n;
+}
+
+// Find the filename of the first file that (alphabetically) matches the given regex pattern
+// Result is copied into filenamebuf. Returns 1 on success, 0 on failure.
+int get_first_matching_file(char *pattern, char *filenamebuf, int buflen)
+{
+    // Compile the pattern into a regex
+    regex_t regex;
+    int regerr = 0;
+    if ((regerr = regcomp(&regex, pattern, REG_EXTENDED | REG_NOSUB)))
+    {
+        char errbuf[1024];
+        regerror(regerr, &regex, errbuf, 1024);
+        return error("Error compiling `%s` into a regular expression: %s", pattern, errbuf);
+    }
+
+    // Find the first matching file
+    struct dirent **matched;
+    int numMatched = scandir(".", &matched, 0, alphasort);
+    int found = 0;
+    for (int i = 0; i < numMatched; i++)
+    {
+        if (!found && !regexec(&regex, matched[i]->d_name, 0, NULL, 0))
+        {
+            found = 1;
+            strncpy(filenamebuf, matched[i]->d_name, buflen);
+            filenamebuf[NAME_MAX-1] = '\0';
+        }
+        free(matched[i]);
+    }
+    free(matched);
+    regfree(&regex);
+    return found;
 }
 
 // Prints an vararg error to stderr then returns 1

@@ -455,38 +455,14 @@ int display_targets(char *dataPath, int obsIndex)
         return error("Unable to launch ds9");
 
     char command[128];
-    char filenamebuf[PATH_MAX+8];
+    char filenamebuf[NAME_MAX];
     filenamebuf[0] = '\0';
 
     // Observation index not specified: open the first image that matches
-    if (obsIndex < 0)
-    {
-        // Compile the filepattern into a regex
-        regex_t regex;
-        int regerr = 0;
-        if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
-        {
-            char errbuf[1024];
-            regerror(regerr, &regex, errbuf, 1024);
-            error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
-        }
-
-        DIR *dirp = opendir(".");
-        struct dirent *dp;
-        while ((dp = readdir(dirp)) != NULL)
-            if (!regexec(&regex, dp->d_name, 0, NULL, 0))
-            {
-                strncpy(filenamebuf, dp->d_name, PATH_MAX);
-                break;
-            }
-
-        closedir(dirp);
-        regfree(&regex);
-        if (!strlen(filenamebuf))
-            return error("No matching files found");
-    }
-    else // Load the requested file
-        strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
+    if (obsIndex >= 0)
+        strncpy(filenamebuf, data.obs[obsIndex].filename, NAME_MAX);
+    else if (!get_first_matching_file(data.frame_pattern, filenamebuf, NAME_MAX))
+        return error("No matching files found");
     
     snprintf(command, 128, "file %s/%s", data.frame_dir, filenamebuf);
     if (!tell_ds9("tsreduce", command, NULL, 0))
@@ -549,32 +525,8 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     if (!init_ds9("tsreduce"))
         return error("Unable to launch ds9");
 
-    char command[128];
-    char filenamebuf[PATH_MAX+8];
-
-    // Compile the filepattern into a regex
-    regex_t regex;
-    int regerr = 0;
-    if ((regerr = regcomp(&regex, framePattern, REG_EXTENDED | REG_NOSUB)))
-    {
-        char errbuf[1024];
-        regerror(regerr, &regex, errbuf, 1024);
-        error("Error compiling `%s` into a regular expression: %s", framePattern, errbuf);
-    }
-
-    // Load the first matching fits image
-    DIR *dirp = opendir(".");
-    struct dirent *dp;
-    while ((dp = readdir(dirp)) != NULL)
-        if (!regexec(&regex, dp->d_name, 0, NULL, 0))
-        {
-            strncpy(filenamebuf, dp->d_name, PATH_MAX);
-            break;
-        }
-
-    closedir(dirp);
-    regfree(&regex);
-    if (!strlen(filenamebuf))
+    char filenamebuf[NAME_MAX];
+    if (!get_first_matching_file(framePattern, filenamebuf, NAME_MAX))
         return error("No matching files found");
 
     // Open the file to find the reference time
@@ -605,6 +557,7 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
         framedata_free(flat);
     }
 
+    char command[128];
     snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.rows, frame.cols);
     if (!tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
         return error("ds9 command failed: %s", command);
@@ -771,35 +724,11 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
 
     chdir(data.frame_dir);
 
-    char filenamebuf[PATH_MAX+8];
-    if (obsIndex < 0)
-    {
-        // Compile the filepattern into a regex
-        regex_t regex;
-        int regerr = 0;
-        if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
-        {
-            char errbuf[1024];
-            regerror(regerr, &regex, errbuf, 1024);
-            error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
-        }
-
-        DIR *dirp = opendir(".");
-        struct dirent *dp;
-        while ((dp = readdir(dirp)) != NULL)
-            if (!regexec(&regex, dp->d_name, 0, NULL, 0))
-            {
-                strncpy(filenamebuf, dp->d_name, PATH_MAX);
-                break;
-            }
-
-        closedir(dirp);
-        regfree(&regex);
-        if (!strlen(filenamebuf))
-            return error("No matching files found");
-    }
-    else // Load the requested file
-        strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
+    char filenamebuf[NAME_MAX];
+    if (obsIndex >= 0)
+        strncpy(filenamebuf, data.obs[obsIndex].filename, NAME_MAX);
+    else if (!get_first_matching_file(data.frame_pattern, filenamebuf, NAME_MAX))
+        return error("No matching files found");
 
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
     if (data.dark_template != NULL)

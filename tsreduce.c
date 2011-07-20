@@ -403,13 +403,18 @@ int update_reduction(char *dataPath)
             double sky = 0;
             double intensity = 0;
 
-            if (xy.x > 0) // converge_aperture returns negative on error
+            if (xy.x > 0) // converge_aperture returns negative or nan
             {
                 double r = data.targets[i].r;
                 double2 bg = calculate_background(data.targets[i], &frame);
 
                 sky = bg.x*M_PI*r*r / exptime;
                 intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
+            }
+            else
+            {
+                xy.x = 0;
+                xy.y = 0;
             }
 
             fprintf(data.file, "%.2f ", intensity); // intensity (ADU/s)

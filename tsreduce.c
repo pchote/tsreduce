@@ -22,7 +22,6 @@
 #include "helpers.h"
 #include "aperture.h"
 
-
 // Subtracts the dark count, then normalizes the frame to average to unity
 // (not that we actually care about the total photometric counts)
 void normalize_flat(framedata *flat, void *data)
@@ -70,22 +69,22 @@ void normalize_flat(framedata *flat, void *data)
 // rejecting `minmax' highest and lowest pixel values after subtracting
 // the dark frame `masterdark'.
 // Save the resulting image to the file `outname'
-int create_flat(const char *flatcmd, int minmax, const char *masterdark, const char *outname)
+int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname)
 {
-    char **frames = (char **)malloc(MAX_FRAMES*sizeof(char*));
-    for (int i = 0; i < MAX_FRAMES; i++)
-        frames[i] = (char *)malloc(PATH_MAX*sizeof(char));
-    
-    int numflats = get_matching_files(flatcmd, frames, MAX_FRAMES);
-    if (numflats < 2*minmax)
-        return error("Insufficient frames. %d found, %d will be discarded", numflats, 2*minmax);
-    
+    char **frames;
+    int numMatched = get_matching_files(pattern, &frames);
+
+    if (numMatched < 2*minmax)
+    {
+        free_2d_array(frames, numMatched);
+        return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
+    }
+
     double *flat = (double *)malloc(512*512*sizeof(double));
-    
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
     
     // Load the flat frames, discarding the 5 outermost pixels for each
-    load_reject_minmax( (const char **)frames, numflats, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark);
+    load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark);
     framedata_free(dark);
     
     // Create a new fits file
@@ -101,38 +100,37 @@ int create_flat(const char *flatcmd, int minmax, const char *masterdark, const c
     
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, 512*512, flat, &status))
+    {
+        free_2d_array(frames, numMatched);
         return error("fits_write_img failed with status %d", status);
+    }
     
     fits_close_file(out, &status);
     free(flat);
-    
-    for (int i = 0; i < MAX_FRAMES; i++)
-        free(frames[i]);
-    free(frames);
-    
+    free_2d_array(frames, numMatched);
     return 0;
 }
 
 // Create a darkframe from the frames listed by the command `darkcmd',
 // rejecting `minmax' highest and lowest pixel values.
 // Save the resulting image to the file `outname'
-int create_dark(const char *darkcmd, int minmax, const char *outname)
+int create_dark(const char *pattern, int minmax, const char *outname)
 {
-    char **frames = (char **)malloc(MAX_FRAMES*sizeof(char*));
-    for (int i = 0; i < MAX_FRAMES; i++)
-        frames[i] = (char *)malloc(PATH_MAX*sizeof(char));
-    
-    int numdarks = get_matching_files(darkcmd, frames, MAX_FRAMES);
-    if (numdarks < 2*minmax)
-        return error("Insufficient frames. %d found, at least %d are required", numdarks, 2*minmax);
-    
+    char **frames;
+    int numMatched = get_matching_files(pattern, &frames);
+    if (numMatched < 2*minmax)
+    {
+        free_2d_array(frames, numMatched);
+        return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
+    }
+
     framedata base = framedata_new(frames[0], FRAMEDATA_INT);
     int exptime = framedata_get_header_int(&base, "EXPTIME");
     double *dark = (double *)malloc(base.rows*base.cols*sizeof(double));
     
     
     // Load the flat frames, discarding the 5 outermost pixels for each
-    load_reject_minmax( (const char **)frames, numdarks, base.rows, base.cols, minmax, minmax, dark, NULL, NULL);
+    load_reject_minmax( (const char **)frames, numMatched, base.rows, base.cols, minmax, minmax, dark, NULL, NULL);
     
     // Create a new fits file
     fitsfile *out;
@@ -150,17 +148,17 @@ int create_dark(const char *darkcmd, int minmax, const char *outname)
     
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, dark, &status))
+    {
+        free_2d_array(frames, numMatched);
         return error("fits_write_img failed with status %d", status);
+    }
     
     fits_close_file(out, &status);
     free(dark);
     
     framedata_free(base);
-    
-    for (int i = 0; i < MAX_FRAMES; i++)
-        free(frames[i]);
-    free(frames);
-    
+    free_2d_array(frames, numMatched);
+
     return 0;
 }
 

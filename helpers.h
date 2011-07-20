@@ -10,7 +10,8 @@
 #ifndef HELPERS_H
 #define HELPERS_H
 
-int get_matching_files(const char *cmd, char **files, int numFiles);
+void free_2d_array(char **array, int len);
+int get_matching_files(const char *pattern, char ***files);
 int get_first_matching_file(char *pattern, char *filenamebuf, int buflen);
 int error(const char * format, ...);
 void die(const char * format, ...) __attribute__ ((noreturn));

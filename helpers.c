@@ -13,35 +13,55 @@
 #include <regex.h>
 #include "helpers.h"
 
-// Write the first numFiles filenames that match the system command cmd into
-// the array files (allocated by the caller).
-int get_matching_files(const char *cmd, char **files, int numFiles)
-{    
-    FILE *p = popen(cmd, "r");
-    if (p == NULL)
-        return error("failed to run command `%s`", cmd);
-    
-    int n = 0;
-    char *buf = (char *)malloc(PATH_MAX*sizeof(char));
-    while (fgets(buf, PATH_MAX-1, p) != NULL)
+// Helper function to free a 2d char array allocated using malloc etc.
+void free_2d_array(char **array, int len)
+{
+    for (int i = 0; i < len; i++)
+        free(array[i]);
+    free(array);
+}
+
+// Find files that match the given regex.
+// outList is set to point to an array (which must be later freed by the caller) of filenames
+// Returns the number of files matched.
+int get_matching_files(const char *pattern, char ***outList)
+{
+    // Compile the pattern into a regex
+    regex_t regex;
+    int regerr = 0;
+    if ((regerr = regcomp(&regex, pattern, REG_EXTENDED | REG_NOSUB)))
     {
-        if (n == numFiles)
-        {
-            fprintf(stderr, "Warning: Exceeded file limit of %d frames. Extra frames will be discarded", numFiles);
-            break;
-        }
-        
-        int len = strlen(buf);
-        if (len <= 0)
-            continue;
-        // Copy then strip the trailing newline
-        strncpy(files[n], buf, len);
-        files[n][len-1] = '\0';
-        n++;
+        char errbuf[1024];
+        regerror(regerr, &regex, errbuf, 1024);
+        return error("Error compiling `%s` into a regular expression: %s", pattern, errbuf);
     }
-    free(buf);
-    pclose(p);
-    return n;
+
+    // Find the matching files
+    struct dirent **files;
+    int numFiles = scandir(".", &files, 0, alphasort);
+    
+    char **ret = (char **)malloc(numFiles*sizeof(char*));
+    if (ret == NULL)
+        die("Memory allocation for %d filenames failed.", numFiles);
+
+    int numMatched = 0;
+    for (int i = 0; i < numFiles; i++)
+    {
+        if (!regexec(&regex, files[i]->d_name, 0, NULL, 0))
+        {
+            ret[numMatched] = strdup(files[i]->d_name);
+            if (ret[numMatched] == NULL)
+                die("Memory allocation failed.");
+
+            numMatched++;
+        }
+        free(files[i]);
+    }
+    free(files);
+    regfree(&regex);
+
+    *outList = ret;
+    return numMatched;
 }
 
 // Find the filename of the first file that (alphabetically) matches the given regex pattern

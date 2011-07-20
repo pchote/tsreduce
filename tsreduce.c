@@ -12,6 +12,8 @@
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
+#include <dirent.h>
+#include <regex.h>
 #include <fitsio.h>
 #include <xpa.h>
 
@@ -308,8 +310,8 @@ int update_reduction(char *dataPath)
     if (data.file == NULL)
         return error("Error opening data file");
 
-    if (data.version != 2)
-        return error("Invalid data file version `%d'. Requires version `%d'", data.version, 2);
+    if (data.version != 3)
+        return error("Invalid data file version `%d'. Requires version `%d'", data.version, 3);
 
     chdir(data.frame_dir);
     
@@ -319,18 +321,29 @@ int update_reduction(char *dataPath)
     if (data.dark_template != NULL)
         dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
 
-    // Iterate through the list of files matching the filepattern
-    char filenamebuf[PATH_MAX+8];
-    sprintf(filenamebuf, "/bin/ls %s", data.frame_pattern);
-    FILE *ls = popen(filenamebuf, "r");
-    if (ls == NULL)
-        return error("failed to list directory");
-    
-    while (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) != NULL)
+    // Compile the filepattern into a regex
+    regex_t regex;
+    int regerr = 0;
+    if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
     {
-        // Strip the newline character from the end of the filename
-        filenamebuf[strlen(filenamebuf)-1] = '\0';
-        char *filename = filenamebuf;
+        char errbuf[1024];
+        regerror(regerr, &regex, errbuf, 1024);
+        error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+    }
+
+    // Iterate through the files in the directory
+    struct dirent **matched;
+    char filename[NAME_MAX];
+    int numMatched = scandir(".", &matched, 0, alphasort);
+    for (int i = 0; i < numMatched; i++)
+    {
+        strncpy(filename, matched[i]->d_name, NAME_MAX);
+        filename[NAME_MAX-1] = '\0';
+        free(matched[i]);
+
+        // Ignore files that don't match the regex
+        if (regexec(&regex, filename, 0, NULL, 0))
+            continue;
         
         // Check whether the frame has been processed
         int processed = FALSE;
@@ -418,10 +431,11 @@ int update_reduction(char *dataPath)
     }
     if (dark.data != NULL)
         framedata_free(dark);
-    
-    pclose(ls);
+
+    free(matched);
+    regfree(&regex);
     fclose(data.file);
-    
+
     return 0;
 }
 
@@ -442,20 +456,34 @@ int display_targets(char *dataPath, int obsIndex)
 
     char command[128];
     char filenamebuf[PATH_MAX+8];
+    filenamebuf[0] = '\0';
+
+    // Observation index not specified: open the first image that matches
     if (obsIndex < 0)
     {
-        // Load the first matching fits image
-        sprintf(filenamebuf, "/bin/ls %s/%s", data.frame_dir, data.frame_pattern);
-        FILE *ls = popen(filenamebuf, "r");
-        if (ls == NULL)
-            return error("failed to list directory");
+        // Compile the filepattern into a regex
+        regex_t regex;
+        int regerr = 0;
+        if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
+        {
+            char errbuf[1024];
+            regerror(regerr, &regex, errbuf, 1024);
+            error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+        }
 
-        if (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) == NULL)
+        DIR *dirp = opendir(".");
+        struct dirent *dp;
+        while ((dp = readdir(dirp)) != NULL)
+            if (!regexec(&regex, dp->d_name, 0, NULL, 0))
+            {
+                strncpy(filenamebuf, dp->d_name, PATH_MAX);
+                break;
+            }
+
+        closedir(dirp);
+        regfree(&regex);
+        if (!strlen(filenamebuf))
             return error("No matching files found");
-        
-        // Remove newline char
-        filenamebuf[strlen(filenamebuf)-1] = '\0';
-        pclose(ls);
     }
     else // Load the requested file
         strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);
@@ -524,18 +552,30 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
     char command[128];
     char filenamebuf[PATH_MAX+8];
 
+    // Compile the filepattern into a regex
+    regex_t regex;
+    int regerr = 0;
+    if ((regerr = regcomp(&regex, framePattern, REG_EXTENDED | REG_NOSUB)))
+    {
+        char errbuf[1024];
+        regerror(regerr, &regex, errbuf, 1024);
+        error("Error compiling `%s` into a regular expression: %s", framePattern, errbuf);
+    }
+
     // Load the first matching fits image
-    sprintf(filenamebuf, "/bin/ls %s", framePattern);
-    FILE *ls = popen(filenamebuf, "r");
-    if (ls == NULL)
-        return error("failed to list directory");
+    DIR *dirp = opendir(".");
+    struct dirent *dp;
+    while ((dp = readdir(dirp)) != NULL)
+        if (!regexec(&regex, dp->d_name, 0, NULL, 0))
+        {
+            strncpy(filenamebuf, dp->d_name, PATH_MAX);
+            break;
+        }
 
-    if (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) == NULL)
+    closedir(dirp);
+    regfree(&regex);
+    if (!strlen(filenamebuf))
         return error("No matching files found");
-
-    // Remove newline char
-    filenamebuf[strlen(filenamebuf)-1] = '\0';
-    pclose(ls);
 
     // Open the file to find the reference time
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
@@ -684,7 +724,7 @@ int create_reduction_file(char *filePath, char *framePath, char *framePattern, c
 
     // Write the file
     fprintf(data, "# Puoko-nui Online reduction output\n");
-    fprintf(data, "# Version: 2\n");
+    fprintf(data, "# Version: 3\n");
     fprintf(data, "# FrameDir: %s\n", pathBuf);
     fprintf(data, "# FramePattern: %s\n", framePattern);
     fprintf(data, "# DarkTemplate: %s\n", darkTemplate);
@@ -734,18 +774,29 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     char filenamebuf[PATH_MAX+8];
     if (obsIndex < 0)
     {
-        // Load the first matching fits image
-        sprintf(filenamebuf, "/bin/ls %s", data.frame_pattern);
-        FILE *ls = popen(filenamebuf, "r");
-        if (ls == NULL)
-            return error("failed to list directory");
+        // Compile the filepattern into a regex
+        regex_t regex;
+        int regerr = 0;
+        if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
+        {
+            char errbuf[1024];
+            regerror(regerr, &regex, errbuf, 1024);
+            error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+        }
 
-        if (fgets(filenamebuf, sizeof(filenamebuf)-1, ls) == NULL)
+        DIR *dirp = opendir(".");
+        struct dirent *dp;
+        while ((dp = readdir(dirp)) != NULL)
+            if (!regexec(&regex, dp->d_name, 0, NULL, 0))
+            {
+                strncpy(filenamebuf, dp->d_name, PATH_MAX);
+                break;
+            }
+
+        closedir(dirp);
+        regfree(&regex);
+        if (!strlen(filenamebuf))
             return error("No matching files found");
-
-        // Remove newline char
-        filenamebuf[strlen(filenamebuf)-1] = '\0';
-        pclose(ls);
     }
     else // Load the requested file
         strncpy(filenamebuf, data.obs[obsIndex].filename, PATH_MAX);

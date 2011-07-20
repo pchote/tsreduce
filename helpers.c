@@ -155,6 +155,7 @@ int init_ds9(char *title)
     return 1;
 }
 
+// Send a command to ds9 (with optional data) and ignore any response
 int tell_ds9(char *title, char *command, void *data, int dataSize)
 {
     char *names[1];
@@ -170,7 +171,9 @@ int tell_ds9(char *title, char *command, void *data, int dataSize)
     return valid;
 }
 
-int ask_ds9(char *title, char *command, char *outbuf, int outlen)
+// Send a command to ds9 and return its response.
+// outbuf is a pointer to a string, which must be later freed by the caller.
+int ask_ds9(char *title, char *command, char **outbuf)
 {
     char *names[1];
     char *errs[1];
@@ -186,16 +189,8 @@ int ask_ds9(char *title, char *command, char *outbuf, int outlen)
         free(errs[0]);
     }
     else
-    {
-        if (outlen < len[0])
-        {
-            valid = 0;
-            printf("Error: message buffer too small for returned ds9 output");
-        }
+        *outbuf = ret[0]; // The caller can free this later
 
-        strncpy(outbuf, ret[0], outlen);
-        outbuf[outlen - 1] = '\0';
-        free(ret[0]);
-    }
+    if (names[0]) free(names[0]);
     return valid;
 }

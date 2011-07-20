@@ -571,8 +571,8 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
     getchar();
 
-    char ds9buf[4096];
-    if (!ask_ds9("tsreduce", "regions", ds9buf, 4096))
+    char *ds9buf;
+    if (!ask_ds9("tsreduce", "regions", &ds9buf))
         return error("ds9 request regions failed");
 
     // Parse the region definitions
@@ -670,6 +670,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         // Increment by one char so strstr will find the next instance
         cur++;
     }
+    free(ds9buf);
 
     printf("Founds %d targets\n", num_targets);
 

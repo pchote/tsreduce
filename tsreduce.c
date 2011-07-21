@@ -686,13 +686,6 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         t.r = t.s1;
 
         printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
-        // Calculate the radius that encloses 95% of the flux
-        // Calculate at integer pixel steps between 1 and the outer sky annulus
-        int numIntensity = (int)t.s2 + 1;
-        double *intensity = (double *)malloc(numIntensity*sizeof(double));
-        double *radii = (double *)malloc(numIntensity*sizeof(double));
-        double *profile = (double *)malloc(numIntensity*sizeof(double));
-        printf("Samping %d steps from %f\n", numIntensity, t.s2);
 
         int n = 0;
         double move = 0;
@@ -711,9 +704,6 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
             double2 xy = converge_aperture(t, &frame);
             if (xy.x < 0)
             {
-                free(intensity);
-                free(radii);
-                free(profile);
                 free(ds9buf);
                 framedata_free(frame);
                 fclose(data);
@@ -722,34 +712,27 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
             t.x = xy.x; t.y = xy.y;
             double2 bg = calculate_background(t, &frame);
 
-            // TODO: this can be done by storing the previous values - don't need arrays
-            // Calculate the flux profile
-            radii[0] = 0;
-            intensity[0] = 0;
-            profile[0] = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
-            for (int i = 1; i < numIntensity; i++)
-            {
-                radii[i] = i;
-                intensity[i] = integrate_aperture(xy, radii[i], &frame) - bg.x*M_PI*radii[i]*radii[i];
-
-                double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
-                profile[i] = (intensity[i] - intensity[i-1])/area;
-            }
+            double lastIntensity = 0;
+            double lastProfile = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
 
             // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
-            for (int i = 1; i < numIntensity; i++)
-                if (profile[i] < 5*bg.y)
+            int maxRadius = (int)t.s2 + 1;
+            for (int radius = 1; radius <= maxRadius; radius++)
+            {
+                double intensity = integrate_aperture(xy, radius, &frame) - bg.x*M_PI*radius*radius;
+                double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+                if (profile < 5*bg.y)
                 {
-                    t.r = i - 1 + (5*bg.y - profile[i-1])/(profile[i] - profile[i-1]);
+                    t.r = radius - 1 + (5*bg.y - lastProfile) / (profile - lastProfile);
                     break;
                 }
+                lastIntensity = intensity;
+                lastProfile = profile;
+            }
+
             printf("Iteration %d: Center: (%f, %f) Radius: %f Background: %f +/- %f\n", n, t.x, t.y, t.r, bg.x, bg.y);
             move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
         } while (move >= 0.00390625);
-
-        free(profile);
-        free(intensity);
-        free(radii);
 
         // Set target parameters
         targets[num_targets++] = t;

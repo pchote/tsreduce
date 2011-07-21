@@ -155,7 +155,11 @@ int compare_double(const void *a, const void *b)
     return (*da > *db) - (*da < *db);
 }
 
-void load_reject_minmax( const char **frames, int numFrames, int rows, int cols, int rejectHigh, int rejectLow, double *outFrame, void (*preprocess_func)(framedata*, void*), void *preprocess_data)
+
+// Load a set of frames; call a preprocessing function on each; reject a given number
+// of highest and lowest values for each pixel and average the remaining values.
+// Output is returned via the outFrame array which was previously allocated by the caller.
+int load_reject_minmax( const char **frames, int numFrames, int rows, int cols, int rejectHigh, int rejectLow, double *outFrame, int (*preprocess_func)(framedata*, void*), void *preprocess_data)
 {   
     // Load all the flat field frames into a big int array interleaved by pixel value:
     // so big[0] = flat0[0,0], big[1] = flat1[0,0] ... big[numFrames] = flat0[0,1] etc
@@ -165,9 +169,16 @@ void load_reject_minmax( const char **frames, int numFrames, int rows, int cols,
         printf("loading `%s`\n", frames[i]);
         framedata f = framedata_new(frames[i], FRAMEDATA_DBL);
         
+        if (f.rows != rows || f.cols != cols)
+        {
+            int err = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)", frames[i], rows, cols, f.rows, f.cols);
+            framedata_free(f);
+            return err;
+        }
+
         // Preprocess the frame
-        if (preprocess_func != NULL)
-            preprocess_func(&f, preprocess_data);
+        if (preprocess_func != NULL && preprocess_func(&f, preprocess_data))
+            return error("preprocessing error");
         
         for (int j = 0; j < rows*cols; j++)
             big[numFrames*j+i] = f.dbl_data[j];
@@ -187,5 +198,7 @@ void load_reject_minmax( const char **frames, int numFrames, int rows, int cols,
         outFrame[j] /= (numFrames - rejectHigh - rejectLow);
     }
     free(big);
+
+    return 0;
 }
 

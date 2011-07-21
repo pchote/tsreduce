@@ -24,15 +24,15 @@
 
 // Subtracts the dark count, then normalizes the frame to average to unity
 // (not that we actually care about the total photometric counts)
-void normalize_flat(framedata *flat, void *data)
+int normalize_flat(framedata *flat, void *data)
 {
     framedata *dark = (framedata *)data;
     
     if (dark->dtype != FRAMEDATA_DBL || flat->dtype != FRAMEDATA_DBL)
-        error("normalize_flat frames must be type DBL");
+        return error("normalize_flat frames must be type DBL");
     
     if (dark->rows != flat->rows || dark->cols != flat->rows)
-        error("normalize_flat frames must have same size");
+        return error("normalize_flat frames must have same size");
     
     int flatexp = framedata_get_header_int(flat, "EXPTIME");
     int darkexp = framedata_get_header_int(dark, "EXPTIME");
@@ -63,6 +63,8 @@ void normalize_flat(framedata *flat, void *data)
     // Normalize flat to unity counts
     for (int i = 0; i < n; i++)
         flat->dbl_data[i] /= mean_new;
+
+    return 0;
 }
 
 // Create a flat field frame from the frames listed by the command `flatcmd',
@@ -80,11 +82,18 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
     }
 
+    // TODO: unhardcode dimensions
     double *flat = (double *)malloc(512*512*sizeof(double));
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
     
     // Load the flat frames, discarding the 5 outermost pixels for each
-    load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark);
+    if (load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark))
+    {
+        framedata_free(dark);
+        free(flat);
+        free_2d_array(frames, numMatched);
+        return error("frame loading failed");
+    }
     framedata_free(dark);
     
     // Create a new fits file
@@ -101,6 +110,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, 512*512, flat, &status))
     {
+        fits_close_file(out, &status);
+        free(flat);
         free_2d_array(frames, numMatched);
         return error("fits_write_img failed with status %d", status);
     }
@@ -130,7 +141,13 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     
     
     // Load the flat frames, discarding the 5 outermost pixels for each
-    load_reject_minmax( (const char **)frames, numMatched, base.rows, base.cols, minmax, minmax, dark, NULL, NULL);
+    if (load_reject_minmax( (const char **)frames, numMatched, base.rows, base.cols, minmax, minmax, dark, NULL, NULL))
+    {
+        free(dark);
+        framedata_free(base);
+        free_2d_array(frames, numMatched);
+        return error("frame loading failed");
+    }
     
     // Create a new fits file
     fitsfile *out;
@@ -149,13 +166,15 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, dark, &status))
     {
+        fits_close_file(out, &status);
+        free(dark);
+        framedata_free(base);
         free_2d_array(frames, numMatched);
         return error("fits_write_img failed with status %d", status);
     }
     
     fits_close_file(out, &status);
     free(dark);
-    
     framedata_free(base);
     free_2d_array(frames, numMatched);
 
@@ -187,15 +206,24 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     fits_create_file(&out, outbuf, &status);
     
     /* Create the primary array image */
+    // TODO: Unhardcode frame size
     long size[2] = { 512, 512 };
     fits_create_img(out, DOUBLE_IMG, 2, size, &status);
     
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, base.dbl_data, &status))
+    {
+        fits_close_file(out, &status);
+        framedata_free(flat);
+        framedata_free(dark);
+        framedata_free(base);
         return error("fits_write_img failed with status %d", status);
+    }
     
     fits_close_file(out, &status);
-    
+    framedata_free(flat);
+    framedata_free(dark);
+    framedata_free(base);
     return 0;
 }
 
@@ -293,6 +321,7 @@ datafile read_data_header(char *dataFile)
     return h;
 }
 
+// Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {
     // Processed dark and flat templates
@@ -326,7 +355,9 @@ int update_reduction(char *dataPath)
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+        regfree(&regex);
+        fclose(data.file);
+        return error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
     }
 
     // Iterate through the files in the directory
@@ -442,6 +473,8 @@ int update_reduction(char *dataPath)
     return 0;
 }
 
+// Display the apertures specified by the reduction file at dataPath for the
+// observation index obsIndex over an image frame in ds9
 int display_targets(char *dataPath, int obsIndex)
 {
     // Read file header
@@ -450,12 +483,18 @@ int display_targets(char *dataPath, int obsIndex)
         return error("Error opening data file");
 
     if (obsIndex >= data.num_obs)
+    {
+        fclose(data.file);
         return error("Requested observation is out of range: max is %d", data.num_obs-1);
+    }
 
     chdir(data.frame_dir);
 
     if (!init_ds9("tsreduce"))
+    {
+        fclose(data.file);
         return error("Unable to launch ds9");
+    }
 
     char command[128];
     char filenamebuf[NAME_MAX];
@@ -465,20 +504,31 @@ int display_targets(char *dataPath, int obsIndex)
     if (obsIndex >= 0)
         strncpy(filenamebuf, data.obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data.frame_pattern, filenamebuf, NAME_MAX))
+    {
+        fclose(data.file);
         return error("No matching files found");
+    }
     
     snprintf(command, 128, "file %s/%s", data.frame_dir, filenamebuf);
     if (!tell_ds9("tsreduce", command, NULL, 0))
+    {
+        fclose(data.file);
         return error("ds9 command failed: %s", command);
-
+    }
 
     // Set scaling mode
     if (!tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+    {
+        fclose(data.file);
         return error("ds9 command failed: scale mode 99.5");
+    }
 
     // Flip X axis
     if (!tell_ds9("tsreduce", "orient x", NULL, 0))
+    {
+        fclose(data.file);
         return error("ds9 command failed: orient x");
+    }
 
     for (int i = 0; i < data.num_targets; i++)
     {
@@ -499,20 +549,22 @@ int display_targets(char *dataPath, int obsIndex)
 
         snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data.targets[i].r);
         if (!tell_ds9("tsreduce", command, NULL, 0))
-            return error("ds9 command failed: %s", command);
+            fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s1);
         if (!tell_ds9("tsreduce", command, NULL, 0))
-            return error("ds9 command failed: %s", command);
+            fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s2);
         if (!tell_ds9("tsreduce", command, NULL, 0))
-            return error("ds9 command failed: %s", command);
+            fprintf(stderr, "ds9 command failed: %s\n", command);
     }
 
     fclose(data.file);
     return 0;
 }
 
-// TODO: Clean up resources if we error out
+// Create a reduction file at filePath, with frames from the dir framePath
+// matching the regex framePattern, with dark and flat frames given by
+// darkTemplate and flatTemplate
 int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath)
 {
     FILE *data = fopen(filePath, "wx");
@@ -523,14 +575,23 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     realpath(framePath, pathBuf);
 
     if (chdir(pathBuf))
+    {
+        fclose(data);
         return error("Invalid frame path: %s", pathBuf);
+    }
 
     if (!init_ds9("tsreduce"))
+    {
+        fclose(data);
         return error("Unable to launch ds9");
+    }
 
     char filenamebuf[NAME_MAX];
     if (!get_first_matching_file(framePattern, filenamebuf, NAME_MAX))
+    {
+        fclose(data);
         return error("No matching files found");
+    }
 
     // Open the file to find the reference time
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
@@ -563,22 +624,38 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     char command[128];
     snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.rows, frame.cols);
     if (!tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
+    {
+        framedata_free(frame);
+        fclose(data);
         return error("ds9 command failed: %s", command);
+    }
 
     // Set scaling mode
     if (!tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+    {
+        framedata_free(frame);
+        fclose(data);
         return error("ds9 command failed: scale mode 99.5");
+    }
 
     // Flip X axis
     if (!tell_ds9("tsreduce", "orient x", NULL, 0))
+    {
+        framedata_free(frame);
+        fclose(data);
         return error("ds9 command failed: orient x");
+    }
 
     printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
     getchar();
 
     char *ds9buf;
-    if (!ask_ds9("tsreduce", "regions", &ds9buf))
+    if (!ask_ds9("tsreduce", "regions", &ds9buf) || ds9buf == NULL)
+    {
+        framedata_free(frame);
+        fclose(data);
         return error("ds9 request regions failed");
+    }
 
     // Parse the region definitions
     target targets[MAX_TARGETS];
@@ -603,7 +680,6 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         //
         // Calculate the optimum aperture positioning
         //
-
 
         // Set outer sky radius to selected radius, inner to outer - 5
         t.s1 = t.s2 - 5;
@@ -636,11 +712,19 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
             // Calculate a rough center and background: Estimates will improve as we converge
             double2 xy = converge_aperture(t, &frame);
             if (xy.x < 0)
+            {
+                free(intensity);
+                free(radii);
+                free(profile);
+                free(ds9buf);
+                framedata_free(frame);
+                fclose(data);
                 return error("Aperture did not converge");
-
+            }
             t.x = xy.x; t.y = xy.y;
             double2 bg = calculate_background(t, &frame);
 
+            // TODO: this can be done by storing the previous values - don't need arrays
             // Calculate the flux profile
             radii[0] = 0;
             intensity[0] = 0;
@@ -693,7 +777,11 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     // Display results in ds9
     snprintf(command, 128, "regions delete all");
     if (!tell_ds9("tsreduce", command, NULL, 0))
+    {
+        framedata_free(frame);
+        fclose(data);
         return error("ds9 command failed: %s", command);
+    }
 
     for (int i = 0; i < num_targets; i++)
     {
@@ -702,13 +790,13 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 
         snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, targets[i].r);
         if (!tell_ds9("tsreduce", command, NULL, 0))
-            return error("ds9 command failed: %s", command);
+            fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s1);
         if (!tell_ds9("tsreduce", command, NULL, 0))
-            return error("ds9 command failed: %s", command);
+            fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s2);
         if (!tell_ds9("tsreduce", command, NULL, 0))
-            return error("ds9 command failed: %s", command);
+            fprintf(stderr, "ds9 command failed: %s\n", command);
     }
 
     framedata_free(frame);
@@ -716,7 +804,9 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     return 0;
 }
 
-int plot_profile(char *dataPath, int obsIndex, int targetIndex)
+// Output radial profile information for the given targetIndex, obsIndex in
+// the reduction file at dataPath
+int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 {
     // Read file header
     datafile data = read_data_header(dataPath);
@@ -724,7 +814,10 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
         return error("Error opening data file");
 
     if (obsIndex >= data.num_obs)
+    {
+        fclose(data.file);
         return error("Requested observation is out of range: max is %d", data.num_obs-1);
+    }
 
     chdir(data.frame_dir);
 
@@ -732,7 +825,10 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     if (obsIndex >= 0)
         strncpy(filenamebuf, data.obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data.frame_pattern, filenamebuf, NAME_MAX))
+    {
+        fclose(data.file);
         return error("No matching files found");
+    }
 
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
     if (data.dark_template != NULL)
@@ -750,7 +846,10 @@ int plot_profile(char *dataPath, int obsIndex, int targetIndex)
     }
 
     if (targetIndex < 0 || targetIndex >= data.num_targets)
+    {
+        fclose(data.file);
         return error("Invalid target `%d' selected", targetIndex);
+    }
 
     target t = data.targets[targetIndex];
     double2 xy = converge_aperture(t, &frame);
@@ -868,7 +967,7 @@ int main( int argc, char *argv[] )
         return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
 
     else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)
-        return plot_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
+        return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
 
     else
         error("Invalid args");

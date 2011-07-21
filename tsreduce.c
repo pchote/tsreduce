@@ -768,6 +768,14 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     }
     free(ds9buf);
 
+    // Set all target radii equal to the largest one
+    // Temporary workaround (hopefully) until we can determine why different aperture sizes ratio badly
+    double largest = 0;
+    for (int i = 0; i < num_targets; i++)
+        largest = fmax(largest, targets[i].r);
+    for (int i = 0; i < num_targets; i++)
+        targets[i].r = largest;
+
     printf("Founds %d targets\n", num_targets);
 
     // Write the file

@@ -422,20 +422,34 @@ int update_reduction(char *dataPath)
 
         // Observation start time
         fprintf(data.file, "%.1f ", starttime);
+        data.obs[data.num_obs].time = starttime;
 
         // Target stars
-        double comparison = 0;
-        double target = 0;
+        double comparisonIntensity = 0;
+        double targetIntensity = 0;
         for (int i = 0; i < data.num_targets; i++)
         {
-            double2 xy = converge_aperture(data.targets[i], &frame);
+            // Use the aperture position from the previous frame
+            // as a starting point if it is valid
+            target t = data.targets[i];
+            if (data.num_obs > 0)
+            {
+                double2 xy = data.obs[data.num_obs-1].pos[i];
+                if (t.x > 0 && t.x < frame.cols)
+                    t.x = xy.x;
+                if (t.y > 0 && t.y < frame.rows)
+                    t.y = xy.y;
+            }
+
+            printf("using aperture (%f,%f) orig (%f,%f)\n", t.x, t.y, data.targets[i].x, data.targets[i].y);
+            double2 xy = converge_aperture(t, &frame);
             double sky = 0;
             double intensity = 0;
 
             if (xy.x > 0) // converge_aperture returns negative or nan
             {
-                double r = data.targets[i].r;
-                double2 bg = calculate_background(data.targets[i], &frame);
+                double r = t.r;
+                double2 bg = calculate_background(t, &frame);
 
                 sky = bg.x*M_PI*r*r / exptime;
                 intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
@@ -450,14 +464,26 @@ int update_reduction(char *dataPath)
             fprintf(data.file, "%.2f ", sky); // sky intensity (ADU/s)
             fprintf(data.file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
 
+            data.obs[data.num_obs].star[i] = intensity;
+            data.obs[data.num_obs].sky[i] = sky;
+            data.obs[data.num_obs].pos[i].x = xy.x;
+            data.obs[data.num_obs].pos[i].y = xy.y;
+
             if (i == 0)
-                target = intensity;
+                targetIntensity = intensity;
             else
-                comparison += intensity;
+                comparisonIntensity += intensity;
         }
 
-        // Ratio, Filename
-        fprintf(data.file, "%.3e %s\n",comparison > 0 ? target / comparison : 0, filename);
+        // Ratio
+        double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
+        fprintf(data.file, "%.3e ", ratio);
+        data.obs[data.num_obs].ratio = ratio;
+
+        // Filename
+        fprintf(data.file, "%s\n", filename);
+        strncpy(data.obs[data.num_obs].filename, filename, sizeof(filename));
+        data.num_obs++;
 
         framedata_free(frame);
     }

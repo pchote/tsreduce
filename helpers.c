@@ -168,7 +168,7 @@ int tell_ds9(char *title, char *command, void *data, int dataSize)
         free(errs[0]);
     }
     if (names[0]) free(names[0]);
-    return valid;
+    return !valid;
 }
 
 // Send a command to ds9 and return its response.
@@ -192,5 +192,5 @@ int ask_ds9(char *title, char *command, char **outbuf)
         *outbuf = ret[0]; // The caller can free this later
 
     if (names[0]) free(names[0]);
-    return valid;
+    return !valid;
 }

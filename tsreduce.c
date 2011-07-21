@@ -510,21 +510,21 @@ int display_targets(char *dataPath, int obsIndex)
     }
     
     snprintf(command, 128, "file %s/%s", data.frame_dir, filenamebuf);
-    if (!tell_ds9("tsreduce", command, NULL, 0))
+    if (tell_ds9("tsreduce", command, NULL, 0))
     {
         fclose(data.file);
         return error("ds9 command failed: %s", command);
     }
 
     // Set scaling mode
-    if (!tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+    if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
     {
         fclose(data.file);
         return error("ds9 command failed: scale mode 99.5");
     }
 
     // Flip X axis
-    if (!tell_ds9("tsreduce", "orient x", NULL, 0))
+    if (tell_ds9("tsreduce", "orient x", NULL, 0))
     {
         fclose(data.file);
         return error("ds9 command failed: orient x");
@@ -548,13 +548,13 @@ int display_targets(char *dataPath, int obsIndex)
         }
 
         snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data.targets[i].r);
-        if (!tell_ds9("tsreduce", command, NULL, 0))
+        if (tell_ds9("tsreduce", command, NULL, 0))
             fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s1);
-        if (!tell_ds9("tsreduce", command, NULL, 0))
+        if (tell_ds9("tsreduce", command, NULL, 0))
             fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data.targets[i].s2);
-        if (!tell_ds9("tsreduce", command, NULL, 0))
+        if (tell_ds9("tsreduce", command, NULL, 0))
             fprintf(stderr, "ds9 command failed: %s\n", command);
     }
 
@@ -623,7 +623,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 
     char command[128];
     snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.rows, frame.cols);
-    if (!tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
+    if (tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
     {
         framedata_free(frame);
         fclose(data);
@@ -631,7 +631,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     }
 
     // Set scaling mode
-    if (!tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
+    if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
     {
         framedata_free(frame);
         fclose(data);
@@ -639,7 +639,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     }
 
     // Flip X axis
-    if (!tell_ds9("tsreduce", "orient x", NULL, 0))
+    if (tell_ds9("tsreduce", "orient x", NULL, 0))
     {
         framedata_free(frame);
         fclose(data);
@@ -650,7 +650,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     getchar();
 
     char *ds9buf;
-    if (!ask_ds9("tsreduce", "regions", &ds9buf) || ds9buf == NULL)
+    if (ask_ds9("tsreduce", "regions", &ds9buf) || ds9buf == NULL)
     {
         framedata_free(frame);
         fclose(data);
@@ -776,7 +776,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 
     // Display results in ds9
     snprintf(command, 128, "regions delete all");
-    if (!tell_ds9("tsreduce", command, NULL, 0))
+    if (tell_ds9("tsreduce", command, NULL, 0))
     {
         framedata_free(frame);
         fclose(data);
@@ -789,13 +789,13 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         double y = targets[i].y + 1;
 
         snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, targets[i].r);
-        if (!tell_ds9("tsreduce", command, NULL, 0))
+        if (tell_ds9("tsreduce", command, NULL, 0))
             fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s1);
-        if (!tell_ds9("tsreduce", command, NULL, 0))
+        if (tell_ds9("tsreduce", command, NULL, 0))
             fprintf(stderr, "ds9 command failed: %s\n", command);
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s2);
-        if (!tell_ds9("tsreduce", command, NULL, 0))
+        if (tell_ds9("tsreduce", command, NULL, 0))
             fprintf(stderr, "ds9 command failed: %s\n", command);
     }
 

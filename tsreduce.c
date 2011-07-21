@@ -82,9 +82,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
     }
 
-    // TODO: unhardcode dimensions
-    double *flat = (double *)malloc(512*512*sizeof(double));
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
+    double *flat = (double *)malloc(dark.rows*dark.cols*sizeof(double));
     
     // Load the flat frames, discarding the 5 outermost pixels for each
     if (load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark))
@@ -104,11 +103,11 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     fits_create_file(&out, outbuf, &status);
     
     /* Create the primary array image (16-bit short integer pixels */
-	long size[2] = { 512, 512 };
+	long size[2] = { dark.rows, dark.cols };
 	fits_create_img(out, DOUBLE_IMG, 2, size, &status);
     
     // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, 512*512, flat, &status))
+    if (fits_write_img(out, TDOUBLE, 1, dark.rows*dark.cols, flat, &status))
     {
         fits_close_file(out, &status);
         free(flat);
@@ -157,8 +156,8 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     
     fits_create_file(&out, outbuf, &status);
     
-    /* Create the primary array image (16-bit short integer pixels */
-	long size[2] = { 512, 512 };
+    // Create the primary array image (16-bit short integer pixels
+	long size[2] = { base.rows, base.cols };
 	fits_create_img(out, DOUBLE_IMG, 2, size, &status);
     
     fits_update_key(out, TINT, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
@@ -205,9 +204,8 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     sprintf(outbuf, "!%s", outPath);            
     fits_create_file(&out, outbuf, &status);
     
-    /* Create the primary array image */
-    // TODO: Unhardcode frame size
-    long size[2] = { 512, 512 };
+    // Create the primary array image
+    long size[2] = { base.rows, base.cols };
     fits_create_img(out, DOUBLE_IMG, 2, size, &status);
     
     // Write the frame data to the image

@@ -76,7 +76,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     char **frames;
     int numMatched = get_matching_files(pattern, &frames);
 
-    if (numMatched < 2*minmax)
+    if (numMatched <= 2*minmax)
     {
         free_2d_array(frames, numMatched);
         return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);

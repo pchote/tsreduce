@@ -27,17 +27,17 @@
 int normalize_flat(framedata *flat, void *data)
 {
     framedata *dark = (framedata *)data;
-    
+
     if (dark->dtype != FRAMEDATA_DBL || flat->dtype != FRAMEDATA_DBL)
         return error("normalize_flat frames must be type DBL");
-    
+
     if (dark->rows != flat->rows || dark->cols != flat->rows)
         return error("normalize_flat frames must have same size");
-    
+
     int flatexp = framedata_get_header_int(flat, "EXPTIME");
     int darkexp = framedata_get_header_int(dark, "EXPTIME");
     int n = flat->rows*flat->cols;
-    
+
     // Calculate mean
     double mean = 0;
     for (int i = 0; i < n; i++)
@@ -46,20 +46,20 @@ int normalize_flat(framedata *flat, void *data)
         mean += flat->dbl_data[i];
     }
     mean /= n;
-    
+
     // Calculate standard deviation
     double std = 0;
     for (int i = 0; i < n; i++)
         std += (flat->dbl_data[i] - mean)*(flat->dbl_data[i] - mean);
     std = sqrt(std/n);
-    
+
     // Recalculate the mean, excluding outliers at 3 sigma
     double mean_new = 0;
     for (int i = 0; i < n; i++)
         if (fabs(flat->dbl_data[i] - mean) < 3*std)
             mean_new += flat->dbl_data[i];
     mean_new /= n;
-    
+
     // Normalize flat to unity counts
     for (int i = 0; i < n; i++)
         flat->dbl_data[i] /= mean_new;
@@ -84,7 +84,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
 
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
     double *flat = (double *)malloc(dark.rows*dark.cols*sizeof(double));
-    
+
     // Load the flat frames, discarding the 5 outermost pixels for each
     if (load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark))
     {
@@ -94,18 +94,18 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         return error("frame loading failed");
     }
     framedata_free(dark);
-    
+
     // Create a new fits file
     fitsfile *out;
     int status = 0;
     char outbuf[2048];
     sprintf(outbuf, "!%s", outname);
     fits_create_file(&out, outbuf, &status);
-    
+
     /* Create the primary array image (16-bit short integer pixels */
 	long size[2] = { dark.rows, dark.cols };
 	fits_create_img(out, DOUBLE_IMG, 2, size, &status);
-    
+
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, dark.rows*dark.cols, flat, &status))
     {
@@ -114,7 +114,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         free_2d_array(frames, numMatched);
         return error("fits_write_img failed with status %d", status);
     }
-    
+
     fits_close_file(out, &status);
     free(flat);
     free_2d_array(frames, numMatched);
@@ -137,8 +137,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     framedata base = framedata_new(frames[0], FRAMEDATA_INT);
     int exptime = framedata_get_header_int(&base, "EXPTIME");
     double *dark = (double *)malloc(base.rows*base.cols*sizeof(double));
-    
-    
+
     // Load the flat frames, discarding the 5 outermost pixels for each
     if (load_reject_minmax( (const char **)frames, numMatched, base.rows, base.cols, minmax, minmax, dark, NULL, NULL))
     {
@@ -147,21 +146,21 @@ int create_dark(const char *pattern, int minmax, const char *outname)
         free_2d_array(frames, numMatched);
         return error("frame loading failed");
     }
-    
+
     // Create a new fits file
     fitsfile *out;
     int status = 0;
     char outbuf[2048];
     sprintf(outbuf, "!%s", outname);
-    
+
     fits_create_file(&out, outbuf, &status);
-    
+
     // Create the primary array image (16-bit short integer pixels
 	long size[2] = { base.rows, base.cols };
 	fits_create_img(out, DOUBLE_IMG, 2, size, &status);
-    
+
     fits_update_key(out, TINT, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
-    
+
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, dark, &status))
     {
@@ -171,7 +170,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
         free_2d_array(frames, numMatched);
         return error("fits_write_img failed with status %d", status);
     }
-    
+
     fits_close_file(out, &status);
     free(dark);
     framedata_free(base);
@@ -188,26 +187,26 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     framedata base = framedata_new(framePath, FRAMEDATA_DBL);
     framedata dark = framedata_new(darkPath, FRAMEDATA_DBL);
     framedata flat = framedata_new(flatPath, FRAMEDATA_DBL);
-    
+
     // Subtract dark counts
     if (dark.dbl_data != NULL)
         framedata_subtract(&base, &dark);
-    
+
     // Flat field image
     if (flat.dbl_data != NULL)
         framedata_divide(&base, &flat);
-    
-    // Create a new fits file           
+
+    // Create a new fits file
     fitsfile *out;
     int status = 0;
     char outbuf[2048];
-    sprintf(outbuf, "!%s", outPath);            
+    sprintf(outbuf, "!%s", outPath);
     fits_create_file(&out, outbuf, &status);
-    
+
     // Create the primary array image
     long size[2] = { base.rows, base.cols };
     fits_create_img(out, DOUBLE_IMG, 2, size, &status);
-    
+
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, base.dbl_data, &status))
     {
@@ -217,7 +216,7 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
         framedata_free(base);
         return error("fits_write_img failed with status %d", status);
     }
-    
+
     fits_close_file(out, &status);
     framedata_free(flat);
     framedata_free(dark);
@@ -236,7 +235,7 @@ datafile read_data_header(char *dataFile)
     h.frame_pattern[0] = '\0';
     h.dark_template[0] = '\0';
     h.flat_template[0] = '\0';
-    
+
     // Open the data file (created with `tsreduce init`)
     h.file = fopen(dataFile, "r+");
     if (h.file == NULL)
@@ -278,7 +277,7 @@ datafile read_data_header(char *dataFile)
         }
         else if (!strncmp(linebuf,"# Version:", 10))
             sscanf(linebuf, "# Version: %d\n", &h.version);
-        
+
         // Skip header / comment lines
         if (linebuf[0] == '#')
             continue;
@@ -290,11 +289,11 @@ datafile read_data_header(char *dataFile)
         //
         // Observations
         //
-        
+
         // Time
         char *ctx;
         h.obs[h.num_obs].time = atof(strtok_r(linebuf, " ", &ctx));
-        
+
         // Target intensity / sky / aperture x / aperture y
         for (int i = 0; i < 3; i++)
         {
@@ -303,16 +302,16 @@ datafile read_data_header(char *dataFile)
             h.obs[h.num_obs].pos[i].x = atof(strtok_r(NULL, " ", &ctx));
             h.obs[h.num_obs].pos[i].y = atof(strtok_r(NULL, " ", &ctx));
         }
-        
+
         // Ratio
         h.obs[h.num_obs].ratio = atof(strtok_r(NULL, " ", &ctx));
-        
+
         // Filename
         strncpy(h.obs[h.num_obs].filename, strtok_r(NULL, " ", &ctx), sizeof(h.obs[h.num_obs].filename));
-        
+
         // Strip newline
         h.obs[h.num_obs].filename[strlen(h.obs[h.num_obs].filename)-1] = '\0';
-        
+
         h.num_obs++;
 
     }
@@ -328,10 +327,10 @@ int update_reduction(char *dataPath)
     dark.dbl_data = NULL;
     framedata flat;
     flat.dbl_data = NULL;
-    
+
     // Read file header
     datafile data = read_data_header(dataPath);
-    
+
     if (data.file == NULL)
         return error("Error opening data file");
 
@@ -339,10 +338,10 @@ int update_reduction(char *dataPath)
         return error("Invalid data file version `%d'. Requires version `%d'", data.version, 3);
 
     chdir(data.frame_dir);
-    
+
     if (data.flat_template != NULL)
         flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
-    
+
     if (data.dark_template != NULL)
         dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
 
@@ -371,7 +370,7 @@ int update_reduction(char *dataPath)
         // Ignore files that don't match the regex
         if (regexec(&regex, filename, 0, NULL, 0))
             continue;
-        
+
         // Check whether the frame has been processed
         int processed = FALSE;
         for (int i = 0; i < data.num_obs; i++)
@@ -381,7 +380,7 @@ int update_reduction(char *dataPath)
                 break;
             }
         printf("%s: processed %d\n", filename, processed);
-        
+
         if (processed)
             continue;
 
@@ -398,7 +397,7 @@ int update_reduction(char *dataPath)
         {
             framedata_get_header_string(&frame, "UTC-DATE", datebuf);
             framedata_get_header_string(&frame, "UTC-BEG", timebuf);
-            
+
             sprintf(datetimebuf, "%s %s", datebuf, timebuf);
         }
         else if (framedata_has_header_string(&frame, "GPSTIME"))
@@ -532,7 +531,7 @@ int display_targets(char *dataPath, int obsIndex)
         fclose(data.file);
         return error("No matching files found");
     }
-    
+
     snprintf(command, 128, "file %s/%s", data.frame_dir, filenamebuf);
     if (tell_ds9("tsreduce", command, NULL, 0))
     {
@@ -957,19 +956,19 @@ int main( int argc, char *argv[] )
     // `tsreduce create-flat "/bin/ls dome-*.fits.gz" 5 master-dark.fits.gz master-dome.fits.gz`
     if (argc == 6 && strncmp(argv[1], "create-flat", 11) == 0)
         return create_flat(argv[2], atoi(argv[3]), argv[4], argv[5]);
-    
+
     // `tsreduce create-dark "/bin/ls dark-*.fits.gz" 5 master-dark.fits.gz`
     else if (argc == 5 && strncmp(argv[1], "create-dark", 11) == 0)
         return create_dark(argv[2], atoi(argv[3]), argv[4]);
-    
+
     // `tsreduce reduce rawframe.fits.gz master-dark.fits.gz master-flat.fits.gz reduced.fits.gz`
     else if (argc == 6 && strncmp(argv[1], "reduce", 6) == 0)
         return reduce_single_frame(argv[2], argv[3], argv[4], argv[5]);
-    
+
     // `tsreduce update ~/data/20110704/gwlib.dat`
     else if (argc == 3 && strncmp(argv[1], "update", 6) == 0)
         return update_reduction(argv[2]);
-    
+
     // `tsreduce display-targets ~/data/20110704/gwlib.dat`
     else if ((argc == 3 || argc == 4) && strncmp(argv[1], "display-targets", 15) == 0)
     {

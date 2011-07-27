@@ -433,11 +433,11 @@ int update_reduction(char *dataPath)
             target t = data.targets[i];
             if (data.num_obs > 0)
             {
-                double2 xy = data.obs[data.num_obs-1].pos[i];
-                if (t.x > 0 && t.x < frame.cols)
-                    t.x = xy.x;
-                if (t.y > 0 && t.y < frame.rows)
-                    t.y = xy.y;
+                double2 last = data.obs[data.num_obs-1].pos[i];
+                if (last.x > 0 && last.x < frame.cols)
+                    t.x = last.x;
+                if (last.y > 0 && last.y < frame.rows)
+                    t.y = last.y;
             }
 
             printf("using aperture (%f,%f) orig (%f,%f)\n", t.x, t.y, data.targets[i].x, data.targets[i].y);

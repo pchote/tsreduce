@@ -906,7 +906,8 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     for (int i = 1; i < numIntensity; i++)
         if (profile[i] < profile[0]/2)
         {
-            printf("# Estimated FWHM: %f\n", i - 1 + (profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]));
+		double fwhm = i - 1 + (profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]);
+            printf("# Estimated FWHM: %f px (%f arcsec)\n", fwhm, fwhm*0.68083798727887213);
             break;
         }
 

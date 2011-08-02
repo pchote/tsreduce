@@ -952,6 +952,43 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     return 0;
 }
 
+
+// List the timestamps/filenames that are corrupted by continous downloads
+int detect_repeats(char *dataPath)
+{
+    // Read file header
+    datafile data = read_data_header(dataPath);
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    // No data
+    if (data.num_obs <= 0)
+    {
+        fclose(data.file);
+        return error("File specifies no observations");
+    }
+
+    int last_bad = 0;
+    double last_time = data.obs[0].time;
+    for (int i = 1; i < data.num_obs; i++)
+    {
+        double time = data.obs[i].time;
+        if (time - last_time < 0.1f)
+            last_bad = 1;
+        
+        if (last_bad)
+            printf("%s @ %.1f\n", data.obs[i].filename, time);
+        
+        if (last_bad && time - last_time >= 0.1f)
+            last_bad = 0;
+        
+        last_time = time;
+    }
+
+    fclose(data.file);
+    return 0;
+}
+
 int main( int argc, char *argv[] )
 {
     // `tsreduce create-flat "/bin/ls dome-*.fits.gz" 5 master-dark.fits.gz master-dome.fits.gz`
@@ -983,6 +1020,9 @@ int main( int argc, char *argv[] )
 
     else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)
         return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
+
+    else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)
+        return detect_repeats(argv[2]);
 
     else
         error("Invalid args");

@@ -295,7 +295,7 @@ datafile read_data_header(char *dataFile)
         h.obs[h.num_obs].time = atof(strtok_r(linebuf, " ", &ctx));
 
         // Target intensity / sky / aperture x / aperture y
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < h.num_targets; i++)
         {
             h.obs[h.num_obs].star[i] = atof(strtok_r(NULL, " ", &ctx));
             h.obs[h.num_obs].sky[i] = atof(strtok_r(NULL, " ", &ctx));

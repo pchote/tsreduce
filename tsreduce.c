@@ -388,8 +388,12 @@ int update_reduction(char *dataPath)
     if (data.flat_template != NULL)
         flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
 
+    int cached_dark_exptime = 0;
     if (data.dark_template != NULL)
+    {
         dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
+        cached_dark_exptime = framedata_get_header_int(&dark, "EXPTIME");
+    }
 
     // Compile the filepattern into a regex
     regex_t regex;
@@ -475,7 +479,15 @@ int update_reduction(char *dataPath)
         // TODO: NORMALIZE DARK TO CORRECT EXPTIME
         // Subtract dark counts
         if (dark.dbl_data != NULL)
+        {
+            if (exptime != cached_dark_exptime)
+            {
+                framedata_multiply_dbl(&dark, exptime*1.0/cached_dark_exptime);
+                cached_dark_exptime = exptime;
+                printf("cached dark exptime %d\n", cached_dark_exptime);
+            }
             framedata_subtract(&frame, &dark);
+        }
 
         // Flat field image
         if (flat.dbl_data != NULL)

@@ -6,7 +6,7 @@
 */
 
 #include <string.h>
-
+#include <math.h>
 #include "framedata.h"
 #include "helpers.h"
 
@@ -116,6 +116,20 @@ void framedata_multiply(framedata *this, int mul)
     else 
         die("Unknown datatype");
 }
+
+void framedata_multiply_dbl(framedata *this, double mul)
+{
+    printf("scaling by %f\n", mul);
+    if (this->dtype == FRAMEDATA_INT)
+        for (int i = 0; i < this->cols*this->rows; i++)
+            this->data[i] = lround(mul*this->data[i]);
+    else if (this->dtype == FRAMEDATA_DBL)
+        for (int i = 0; i < this->cols*this->rows; i++)
+            this->dbl_data[i] *= mul;
+    else 
+        die("Unknown datatype");
+}
+
 
 void framedata_divide_const(framedata *this, int div)
 {

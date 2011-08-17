@@ -37,6 +37,7 @@ void framedata_subtract(framedata *this, framedata *other);
 void framedata_add(framedata *this, framedata *other);
 void framedata_subtract(framedata *this, framedata *other);
 void framedata_multiply(framedata *this, int div);
+void framedata_multiply_dbl(framedata *this, double mul);
 void framedata_divide_const(framedata *this, int div);
 void framedata_divide(framedata *this, framedata *div);
 void framedata_free(framedata this);

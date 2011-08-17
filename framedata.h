@@ -19,6 +19,7 @@ typedef enum
 typedef struct
 {
     fitsfile *_fptr;
+    char *filename;
     int rows;
     int cols;
     framedata_type dtype;

@@ -5,12 +5,16 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
+#include <string.h>
+
 #include "framedata.h"
 #include "helpers.h"
 
 framedata framedata_new(const char *filename, framedata_type dtype)
 {
     framedata this;
+    this.filename = strdup(filename);
+
 	int status = 0;
     if (fits_open_image(&this._fptr, filename, READONLY, &status))
         die("fits_open_image failed with error %d; %s", status, filename);
@@ -139,6 +143,7 @@ void framedata_divide(framedata *this, framedata *div)
 
 void framedata_free(framedata this)
 {
+    free(this.filename);
     int status;
     if (this.data)
         free(this.data);

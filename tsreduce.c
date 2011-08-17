@@ -322,6 +322,48 @@ datafile read_data_header(char *dataFile)
     return h;
 }
 
+static int get_time(framedata *frame, int time_workaround, time_t *out)
+{
+    
+    char datebuf[128], timebuf[128], datetimebuf[257];
+    struct tm t;
+    if (time_workaround == 1)
+    {
+        // Work around frames that have a bogus gps date in 1289 but correct time
+        // use the PC date field instead
+        framedata_get_header_string(frame, "UTC", datebuf);
+        
+        if (!framedata_has_header_string(frame, "GPSTIME"))
+            return error("%s: GPS time unavailable - skipping", frame->filename);
+
+        framedata_get_header_string(frame, "GPSTIME", datetimebuf);
+        
+        datebuf[10] = '\0';
+        strcpy(timebuf, datetimebuf+11);
+        sprintf(datetimebuf, "%s %s", datebuf, timebuf);
+    }
+    else if (framedata_has_header_string(frame, "UTC-BEG"))
+    {
+        framedata_get_header_string(frame, "UTC-DATE", datebuf);
+        framedata_get_header_string(frame, "UTC-BEG", timebuf);
+        
+        sprintf(datetimebuf, "%s %s", datebuf, timebuf);
+    }
+    else if (framedata_has_header_string(frame, "GPSTIME"))
+        framedata_get_header_string(frame, "GPSTIME", datetimebuf);
+    else if (framedata_has_header_string(frame, "UTC"))
+    {
+        framedata_get_header_string(frame, "UTC", datetimebuf);
+        datetimebuf[19] = '\0';
+    }
+    else
+        return error("No valid timestamp found: skipping");
+    
+    strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
+    *out = timegm(&t);
+    return 0;
+}
+
 // Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {
@@ -363,81 +405,74 @@ int update_reduction(char *dataPath)
 
     // Iterate through the files in the directory
     struct dirent **matched;
-    char filename[NAME_MAX];
+    char* filename;
+    char* next_filename;
     int numMatched = scandir(".", &matched, 0, alphasort);
+    
+    
+    // Hacky workaround for incorrect exposure times in the raw data
+    // Calculate the time difference between the current and next frames
+    // If the difference is greater than 1.5 stated exptime then assume that the camera was stopped
+    // for some reason and discard the current data point
+    //
+    // Times are specified at the middle of the exposure, allowing FT for non-uniform exposures
+    
+    
+    // Start by building a list of the files to process
+    char **files = (char **)malloc(numMatched*sizeof(char*));
+    int numToProcess = 0;
     for (int i = 0; i < numMatched; i++)
     {
-        strncpy(filename, matched[i]->d_name, NAME_MAX);
-        filename[NAME_MAX-1] = '\0';
-        free(matched[i]);
-
         // Ignore files that don't match the regex
-        if (regexec(&regex, filename, 0, NULL, 0))
+        if (regexec(&regex, matched[i]->d_name, 0, NULL, 0))
             continue;
-
+        
         // Check whether the frame has been processed
         int processed = FALSE;
         for (int i = 0; i < data.num_obs; i++)
-            if (strcmp(filename, data.obs[i].filename) == 0)
+            if (strcmp(matched[i]->d_name, data.obs[i].filename) == 0)
             {
                 processed = TRUE;
                 break;
             }
-        printf("%s: processed %d\n", filename, processed);
-
+        printf("%s: processed %d\n", matched[i]->d_name, processed);
+        
         if (processed)
             continue;
 
-        framedata frame = framedata_new(filename, FRAMEDATA_DBL);
+        files[numToProcess++] = strdup(matched[i]->d_name);
+    }
+    for (int i = 0; i < numMatched; i++)
+        free(matched[i]);
+    free(matched);
 
-        int exptime = framedata_get_header_int(&frame, "EXPTIME");
+    for (int i = 0; i < numToProcess-1; i++)
+    {
+        filename = files[i];
+        next_filename = files[i+1];
+
+        framedata frame = framedata_new(filename, FRAMEDATA_DBL);
+        
+        // Calculate exptime
+        framedata next_frame = framedata_new(next_filename, FRAMEDATA_DBL);
+        time_t frame_time, next_time;
+        if (get_time(&frame, data.time_workaround, &frame_time))
+            continue;
+        
+        if (get_time(&next_frame, data.time_workaround, &next_time))
+            continue;
+        
+        int stated_exptime = framedata_get_header_int(&frame, "EXPTIME");
+        double diff = difftime(next_time, frame_time);
+        
+        double exptime = (diff < 1.5*stated_exptime) ? diff : stated_exptime;
+        
+        framedata_free(next_frame);
 
         // Calculate time at the *start* of the exposure relative to ReferenceTime
-        double starttime = 0;
+        double starttime = difftime(frame_time, data.reference_time) + stated_exptime - exptime / 2;
 
-        char datebuf[128], timebuf[128], datetimebuf[257];
-        struct tm t;
-        if (data.time_workaround == 1)
-        {
-            // Work around frames that have a bogus gps date in 1289 but correct time
-            // use the PC date field instead
-            framedata_get_header_string(&frame, "UTC", datebuf);
-
-            if (!framedata_has_header_string(&frame, "GPSTIME"))
-            {
-                fprintf(stderr, "%s: GPS time unavailable - skipping\n", filename);
-                continue;
-            }
-            framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
-
-            datebuf[10] = '\0';
-            strcpy(timebuf, datetimebuf+11);
-            sprintf(datetimebuf, "%s %s", datebuf, timebuf);
-        }
-        else if (framedata_has_header_string(&frame, "UTC-BEG"))
-        {
-            framedata_get_header_string(&frame, "UTC-DATE", datebuf);
-            framedata_get_header_string(&frame, "UTC-BEG", timebuf);
-
-            sprintf(datetimebuf, "%s %s", datebuf, timebuf);
-        }
-        else if (framedata_has_header_string(&frame, "GPSTIME"))
-            framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
-        else if (framedata_has_header_string(&frame, "UTC"))
-        {
-            framedata_get_header_string(&frame, "UTC", datetimebuf);
-            datetimebuf[19] = '\0';
-        }
-        else
-        {
-            fprintf(stderr, "No valid timestamp found: skipping\n");
-            continue;
-        }
-
-        strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
-        time_t frame_time = timegm(&t);
-        starttime = difftime(frame_time, data.reference_time);
-
+        // TODO: NORMALIZE DARK TO CORRECT EXPTIME
         // Subtract dark counts
         if (dark.dbl_data != NULL)
             framedata_subtract(&frame, &dark);
@@ -520,7 +555,7 @@ int update_reduction(char *dataPath)
     if (dark.data != NULL)
         framedata_free(dark);
 
-    free(matched);
+    free_2d_array(files, numToProcess);
     regfree(&regex);
     fclose(data.file);
 

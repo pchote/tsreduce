@@ -402,6 +402,16 @@ int update_reduction(char *dataPath)
         }
         else if (framedata_has_header_string(&frame, "GPSTIME"))
             framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
+        else if (framedata_has_header_string(&frame, "UTC"))
+        {
+            framedata_get_header_string(&frame, "UTC", datetimebuf);
+            datetimebuf[19] = '\0';
+        }
+        else
+        {
+            fprintf(stderr, "No valid timestamp found: skipping\n");
+            continue;
+        }
 
         strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
         time_t frame_time = timegm(&t);
@@ -629,6 +639,17 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     }
     else if (framedata_has_header_string(&frame, "GPSTIME"))
         framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
+    else if (framedata_has_header_string(&frame, "UTC"))
+    {
+        framedata_get_header_string(&frame, "UTC", datetimebuf);
+        datetimebuf[19] = '\0';
+        printf("%s\n", datetimebuf);
+    }
+    else
+    {
+        fclose(data);
+        return error("No valid timestamp found");
+    }
 
     if (darkTemplate != NULL)
     {

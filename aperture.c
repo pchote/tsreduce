@@ -85,13 +85,24 @@ double2 converge_aperture(target r, framedata *frame)
 
     int n = 0;
     double move = 0;
+    double2 pos[20];
     // Iterate until we move less than 1/16 of a pixel or reach 20 iterations
     do
     {
-        if (n++ == 20)
+        // Most apertures converge within 3 iterations.
+        // If we haven't converged by 20, we are probably in a cycle
+        if (n == 20)
         {
-            printf("Aperture centering did not converge - skipping\n");
-            return error;
+            xy.x = xy.y = 0;
+            for (int i = 15; i < 20; i++)
+            {
+                xy.x += pos[i].x;
+                xy.y += pos[i].y;
+            }
+            xy.x /= 5;
+            xy.y /= 5;
+            printf("Converge failed - using average of last 5 iterations: (%f,%f)\n", xy.x, xy.y);
+            break;
         }
 
         if (r.x - r.r < 0 || r.x + r.r >= frame->cols || r.y - r.r < 0 || r.y + r.r >= frame->rows)
@@ -103,11 +114,14 @@ double2 converge_aperture(target r, framedata *frame)
         last = r;
         bg = calculate_background(r, frame);
         xy = center_aperture(r, bg, frame);
+        pos[n] = xy;
+
         printf("%d: (%f,%f) -> (%f,%f) [%f,%f]\n", n, r.x, r.y, xy.x, xy.y, bg.x, bg.y);
         r.x = xy.x;
         r.y = xy.y;
 
         move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
+        n++;
     } while (move >= 0.00390625);
 
     return xy;

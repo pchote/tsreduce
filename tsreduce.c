@@ -235,6 +235,7 @@ datafile read_data_header(char *dataFile)
     h.frame_pattern[0] = '\0';
     h.dark_template[0] = '\0';
     h.flat_template[0] = '\0';
+    h.time_workaround = 0;
 
     // Open the data file (created with `tsreduce init`)
     h.file = fopen(dataFile, "r+");
@@ -258,6 +259,9 @@ datafile read_data_header(char *dataFile)
 
         else if (!strncmp(linebuf,"# FlatTemplate:", 15))
             sscanf(linebuf, "# FlatTemplate: %128s\n", h.flat_template);
+
+        else if (!strncmp(linebuf,"# TimeWorkaround:", 17))
+            sscanf(linebuf, "# TimeWorkaround: %d\n", &h.time_workaround);
 
         else if (!strncmp(linebuf,"# Target:", 9))
         {
@@ -393,7 +397,24 @@ int update_reduction(char *dataPath)
 
         char datebuf[128], timebuf[128], datetimebuf[257];
         struct tm t;
-        if (framedata_has_header_string(&frame, "UTC-BEG"))
+        if (data.time_workaround == 1)
+        {
+            // Work around frames that have a bogus gps date in 1289 but correct time
+            // use the PC date field instead
+            framedata_get_header_string(&frame, "UTC", datebuf);
+
+            if (!framedata_has_header_string(&frame, "GPSTIME"))
+            {
+                fprintf(stderr, "%s: GPS time unavailable - skipping\n", filename);
+                continue;
+            }
+            framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
+
+            datebuf[10] = '\0';
+            strcpy(timebuf, datetimebuf+11);
+            sprintf(datetimebuf, "%s %s", datebuf, timebuf);
+        }
+        else if (framedata_has_header_string(&frame, "UTC-BEG"))
         {
             framedata_get_header_string(&frame, "UTC-DATE", datebuf);
             framedata_get_header_string(&frame, "UTC-BEG", timebuf);

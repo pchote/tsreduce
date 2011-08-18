@@ -36,6 +36,7 @@ typedef struct
 {
     FILE *file;
     int version;
+    int time_workaround;
     char frame_dir[PATH_MAX];
     char frame_pattern[HEADER_MAXLENGTH];
     char dark_template[HEADER_MAXLENGTH];

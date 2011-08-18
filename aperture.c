@@ -53,7 +53,7 @@ double2 center_aperture(target reg, double2 bg2, framedata *frame)
             double px = frame->dbl_data[frame->cols*(y+j-r) + (x+i-r)] - bg;
             if (fabs(px) < 3*std)
                 continue;
-            
+
             xm[i] += px;
             ym[j] += px;
             total += px;
@@ -147,24 +147,47 @@ double2 calculate_background(target r, framedata *frame)
             double d2 = (r.x-i)*(r.x-i) + (r.y-j)*(r.y-j);
             if (d2 > r.s1*r.s1 && d2 < r.s2*r.s2)
                 data[n++] = frame->dbl_data[frame->cols*j + i];
-        }    
-    
-    // Calculate mean
+        }
+
+    // Sort data into ascending order
+    qsort(data, n, sizeof(double), compare_double);
+
+    // Calculate initial mean value
     double mean = 0;
     for (int i = 0; i < n; i++)
         mean += data[i];
     mean /= n;
-    
-    // Calculate median
-    qsort(data, n, sizeof(double), compare_double);
-    double median = (data[n/2] + data[n/2+1])/2;
 
-    // Calculate standard deviation
+    // Calculate initial stddev
     double std = 0;
     for (int i = 0; i < n; i++)
         std += (data[i] - mean)*(data[i] - mean);
     std = sqrt(std/n);
+
+    int oldN = n;
+    // Discard pixels brighter than mean + 10*stddev
+    while (data[n-1] > mean + 10*std)
+    {
+        printf("discarding bright sky pixel %f\n", data[n-1]);
+        n--;
+    }
+
+    // Calculate improved mean and median
+    if (n != oldN)
+    {
+        mean = std = 0;
+        for (int i = 0; i < n; i++)
+            mean += data[i];
+        mean /= n;
+
+        for (int i = 0; i < n; i++)
+            std += (data[i] - mean)*(data[i] - mean);
+        std = sqrt(std/n);
+    }
     
+    // Calculate median
+    double median = (data[n/2] + data[n/2+1])/2;
+
     //printf("mean: %f median: %f std: %f\n",mean,median,std);
     
     free(data);

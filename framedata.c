@@ -13,8 +13,13 @@ framedata framedata_new(const char *filename, framedata_type dtype)
     framedata this;
 	int status = 0;
     if (fits_open_image(&this._fptr, filename, READONLY, &status))
+    {
+        char fitserr[128];
+        while (fits_read_errmsg(fitserr))
+            fprintf(stderr, "%s\n", fitserr);
+
         die("fits_open_image failed with error %d; %s", status, filename);
-    
+    }
     // Query the image size
     fits_read_key(this._fptr, TINT, "NAXIS1", &this.cols, NULL, &status);
     fits_read_key(this._fptr, TINT, "NAXIS2", &this.rows, NULL, &status);

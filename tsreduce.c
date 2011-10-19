@@ -1015,36 +1015,45 @@ int plot_fits(char *dataPath)
         return error("File specifies no observations");
     }
 
-    // Load raw lightcurve and ratio data
-    float time[MAX_OBS];
-    float sky[MAX_OBS];
-    float ratio[MAX_OBS];
-    float raw1[MAX_OBS], raw2[MAX_OBS], raw3[MAX_OBS];
+    // Start time in hours
+    float min_time = 13.275;
 
-    float dftinput[MAX_OBS];
-    float dft[500];
-    float freq[500];
+    // MMI Ratio display
+    float min_mmi = -0.12;
+    float max_mmi = 0.13;
+
+    float min_raw = 0.1;
+    float max_raw = 3999;
+
+    int plot_colors_max = 8;
+    int plot_colors[] = {4,2,8,3,5,6,7,9};
+
+    // DFT Display
+    int num_freqs = 500;
+    float min_dft_freq = 0;
+    float max_dft_freq = 0.006;
+
+    // Time Series data
+    float *time = (float *)malloc(data.num_obs*sizeof(float));
+    float *raw = (float *)malloc(data.num_obs*data.num_targets*sizeof(float));
+    float *mmi = (float *)malloc(data.num_obs*sizeof(float));
 
     double mean = 0;
     for (int i = 0; i < data.num_obs; i++)
     {
         time[i] = data.obs[i].time;
-        ratio[i] = normalize_ratio(i, data.obs[i].ratio);
-        sky[i] = data.obs[i].sky[0];
+        mmi[i] = normalize_ratio(i, data.obs[i].ratio);
+        mean += mmi[i];
 
-        raw1[i] = data.obs[i].star[0];
-        raw2[i] = data.obs[i].star[1];
-        raw3[i] = data.obs[i].star[2];
-
-        dftinput[i] = ratio[i];
-        mean += ratio[i];
+        for (int j = 0; j < data.num_targets; j++)
+            raw[j*data.num_obs + i] = data.obs[i].star[j];
     }
     mean /= data.num_obs;
 
     // Calculate standard deviation
     double std = 0;
     for (int i = 0; i < data.num_obs; i++)
-        std += (dftinput[i] - mean)*(dftinput[i] - mean);
+        std += (mmi[i] - mean)*(mmi[i] - mean);
     std = sqrt(std/data.num_obs);
 
     double newmean = 0;
@@ -1053,11 +1062,11 @@ int plot_fits(char *dataPath)
     // Discard outliers and recalculate mean
     for (int i = 0; i < data.num_obs; i++)
     {
-        if (fabs(dftinput[i]-mean) > 3*std)
-            dftinput[i] = 0;
+        if (fabs(mmi[i] - mean) > 3*std)
+            mmi[i] = 0;
         else
         {
-            newmean += dftinput[i];
+            newmean += mmi[i];
             meancount++;
         }
     }
@@ -1065,15 +1074,12 @@ int plot_fits(char *dataPath)
 
     // Calculate mmi intensities
     for (int i = 0; i < data.num_obs; i++)
-        dftinput[i] = 1e-3*(dftinput[i] - newmean)/newmean;
+        mmi[i] = 1e-3*(mmi[i] - newmean)/newmean;
 
-    // Ratio limits
-    float ratioMin = -12;
-    float ratioMax = 13;
-
-    float rawMin = 0.1;
-    float rawMax = 3999;
-
+    // DFT data
+    float *freq = (float *)malloc(num_freqs*sizeof(float));
+    float *ampl = (float *)malloc(num_freqs*sizeof(float));
+    calculate_amplitude_spectrum(min_dft_freq, max_dft_freq, time, mmi, data.num_obs, freq, ampl, 500);
 
     if (cpgopen("7/xs") <= 0)
         return error("Unable to open PGPLOT window");
@@ -1088,48 +1094,51 @@ int plot_fits(char *dataPath)
     // Ratio
     cpgsvp(0.1, 0.9, 0.65, 0.92);
     cpgmtxt("t", 2, 0.5, 0.5, "UTC Hour");
-    cpgmtxt("l", 2.5, 0.5, 0.5, "% Change");
-    cpgswin(0, time[data.num_obs-1], ratioMin, ratioMax);
-    cpgline(data.num_obs, time, ratio);
+    cpgmtxt("l", 2.5, 0.5, 0.5, "MMI");
+    cpgswin(0, time[data.num_obs-1], min_mmi, max_mmi);
+    cpgline(data.num_obs, time, mmi);
 
     // Rescale time axis to hours
-    cpgswin(13.275, 13.275+time[data.num_obs-1]/3600, ratioMin, ratioMax);
-    cpgbox("bcstm", 1, 4, "bcstn", 10, 2);
+    cpgswin(13.275, 13.275+time[data.num_obs-1]/3600, min_mmi, max_mmi);
+    cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
     // Raw Data
     cpgsvp(0.1, 0.9, 0.3, 0.65);
     cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
-    cpgswin(0,time[data.num_obs-1], rawMin, rawMax);
-    cpgsci(4);
-    cpgline(data.num_obs, time, raw1);
-    cpgsci(2);
-    cpgline(data.num_obs, time, raw2);
-    cpgsci(8);
-    cpgline(data.num_obs, time, raw3);
+    cpgswin(0,time[data.num_obs-1], min_raw, max_raw);
+    for (int j = 0; j < data.num_targets; j++)
+    {
+        cpgsci(plot_colors[j%plot_colors_max]);
+        cpgline(data.num_obs, time, &raw[j*data.num_obs]);
+    }
     cpgsci(1);
 
     // Rescale time axis to hours
-    cpgswin(13.275, 13.275+time[data.num_obs-1]/3600, rawMin, rawMax);
-    cpgbox("bcst", 1, 4, "bcstn", 1000, 2);
+    cpgswin(min_time, min_time+time[data.num_obs-1]/3600, min_raw, max_raw);
+    cpgbox("bcst", 1, 4, "bcstn", 0, 0);
 
     // DFT
     cpgsvp(0.1, 0.9, 0.075, 0.3);
 
-    float fmax = 0.006;
     double pmax = 39.9e-3;
-    calculate_amplitude_spectrum(0, fmax, time, dftinput, data.num_obs, freq, dft, 500);
-    cpgswin(0, fmax, 0, pmax);
+
+    cpgswin(min_dft_freq, max_dft_freq, 0, pmax);
     cpgsci(12);
-    cpgline(500, freq, dft);
+    cpgline(500, freq, ampl);
     cpgsci(1);
 
-    cpgswin(0, fmax/1e-6, 0, pmax*1000);
+    cpgswin(min_dft_freq/1e-6, max_dft_freq/1e-6, 0, pmax*1000);
     cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
 
     cpgend();
 
+    free(ampl);
+    free(freq);
+    free(mmi);
+    free(raw);
+    free(time);
     fclose(data.file);
 
     return 0;

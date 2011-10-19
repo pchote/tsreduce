@@ -16,6 +16,7 @@
 #include <regex.h>
 #include <fitsio.h>
 #include <xpa.h>
+#include <cpgplot.h>
 
 #include "tsreduce.h"
 #include "framedata.h"
@@ -989,6 +990,151 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
+
+// Takes a ratio value, normalizes it by the pre-calculated
+//  polynomial fit, and returns as a percentage change
+float normalize_ratio(int i, float d)
+{
+    float fit = 9.21E-11*i*i*i - 1.90E-07*i*i + 1.47E-04*i + 3.41E-01;
+    return 100*(d - fit)/d;
+}
+
+int plot_fits(char *dataPath)
+{
+    // Read file header
+    datafile data = read_data_header(dataPath);
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    chdir(data.frame_dir);
+
+    // No data
+    if (data.num_obs <= 0)
+    {
+        fclose(data.file);
+        return error("File specifies no observations");
+    }
+
+    // Load raw lightcurve and ratio data
+    float time[MAX_OBS];
+    float sky[MAX_OBS];
+    float ratio[MAX_OBS];
+    float raw1[MAX_OBS], raw2[MAX_OBS], raw3[MAX_OBS];
+
+    float dftinput[MAX_OBS];
+    float dft[500];
+    float freq[500];
+
+    double mean = 0;
+    for (int i = 0; i < data.num_obs; i++)
+    {
+        time[i] = data.obs[i].time;
+        ratio[i] = normalize_ratio(i, data.obs[i].ratio);
+        sky[i] = data.obs[i].sky[0];
+
+        raw1[i] = data.obs[i].star[0];
+        raw2[i] = data.obs[i].star[1];
+        raw3[i] = data.obs[i].star[2];
+
+        dftinput[i] = ratio[i];
+        mean += ratio[i];
+    }
+    mean /= data.num_obs;
+
+    // Calculate standard deviation
+    double std = 0;
+    for (int i = 0; i < data.num_obs; i++)
+        std += (dftinput[i] - mean)*(dftinput[i] - mean);
+    std = sqrt(std/data.num_obs);
+
+    double newmean = 0;
+    int meancount = 0;
+
+    // Discard outliers and recalculate mean
+    for (int i = 0; i < data.num_obs; i++)
+    {
+        if (fabs(dftinput[i]-mean) > 3*std)
+            dftinput[i] = 0;
+        else
+        {
+            newmean += dftinput[i];
+            meancount++;
+        }
+    }
+    newmean /= meancount;
+
+    // Calculate mmi intensities
+    for (int i = 0; i < data.num_obs; i++)
+        dftinput[i] = 1e-3*(dftinput[i] - newmean)/newmean;
+
+    // Ratio limits
+    float ratioMin = -12;
+    float ratioMax = 13;
+
+    float rawMin = 0.1;
+    float rawMax = 3999;
+
+
+    if (cpgopen("7/xs") <= 0)
+        return error("Unable to open PGPLOT window");
+
+    // 800 x 480
+    cpgpap(9.41, 0.6);
+    cpgask(0);
+    cpgslw(3);
+    cpgsfs(2);
+    cpgscf(2);
+
+    // Ratio
+    cpgsvp(0.1, 0.9, 0.65, 0.92);
+    cpgmtxt("t", 2, 0.5, 0.5, "UTC Hour");
+    cpgmtxt("l", 2.5, 0.5, 0.5, "% Change");
+    cpgswin(0, time[data.num_obs-1], ratioMin, ratioMax);
+    cpgline(data.num_obs, time, ratio);
+
+    // Rescale time axis to hours
+    cpgswin(13.275, 13.275+time[data.num_obs-1]/3600, ratioMin, ratioMax);
+    cpgbox("bcstm", 1, 4, "bcstn", 10, 2);
+
+    // Raw Data
+    cpgsvp(0.1, 0.9, 0.3, 0.65);
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
+    cpgswin(0,time[data.num_obs-1], rawMin, rawMax);
+    cpgsci(4);
+    cpgline(data.num_obs, time, raw1);
+    cpgsci(2);
+    cpgline(data.num_obs, time, raw2);
+    cpgsci(8);
+    cpgline(data.num_obs, time, raw3);
+    cpgsci(1);
+
+    // Rescale time axis to hours
+    cpgswin(13.275, 13.275+time[data.num_obs-1]/3600, rawMin, rawMax);
+    cpgbox("bcst", 1, 4, "bcstn", 1000, 2);
+
+    // DFT
+    cpgsvp(0.1, 0.9, 0.075, 0.3);
+
+    float fmax = 0.006;
+    double pmax = 39.9e-3;
+    calculate_amplitude_spectrum(0, fmax, time, dftinput, data.num_obs, freq, dft, 500);
+    cpgswin(0, fmax, 0, pmax);
+    cpgsci(12);
+    cpgline(500, freq, dft);
+    cpgsci(1);
+
+    cpgswin(0, fmax/1e-6, 0, pmax*1000);
+    cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
+    cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
+    cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
+
+    cpgend();
+
+    fclose(data.file);
+
+    return 0;
+}
+
 int main( int argc, char *argv[] )
 {
     // `tsreduce create-flat "/bin/ls dome-*.fits.gz" 5 master-dark.fits.gz master-dome.fits.gz`
@@ -1024,6 +1170,8 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)
         return detect_repeats(argv[2]);
 
+    else if (argc == 3 && strncmp(argv[1], "plot", 4) == 0)
+        plot_fits(argv[2]);
     else
         error("Invalid args");
     return 0;

@@ -4,15 +4,23 @@
 # published by the Free Software Foundation. For more information, see LICENSE.
 
 CC = gcc
+LINKER = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
-LFLAGS = -lcfitsio -lxpa
+LFLAGS = -lcfitsio -lxpa  -lcpgplot -lpgplot
+
+# Mac OS X (with gcc, PGPLOT installed via fink)
+ifeq ($(shell uname),Darwin)
+    LINKER = gfortran
+    CFLAGS += -I/sw/lib/pgplot
+    LFLAGS += -L/usr/X11R6/lib -lX11 -L/sw/lib -laquaterm -Wl,-framework -Wl,Foundation -L/sw/lib/pgplot -lpng
+endif
 
 SRC = tsreduce.c framedata.c helpers.c aperture.c
 OBJ = $(SRC:.c=.o)
 
 
 tsreduce: $(OBJ)
-	$(CC) -o $@ $(OBJ) $(LFLAGS)
+	$(LINKER) -o $@ $(OBJ) $(LFLAGS)
 
 clean:
 	-rm $(OBJ) tsreduce

@@ -992,11 +992,11 @@ int detect_repeats(char *dataPath)
 
 
 // Takes a ratio value, normalizes it by the pre-calculated
-//  polynomial fit, and returns as a percentage change
+//  polynomial fit in MMI units
 float normalize_ratio(int i, float d)
 {
     float fit = 9.21E-11*i*i*i - 1.90E-07*i*i + 1.47E-04*i + 3.41E-01;
-    return 100*(d - fit)/d;
+    return 1000*(d - fit)/d;
 }
 
 int plot_fits(char *dataPath)
@@ -1018,10 +1018,6 @@ int plot_fits(char *dataPath)
     // Start time in hours
     float min_time = 13.275;
 
-    // MMI Ratio display
-    float min_mmi = -0.12;
-    float max_mmi = 0.13;
-
     float min_raw = 0.1;
     float max_raw = 3999;
 
@@ -1032,6 +1028,7 @@ int plot_fits(char *dataPath)
     int num_freqs = 500;
     float min_dft_freq = 0;
     float max_dft_freq = 0.006;
+
 
     // Time Series data
     float *time = (float *)malloc(data.num_obs*sizeof(float));
@@ -1071,15 +1068,19 @@ int plot_fits(char *dataPath)
         }
     }
     newmean /= meancount;
-
-    // Calculate mmi intensities
-    for (int i = 0; i < data.num_obs; i++)
-        mmi[i] = 1e-3*(mmi[i] - newmean)/newmean;
+    float min_mmi = (newmean - 5*std);
+    float max_mmi = (newmean + 5*std);
 
     // DFT data
     float *freq = (float *)malloc(num_freqs*sizeof(float));
     float *ampl = (float *)malloc(num_freqs*sizeof(float));
-    calculate_amplitude_spectrum(min_dft_freq, max_dft_freq, time, mmi, data.num_obs, freq, ampl, 500);
+    calculate_amplitude_spectrum(min_dft_freq, max_dft_freq, time, mmi, data.num_obs, freq, ampl, num_freqs);
+
+    // Determine max dft ampl
+    float max_dft_ampl = 0;
+    for (int i = 0; i < num_freqs; i++)
+        max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
+    max_dft_ampl *= 1.1;
 
     if (cpgopen("7/xs") <= 0)
         return error("Unable to open PGPLOT window");
@@ -1120,14 +1121,13 @@ int plot_fits(char *dataPath)
     // DFT
     cpgsvp(0.1, 0.9, 0.075, 0.3);
 
-    double pmax = 39.9e-3;
 
-    cpgswin(min_dft_freq, max_dft_freq, 0, pmax);
+    cpgswin(min_dft_freq, max_dft_freq, 0, max_dft_ampl);
     cpgsci(12);
     cpgline(500, freq, ampl);
     cpgsci(1);
 
-    cpgswin(min_dft_freq/1e-6, max_dft_freq/1e-6, 0, pmax*1000);
+    cpgswin(min_dft_freq/1e-6, max_dft_freq/1e-6, 0, max_dft_ampl);
     cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");

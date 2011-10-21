@@ -1017,78 +1017,147 @@ int plot_fits(char *dataPath)
     int plot_colors[] = {4,2,8,3,5,6,7,9};
 
     // DFT Display
-    int num_freqs = 500;
+    int num_freqs = 1000;
     float min_dft_freq = 0;
-    float max_dft_freq = 0.006;
+    float max_dft_freq = 0.01;
 
 
     // Time Series data
     float *time = (float *)malloc(data.num_obs*sizeof(float));
     float *raw = (float *)malloc(data.num_obs*data.num_targets*sizeof(float));
-    float *mmi = (float *)malloc(data.num_obs*sizeof(float));
+    float *ratio = (float *)malloc(data.num_obs*sizeof(float));
+    float *polyfit = (float *)malloc(data.num_obs*sizeof(float));
 
     // Calculate polynomial fit to the ratio
     int degree = 4;
     double *coeffs = (double *)malloc((degree+1)*sizeof(float));
 
+    double ratio_mean = 0;
     for (int i = 0; i < data.num_obs; i++)
     {
         time[i] = data.obs[i].time;
-        mmi[i] = data.obs[i].ratio;
+        ratio[i] = data.obs[i].ratio;
+        ratio_mean += ratio[i];
 
         for (int j = 0; j < data.num_targets; j++)
             raw[j*data.num_obs + i] = data.obs[i].star[j];
     }
+    float max_time = min_time + time[data.num_obs-1]/3600;
 
-    if (fit_polynomial(time, mmi, data.num_obs, coeffs, degree))
+    ratio_mean /= data.num_obs;
+
+    // Calculate standard deviation
+    double ratio_std = 0;
+    for (int i = 0; i < data.num_obs; i++)
+        ratio_std += (ratio[i] - ratio_mean)*(ratio[i] - ratio_mean);
+    ratio_std = sqrt(ratio_std/data.num_obs);
+    float min_ratio = (ratio_mean - 5*ratio_std);
+    float max_ratio = (ratio_mean + 5*ratio_std);
+
+
+    if (fit_polynomial(time, ratio, data.num_obs, coeffs, degree))
     {
         free(coeffs);
-        free(mmi);
+        free(ratio);
         free(raw);
         free(time);
         fclose(data.file);
         return error("Fit failed");
     }
 
-    double mean = 0;
+    float *mmi = (float *)malloc(data.num_obs*sizeof(float));
+    double mmi_mean = 0;
     for (int i = 0; i < data.num_obs; i++)
     {
         // Subtract polynomial fit and convert to mmi
-        double fit = 0;
+        polyfit[i] = 0;
         double pow = 1;
         for (int j = 0; j <= degree; j++)
         {
-            fit += pow*coeffs[j];
+            polyfit[i] += pow*coeffs[j];
             pow *= time[i];
         }
-        mmi[i] = 1000*(mmi[i] - fit)/mmi[i];
-        mean += mmi[i];
+        mmi[i] = 1000*(ratio[i] - polyfit[i])/ratio[i];
+        mmi_mean += mmi[i];
     }
-    mean /= data.num_obs;
+    mmi_mean /= data.num_obs;
 
     // Calculate standard deviation
-    double std = 0;
+    double mmi_std = 0;
     for (int i = 0; i < data.num_obs; i++)
-        std += (mmi[i] - mean)*(mmi[i] - mean);
-    std = sqrt(std/data.num_obs);
+        mmi_std += (mmi[i] - mmi_mean)*(mmi[i] - mmi_mean);
+    mmi_std = sqrt(mmi_std/data.num_obs);
 
-    double newmean = 0;
-    int meancount = 0;
+    double mmi_corrected_mean = 0;
+    int mmi_corrected_count = 0;
 
     // Discard outliers and recalculate mean
     for (int i = 0; i < data.num_obs; i++)
     {
-        if (fabs(mmi[i] - mean) > 3*std)
+        if (fabs(mmi[i] - mmi_mean) > 3*mmi_std)
             mmi[i] = 0;
         else
         {
-            newmean += mmi[i];
-            meancount++;
+            mmi_corrected_mean += mmi[i];
+            mmi_corrected_count++;
         }
     }
-    newmean /= meancount;
-    float min_mmi = (newmean - 5*std);
-    float max_mmi = (newmean + 5*std);
+    mmi_corrected_mean /= mmi_corrected_count;
+
+    float min_mmi = (mmi_corrected_mean - 5*mmi_std);
+    float max_mmi = (mmi_corrected_mean + 5*mmi_std);
+
+    if (cpgopen("5/xs") <= 0)
+        return error("Unable to open PGPLOT window");
+
+    // 800 x 480
+    cpgpap(9.41, 0.6);
+    cpgask(0);
+    cpgslw(3);
+    cpgsfs(2);
+    cpgscf(2);
+
+    // Fitted MMI
+    cpgsvp(0.1, 0.9, 0.75, 0.9);
+    cpgsch(1.25);
+    cpgmtxt("t", 2, 0.5, 0.5, "Time Series Data");
+    cpgsch(1.0);
+
+    cpgmtxt("l", 2.5, 0.5, 0.5, "MMI");
+    cpgswin(min_time, max_time, min_mmi, max_mmi);
+    cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
+
+    cpgswin(0, time[data.num_obs-1], min_mmi, max_mmi);
+    cpgline(data.num_obs, time, mmi);
+
+    // Ratio
+    cpgsvp(0.1, 0.9, 0.55, 0.75);
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Ratio");
+    cpgswin(min_time, max_time, min_ratio, max_ratio);
+    cpgbox("bcst", 1, 4, "bcstn", 0, 0);
+
+    cpgswin(0, time[data.num_obs-1], min_ratio, max_ratio);
+    cpgline(data.num_obs, time, ratio);
+
+    // Plot the polynomial fit
+    cpgsci(2);
+    cpgline(data.num_obs, time, polyfit);
+    cpgsci(1);
+
+    // Raw Data
+    cpgsvp(0.1, 0.9, 0.075, 0.55);
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
+    cpgmtxt("b", 2.5, 0.5, 0.5, "UTC Hour");
+    cpgswin(min_time, max_time, min_raw, max_raw);
+    cpgbox("bcstn", 1, 4, "bcstn", 0, 0);
+
+    cpgswin(0,time[data.num_obs-1], min_raw, max_raw);
+    for (int j = 0; j < data.num_targets; j++)
+    {
+        cpgsci(plot_colors[j%plot_colors_max]);
+        cpgline(data.num_obs, time, &raw[j*data.num_obs]);
+    }
+    cpgend();
 
     // DFT data
     float *freq = (float *)malloc(num_freqs*sizeof(float));
@@ -1101,7 +1170,7 @@ int plot_fits(char *dataPath)
         max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
     max_dft_ampl *= 1.1;
 
-    if (cpgopen("7/xs") <= 0)
+    if (cpgopen("6/xs") <= 0)
         return error("Unable to open PGPLOT window");
 
     // 800 x 480
@@ -1111,52 +1180,27 @@ int plot_fits(char *dataPath)
     cpgsfs(2);
     cpgscf(2);
 
-    // Ratio
-    cpgsvp(0.1, 0.9, 0.65, 0.92);
-    cpgmtxt("t", 2, 0.5, 0.5, "UTC Hour");
-    cpgmtxt("l", 2.5, 0.5, 0.5, "MMI");
-    cpgswin(0, time[data.num_obs-1], min_mmi, max_mmi);
-    cpgline(data.num_obs, time, mmi);
-
-    // Rescale time axis to hours
-    cpgswin(13.275, 13.275+time[data.num_obs-1]/3600, min_mmi, max_mmi);
-    cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
-
-    // Raw Data
-    cpgsvp(0.1, 0.9, 0.3, 0.65);
-    cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
-    cpgswin(0,time[data.num_obs-1], min_raw, max_raw);
-    for (int j = 0; j < data.num_targets; j++)
-    {
-        cpgsci(plot_colors[j%plot_colors_max]);
-        cpgline(data.num_obs, time, &raw[j*data.num_obs]);
-    }
-    cpgsci(1);
-
-    // Rescale time axis to hours
-    cpgswin(min_time, min_time+time[data.num_obs-1]/3600, min_raw, max_raw);
-    cpgbox("bcst", 1, 4, "bcstn", 0, 0);
-
     // DFT
-    cpgsvp(0.1, 0.9, 0.075, 0.3);
-
+    cpgsvp(0.1, 0.9, 0.075, 0.9);
+    cpgswin(min_dft_freq/1e-6, max_dft_freq/1e-6, 0, max_dft_ampl);
+    cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
 
     cpgswin(min_dft_freq, max_dft_freq, 0, max_dft_ampl);
     cpgsci(12);
-    cpgline(500, freq, ampl);
+    cpgline(num_freqs, freq, ampl);
     cpgsci(1);
 
-    cpgswin(min_dft_freq/1e-6, max_dft_freq/1e-6, 0, max_dft_ampl);
-    cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
 
-    cpgend();
+    cpgsch(1.25);
+    cpgmtxt("t", 1.5, 0.5, 0.5, "Amplitude Spectrum");
 
     free(coeffs);
     free(ampl);
     free(freq);
     free(mmi);
+    free(ratio);
     free(raw);
     free(time);
     fclose(data.file);

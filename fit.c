@@ -25,7 +25,7 @@ static int rref(double *A, int m, int n)
     for (int i = 0; i < m; i++)
     {
         // Pick the largest value in the remaining (leftmost square) rows as the next pivot
-        int prow, pcol;
+        int prow = i, pcol = i;
         double pval = -1;
         for (int j = i; j < m; j++)
             for (int k = 0; k < m; k++)

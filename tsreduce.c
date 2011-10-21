@@ -233,10 +233,13 @@ datafile read_data_header(char *dataFile)
 {
     datafile h;
     h.file = NULL;
+    h.version = 0;
     h.frame_dir[0] = '\0';
     h.frame_pattern[0] = '\0';
     h.dark_template[0] = '\0';
     h.flat_template[0] = '\0';
+    h.num_obs = 0;
+    h.num_targets = 0;
     h.plot_fit_degree = 4;
     h.plot_max_raw = 5000;
     h.plot_num_uhz = 1000;

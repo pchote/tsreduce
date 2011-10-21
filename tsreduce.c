@@ -1055,7 +1055,7 @@ int plot_fits(char *dataPath)
     float *polyfit = (float *)malloc(data.num_obs*sizeof(float));
 
     // Calculate polynomial fit to the ratio
-    double *coeffs = (double *)malloc((data.plot_fit_degree+1)*sizeof(float));
+    double *coeffs = (double *)malloc((data.plot_fit_degree+1)*sizeof(double));
 
     double ratio_mean = 0;
     for (int i = 0; i < data.num_obs; i++)

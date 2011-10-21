@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <math.h>
+#include "helpers.h"
 
 // Calculates the reduced row echelon form using Gauss-Jordan elimination of a m x n matrix A.
 // Returns non-zero on error
@@ -54,7 +55,7 @@ static int rref(double *A, int m, int n)
         if (fabs(A[prow*n + pcol]) < eps)
         {
             free(prows);
-            return 1;
+            return error("Matrix is singular");
         }
 
         // Normalize row by pivot
@@ -99,5 +100,53 @@ static int rref(double *A, int m, int n)
     }
 
     free(prows);
+    return 0;
+}
+
+// Calculate a polynomial fit to the given x,y data
+int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
+{
+    // Generate normal equation matrix
+    int n = degree+1;
+    int m = degree+2;
+    double *A = (double *)malloc(m*n*sizeof(double));
+    for (int i = 0; i < n; i++)
+    {
+        // Calculate \alpha_ji coeffs
+        for (int j = 0; j < n; j++)
+        {
+            A[i*m + j] = 0;
+            for (int k = 0; k < c; k++)
+            {
+                double a = 1; // X_j(x_k)*X_i(x_k) = x_k^(i+j)
+                for (int l = 0; l < i+j; l++)
+                    a *= x[k];
+                A[i*m + j] += a;
+            }
+        }
+
+        // Augment with \beta_i
+        A[i*m + n] = 0;
+        for (int k = 0; k < c; k++)
+        {
+            double b = 1;
+            for (int l = 0; l < i; l++)
+                b *= x[k];
+            A[i*m + n] += y[k]*b;
+        }
+    }
+
+    // Solve for the coefficients
+    if (rref(A, n, m))
+    {
+        free(A);
+        return error("Polynomial fit failed");
+    }
+
+    // Copy coeffs to output
+    for (int i = 0; i < n; i++)
+        coeffs[i] = A[i*m + n];
+
+    free(A);
     return 0;
 }

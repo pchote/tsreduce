@@ -22,6 +22,7 @@
 #include "framedata.h"
 #include "helpers.h"
 #include "aperture.h"
+#include "fit.h"
 
 // Subtracts the dark count, then normalizes the frame to average to unity
 // (not that we actually care about the total photometric counts)
@@ -990,15 +991,6 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-
-// Takes a ratio value, normalizes it by the pre-calculated
-//  polynomial fit in MMI units
-float normalize_ratio(int i, float d)
-{
-    float fit = 9.21E-11*i*i*i - 1.90E-07*i*i + 1.47E-04*i + 3.41E-01;
-    return 1000*(d - fit)/d;
-}
-
 int plot_fits(char *dataPath)
 {
     // Read file header
@@ -1035,15 +1027,42 @@ int plot_fits(char *dataPath)
     float *raw = (float *)malloc(data.num_obs*data.num_targets*sizeof(float));
     float *mmi = (float *)malloc(data.num_obs*sizeof(float));
 
-    double mean = 0;
+    // Calculate polynomial fit to the ratio
+    int degree = 4;
+    double *coeffs = (double *)malloc((degree+1)*sizeof(float));
+
     for (int i = 0; i < data.num_obs; i++)
     {
         time[i] = data.obs[i].time;
-        mmi[i] = normalize_ratio(i, data.obs[i].ratio);
-        mean += mmi[i];
+        mmi[i] = data.obs[i].ratio;
 
         for (int j = 0; j < data.num_targets; j++)
             raw[j*data.num_obs + i] = data.obs[i].star[j];
+    }
+
+    if (fit_polynomial(time, mmi, data.num_obs, coeffs, degree))
+    {
+        free(coeffs);
+        free(mmi);
+        free(raw);
+        free(time);
+        fclose(data.file);
+        return error("Fit failed");
+    }
+
+    double mean = 0;
+    for (int i = 0; i < data.num_obs; i++)
+    {
+        // Subtract polynomial fit and convert to mmi
+        double fit = 0;
+        double pow = 1;
+        for (int j = 0; j <= degree; j++)
+        {
+            fit += pow*coeffs[j];
+            pow *= time[i];
+        }
+        mmi[i] = 1000*(mmi[i] - fit)/mmi[i];
+        mean += mmi[i];
     }
     mean /= data.num_obs;
 
@@ -1134,6 +1153,7 @@ int plot_fits(char *dataPath)
 
     cpgend();
 
+    free(coeffs);
     free(ampl);
     free(freq);
     free(mmi);

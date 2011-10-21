@@ -14,10 +14,13 @@
       location = "group:tsreduce.c">
    </FileRef>
    <FileRef
+      location = "group:tsreduce.h">
+   </FileRef>
+   <FileRef
       location = "group:fit.c">
    </FileRef>
    <FileRef
-      location = "group:tsreduce.h">
+      location = "group:fit.h">
    </FileRef>
    <FileRef
       location = "group:helpers.h">

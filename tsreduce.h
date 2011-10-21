@@ -46,6 +46,11 @@ typedef struct
     
     record obs[MAX_OBS];
     int num_obs;
+    int plot_fit_degree;
+    double plot_max_raw;
+    int plot_num_uhz;
+    double plot_min_uhz;
+    double plot_max_uhz;
 } datafile;
 
 

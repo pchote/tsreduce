@@ -237,6 +237,11 @@ datafile read_data_header(char *dataFile)
     h.frame_pattern[0] = '\0';
     h.dark_template[0] = '\0';
     h.flat_template[0] = '\0';
+    h.plot_fit_degree = 4;
+    h.plot_max_raw = 5000;
+    h.plot_num_uhz = 1000;
+    h.plot_min_uhz = 0;
+    h.plot_max_uhz = 10000;
 
     // Open the data file (created with `tsreduce init`)
     h.file = fopen(dataFile, "r+");
@@ -263,13 +268,28 @@ datafile read_data_header(char *dataFile)
 
         else if (!strncmp(linebuf,"# Target:", 9))
         {
-            sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf)\n",
-                   &h.targets[h.num_targets].x,
-                   &h.targets[h.num_targets].y,
-                   &h.targets[h.num_targets].r,
-                   &h.targets[h.num_targets].s1,
-                   &h.targets[h.num_targets].s2);
-            h.num_targets++;
+            if (h.version == 3)
+            {
+                sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf)\n",
+                       &h.targets[h.num_targets].x,
+                       &h.targets[h.num_targets].y,
+                       &h.targets[h.num_targets].r,
+                       &h.targets[h.num_targets].s1,
+                       &h.targets[h.num_targets].s2);
+                h.targets[h.num_targets].plot_scale = 1;
+                h.num_targets++;
+            }
+            else
+            {
+                sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf]\n",
+                       &h.targets[h.num_targets].x,
+                       &h.targets[h.num_targets].y,
+                       &h.targets[h.num_targets].r,
+                       &h.targets[h.num_targets].s1,
+                       &h.targets[h.num_targets].s2,
+                       &h.targets[h.num_targets].plot_scale);
+                h.num_targets++;
+            }
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
         {
@@ -279,6 +299,16 @@ datafile read_data_header(char *dataFile)
         }
         else if (!strncmp(linebuf,"# Version:", 10))
             sscanf(linebuf, "# Version: %d\n", &h.version);
+        else if (!strncmp(linebuf,"# PlotFitDegree:", 16))
+            sscanf(linebuf, "# PlotFitDegree: %d\n", &h.plot_fit_degree);
+        else if (!strncmp(linebuf,"# PlotMaxRaw:", 13))
+            sscanf(linebuf, "# PlotMaxRaw: %lf\n", &h.plot_max_raw);
+        else if (!strncmp(linebuf,"# PlotMinUhz:", 13))
+            sscanf(linebuf, "# PlotMinUhz: %lf\n", &h.plot_min_uhz);
+        else if (!strncmp(linebuf,"# PlotMaxUhz:", 13))
+            sscanf(linebuf, "# PlotMaxUhz: %lf\n", &h.plot_max_uhz);
+        else if (!strncmp(linebuf,"# PlotNumUhz:", 13))
+            sscanf(linebuf, "# PlotNumUhz: %d\n", &h.plot_num_uhz);
 
         // Skip header / comment lines
         if (linebuf[0] == '#')
@@ -336,8 +366,8 @@ int update_reduction(char *dataPath)
     if (data.file == NULL)
         return error("Error opening data file");
 
-    if (data.version != 3)
-        return error("Invalid data file version `%d'. Requires version `%d'", data.version, 3);
+    if (data.version > 3)
+        return error("Invalid data file version `%d'. Requires version > 3", data.version);
 
     chdir(data.frame_dir);
 
@@ -781,14 +811,14 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 
     // Write the file
     fprintf(data, "# Puoko-nui Online reduction output\n");
-    fprintf(data, "# Version: 3\n");
+    fprintf(data, "# Version: 4\n");
     fprintf(data, "# FrameDir: %s\n", pathBuf);
     fprintf(data, "# FramePattern: %s\n", framePattern);
     fprintf(data, "# DarkTemplate: %s\n", darkTemplate);
     fprintf(data, "# FlatTemplate: %s\n", flatTemplate);
     fprintf(data, "# ReferenceTime: %s\n", datetimebuf);
     for (int i = 0; i < num_targets; i++)
-        fprintf(data, "# Target: (%f, %f, %f, %f, %f)\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
+        fprintf(data, "# Target: (%f, %f, %f, %f, %f) [1.0]\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
 
     // Display results in ds9
     snprintf(command, 128, "regions delete all");
@@ -993,6 +1023,9 @@ int detect_repeats(char *dataPath)
 
 int plot_fits(char *dataPath)
 {
+    int plot_colors_max = 8;
+    int plot_colors[] = {4,2,8,3,5,6,7,9};
+
     // Read file header
     datafile data = read_data_header(dataPath);
     if (data.file == NULL)
@@ -1008,19 +1041,9 @@ int plot_fits(char *dataPath)
     }
 
     // Start time in hours
-    float min_time = 13.275;
-
-    float min_raw = 0.1;
-    float max_raw = 3999;
-
-    int plot_colors_max = 8;
-    int plot_colors[] = {4,2,8,3,5,6,7,9};
-
-    // DFT Display
-    int num_freqs = 1000;
-    float min_dft_freq = 0;
-    float max_dft_freq = 0.01;
-
+    struct tm starttime;
+    gmtime_r(&data.reference_time, &starttime);
+    float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
 
     // Time Series data
     float *time = (float *)malloc(data.num_obs*sizeof(float));
@@ -1029,8 +1052,7 @@ int plot_fits(char *dataPath)
     float *polyfit = (float *)malloc(data.num_obs*sizeof(float));
 
     // Calculate polynomial fit to the ratio
-    int degree = 4;
-    double *coeffs = (double *)malloc((degree+1)*sizeof(float));
+    double *coeffs = (double *)malloc((data.plot_fit_degree+1)*sizeof(float));
 
     double ratio_mean = 0;
     for (int i = 0; i < data.num_obs; i++)
@@ -1055,7 +1077,7 @@ int plot_fits(char *dataPath)
     float max_ratio = (ratio_mean + 5*ratio_std);
 
 
-    if (fit_polynomial(time, ratio, data.num_obs, coeffs, degree))
+    if (fit_polynomial(time, ratio, data.num_obs, coeffs, data.plot_fit_degree))
     {
         free(coeffs);
         free(ratio);
@@ -1072,7 +1094,7 @@ int plot_fits(char *dataPath)
         // Subtract polynomial fit and convert to mmi
         polyfit[i] = 0;
         double pow = 1;
-        for (int j = 0; j <= degree; j++)
+        for (int j = 0; j <= data.plot_fit_degree; j++)
         {
             polyfit[i] += pow*coeffs[j];
             pow *= time[i];
@@ -1148,25 +1170,25 @@ int plot_fits(char *dataPath)
     cpgsvp(0.1, 0.9, 0.075, 0.55);
     cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
     cpgmtxt("b", 2.5, 0.5, 0.5, "UTC Hour");
-    cpgswin(min_time, max_time, min_raw, max_raw);
+    cpgswin(min_time, max_time, 0, data.plot_max_raw);
     cpgbox("bcstn", 1, 4, "bcstn", 0, 0);
 
-    cpgswin(0,time[data.num_obs-1], min_raw, max_raw);
     for (int j = 0; j < data.num_targets; j++)
     {
+        cpgswin(0,time[data.num_obs-1], 0, data.plot_max_raw/data.targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
         cpgline(data.num_obs, time, &raw[j*data.num_obs]);
     }
     cpgend();
 
     // DFT data
-    float *freq = (float *)malloc(num_freqs*sizeof(float));
-    float *ampl = (float *)malloc(num_freqs*sizeof(float));
-    calculate_amplitude_spectrum(min_dft_freq, max_dft_freq, time, mmi, data.num_obs, freq, ampl, num_freqs);
+    float *freq = (float *)malloc(data.plot_num_uhz*sizeof(float));
+    float *ampl = (float *)malloc(data.plot_num_uhz*sizeof(float));
+    calculate_amplitude_spectrum(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, time, mmi, data.num_obs, freq, ampl, data.plot_num_uhz);
 
     // Determine max dft ampl
     float max_dft_ampl = 0;
-    for (int i = 0; i < num_freqs; i++)
+    for (int i = 0; i < data.plot_num_uhz; i++)
         max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
     max_dft_ampl *= 1.1;
 
@@ -1182,12 +1204,12 @@ int plot_fits(char *dataPath)
 
     // DFT
     cpgsvp(0.1, 0.9, 0.075, 0.9);
-    cpgswin(min_dft_freq/1e-6, max_dft_freq/1e-6, 0, max_dft_ampl);
+    cpgswin(data.plot_min_uhz, data.plot_max_uhz, 0, max_dft_ampl);
     cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
 
-    cpgswin(min_dft_freq, max_dft_freq, 0, max_dft_ampl);
+    cpgswin(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, 0, max_dft_ampl);
     cpgsci(12);
-    cpgline(num_freqs, freq, ampl);
+    cpgline(data.plot_num_uhz, freq, ampl);
     cpgsci(1);
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");

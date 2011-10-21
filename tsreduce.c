@@ -86,6 +86,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
 
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
     double *flat = (double *)malloc(dark.rows*dark.cols*sizeof(double));
+    if (flat == NULL)
+        return error("malloc failed");
 
     // Load the flat frames, discarding the 5 outermost pixels for each
     if (load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark))
@@ -139,6 +141,8 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     framedata base = framedata_new(frames[0], FRAMEDATA_INT);
     int exptime = framedata_get_header_int(&base, "EXPTIME");
     double *dark = (double *)malloc(base.rows*base.cols*sizeof(double));
+    if (dark == NULL)
+        return error("malloc failed");
 
     // Load the flat frames, discarding the 5 outermost pixels for each
     if (load_reject_minmax( (const char **)frames, numMatched, base.rows, base.cols, minmax, minmax, dark, NULL, NULL))
@@ -1050,12 +1054,25 @@ int plot_fits(char *dataPath)
 
     // Time Series data
     float *time = (float *)malloc(data.num_obs*sizeof(float));
+    if (time == NULL)
+        return error("malloc failed");
+
     float *raw = (float *)malloc(data.num_obs*data.num_targets*sizeof(float));
+    if (raw == NULL)
+        return error("malloc failed");
+
     float *ratio = (float *)malloc(data.num_obs*sizeof(float));
+    if (ratio == NULL)
+        return error("malloc failed");
+
     float *polyfit = (float *)malloc(data.num_obs*sizeof(float));
+    if (polyfit == NULL)
+        return error("malloc failed");
 
     // Calculate polynomial fit to the ratio
     double *coeffs = (double *)malloc((data.plot_fit_degree+1)*sizeof(double));
+    if (coeffs == NULL)
+        return error("malloc failed");
 
     double ratio_mean = 0;
     for (int i = 0; i < data.num_obs; i++)
@@ -1091,6 +1108,9 @@ int plot_fits(char *dataPath)
     }
 
     float *mmi = (float *)malloc(data.num_obs*sizeof(float));
+    if (mmi == NULL)
+        return error("malloc failed");
+
     double mmi_mean = 0;
     for (int i = 0; i < data.num_obs; i++)
     {
@@ -1186,7 +1206,13 @@ int plot_fits(char *dataPath)
 
     // DFT data
     float *freq = (float *)malloc(data.plot_num_uhz*sizeof(float));
+    if (freq == NULL)
+        return error("malloc failed");
+
     float *ampl = (float *)malloc(data.plot_num_uhz*sizeof(float));
+    if (ampl == NULL)
+        return error("malloc failed");
+
     calculate_amplitude_spectrum(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, time, mmi, data.num_obs, freq, ampl, data.plot_num_uhz);
 
     // Determine max dft ampl

@@ -140,6 +140,9 @@ double2 calculate_background(target r, framedata *frame)
     // Allocate enough space to store the entire target region, but only copy pixels
     // within the annulus.
     double *data = (double *)malloc((maxy - miny + 1)*(maxx - minx + 1)*sizeof(double));
+    if (data == NULL)
+        die("malloc failed");
+
     int n = 0;
     for (int j = miny; j <= maxy; j++)
         for (int i = minx; i <= maxx; i++)

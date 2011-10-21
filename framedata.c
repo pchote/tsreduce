@@ -169,6 +169,9 @@ int load_reject_minmax( const char **frames, int numFrames, int rows, int cols, 
     // Load all the flat field frames into a big int array interleaved by pixel value:
     // so big[0] = flat0[0,0], big[1] = flat1[0,0] ... big[numFrames] = flat0[0,1] etc
     double *big = (double *)malloc(numFrames*cols*rows*sizeof(double));
+    if (big == NULL)
+        return error("malloc failed");
+
     for( int i = 0; i < numFrames; i++)
     {
         printf("loading `%s`\n", frames[i]);

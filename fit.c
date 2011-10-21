@@ -20,6 +20,8 @@ static int rref(double *A, int m, int n)
     // so we can quickly reorder at the end of the process.
     // This reduces numerical problems while avoiding the need to swap columns.
     int *prows = (int *)malloc(m*sizeof(int));
+    if (prows == NULL)
+        return error("malloc failed");
 
     // Loop over diagonal index / column
     for (int i = 0; i < m; i++)
@@ -110,6 +112,9 @@ int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
     int n = degree+1;
     int m = degree+2;
     double *A = (double *)malloc(m*n*sizeof(double));
+    if (A == NULL)
+        return error("malloc failed");
+
     for (int i = 0; i < n; i++)
     {
         // Calculate \alpha_ji coeffs

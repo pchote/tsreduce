@@ -105,39 +105,36 @@ static int rref(double *A, int m, int n)
     return 0;
 }
 
-// Calculate a polynomial fit to the given x,y data
-int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
+/*
+ * Calculate a linear least-squares fit of numParams basis functions defined by evaluate_basis to (x,y)
+ */
+static int fit(double *x, double *y, int c, double *params, int numParams,
+               void (*evaluate_basis)(double x, double *basis, int n, void *user), void *user)
 {
-    // Generate normal equation matrix
-    int n = degree+1;
-    int m = degree+2;
+    int n = numParams;
+    int m = numParams + 1;
     double *A = (double *)malloc(m*n*sizeof(double));
     if (A == NULL)
         return error("malloc failed");
 
-    for (int i = 0; i < n; i++)
+    // Initialize to zero
+    for (int i = 0; i < m*n; i++)
+        A[i] = 0;
+
+    double *basis = (double *)malloc(n*sizeof(double));
+    for (int i = 0; i < c; i++)
     {
-        // Calculate \alpha_ji coeffs
+        // Evaluate basis functions at x[i]
+        evaluate_basis(x[i], basis, n, user);
+
         for (int j = 0; j < n; j++)
         {
-            A[i*m + j] = 0;
-            for (int k = 0; k < c; k++)
-            {
-                double a = 1; // X_j(x_k)*X_i(x_k) = x_k^(i+j)
-                for (int l = 0; l < i+j; l++)
-                    a *= x[k];
-                A[i*m + j] += a;
-            }
-        }
+            // Calculate Ajk contribution from i
+            for (int k = 0; k < n; k++)
+                A[j*m + k] += basis[j]*basis[k];
 
-        // Augment with \beta_i
-        A[i*m + n] = 0;
-        for (int k = 0; k < c; k++)
-        {
-            double b = 1;
-            for (int l = 0; l < i; l++)
-                b *= x[k];
-            A[i*m + n] += y[k]*b;
+            // Calculate b_j contribution from i
+            A[j*m + n] += y[i]*basis[j];
         }
     }
 
@@ -145,13 +142,38 @@ int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
     if (rref(A, n, m))
     {
         free(A);
-        return error("Polynomial fit failed");
+        return error("fit failed");
     }
 
     // Copy coeffs to output
     for (int i = 0; i < n; i++)
-        coeffs[i] = A[i*m + n];
+        params[i] = A[i*m + n];
 
     free(A);
     return 0;
+}
+
+static void polynomial_fit(double x, double *basis, int n, void *user)
+{
+    basis[0] = 1;
+    for (int j = 1; j < n; j++)
+        basis[j] = basis[j-1]*x;
+}
+
+// Calculate a polynomial fit to the given x,y data
+int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
+{
+    // Convert float to double for fitting
+    double *dx = (double *)malloc(c*sizeof(double));
+    double *dy = (double *)malloc(c*sizeof(double));
+    for (int i = 0; i < c; i++)
+    {
+        dx[i] = x[i];
+        dy[i] = y[i];
+    }
+
+    int ret = fit(dx, dy, c, coeffs, degree + 1, polynomial_fit, NULL);
+    free(dx);
+    free(dy);
+    return ret;
 }

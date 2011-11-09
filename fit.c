@@ -50,7 +50,7 @@ static int rref(double *A, int m, int n)
             prow = i;
         }
 
-        // Store the pivot column for later
+        // Store the pivot row for later
         prows[pcol] = prow;
 
         // Check that we don't have a singular matrix
@@ -86,7 +86,8 @@ static int rref(double *A, int m, int n)
     // Swap rows to make A the identity
     for (int i = 0; i < m; i++)
     {
-        if (prows[i] == i)
+        // Don't swap with self or rows that have been completed
+        if (prows[i] <= i)
             continue;
 
         int k = prows[i];
@@ -97,8 +98,14 @@ static int rref(double *A, int m, int n)
             A[k*n + j] = t;
         }
 
-        prows[i] = prows[k];
-        prows[k] = k;
+        // Update remaining rows with new indices
+        prows[i] = i;
+        for (int j = i+1; j < n; j++)
+            if (prows[j] == i)
+            {
+                prows[j] = k;
+                break;
+            }
     }
 
     free(prows);

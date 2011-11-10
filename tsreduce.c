@@ -373,8 +373,8 @@ int update_reduction(char *dataPath)
     if (data.file == NULL)
         return error("Error opening data file");
 
-    if (data.version <= 3)
-        return error("Invalid data file version `%d'. Requires version > 3", data.version);
+    if (data.version < 3)
+        return error("Invalid data file version `%d'. Requires version >= 3", data.version);
 
     chdir(data.frame_dir);
 

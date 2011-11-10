@@ -167,6 +167,17 @@ static void polynomial_fit(double x, double *basis, int n, void *user)
         basis[j] = basis[j-1]*x;
 }
 
+static void sinusoidal_fit(double t, double *basis, int n, void *freqs)
+{
+    double *f = (double *)freqs;
+    for (int j = 0; j < n/2; j++)
+    {
+        double phase = 2*M_PI*f[j]*t;
+        basis[2*j] = cos(phase);
+        basis[2*j+1] = sin(phase);
+    }
+}
+
 // Calculate a polynomial fit to the given x,y data
 int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
 {
@@ -183,4 +194,14 @@ int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
     free(dx);
     free(dy);
     return ret;
+}
+
+
+/*
+ * Takes a list of frequencies 0..N-1
+ * Returns a list of amplitudes 0..2*N-1; alternating between cos and sin for each freq in freqs
+ */
+int fit_sinusoids(double *x, double *y, int c, double *freqs, int numFreqs, double *amplitudes)
+{
+    return fit(x, y, c, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
 }

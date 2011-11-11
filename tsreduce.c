@@ -1213,7 +1213,7 @@ int plot_fits(char *dataPath)
     if (ampl == NULL)
         return error("malloc failed");
 
-    calculate_amplitude_spectrum(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, time, mmi, data.num_obs, freq, ampl, data.plot_num_uhz);
+    calculate_amplitude_spectrum_float(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, time, mmi, data.num_obs, freq, ampl, data.plot_num_uhz);
 
     // Determine max dft ampl
     float max_dft_ampl = 0;
@@ -1431,6 +1431,166 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
     return 0;
 }
 
+/*
+ * Calculate the DFT of the BJD/mma data in tsFile between minUHz and maxUHz in increments dUHz
+ * Output is saved to outFile. If freqFile is non-NULL, the data is first prewhitened with the contained frequencies
+ */
+int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFile, char *freqFile)
+{
+    char linebuf[1024];
+    FILE *file = fopen(tsFile, "r+");
+    if (file == NULL)
+        return error("Unable to open file: %s", tsFile);
+
+    // Count the number of entries to allocate
+    int total_obs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total_obs++;
+    rewind(file);
+
+    int num_obs = 0;
+    double *time = (double *)malloc(total_obs*sizeof(double));
+    double *mmi = (double *)malloc(total_obs*sizeof(double));
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        sscanf(linebuf, "%lf %lf\n", &time[num_obs], &mmi[num_obs]);
+
+        // Convert to seconds
+        time[num_obs] *= 86400;
+        num_obs++;
+    }
+    fclose(file);
+    printf("Read %d observations\n", num_obs);
+
+    if (num_obs == 0)
+    {
+        free(time);
+        free(mmi);
+        return error("No observations found");
+    }
+
+    // Load freqs
+    if (freqFile)
+    {
+        file = fopen(freqFile, "r+");
+        if (file == NULL)
+        {
+            free(time);
+            free(mmi);
+            return error("Unable to open file: %s", freqFile);
+        }
+
+        int total_freqs = 0;
+        while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+            if (linebuf[0] != '#' && linebuf[0] != '\n')
+                total_freqs++;
+        rewind(file);
+
+        int num_freqs = 0;
+        double *fit_freqs = (double *)malloc(total_freqs*sizeof(double));
+        while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
+        {
+            // Skip comment / empty lines
+            if (linebuf[0] == '#' || linebuf[0] == '\n')
+                continue;
+
+            int use = FALSE;
+            sscanf(linebuf, "%*d %lf %d\n", &fit_freqs[num_freqs], &use);
+
+            // Convert to Hz
+            fit_freqs[num_freqs] *= 1e-6;
+            if (use)
+                num_freqs++;
+        }
+        fclose(file);
+
+        printf("Read %d freqs\n", num_freqs);
+        if (num_obs == 0)
+        {
+            free(fit_freqs);
+            free(time);
+            free(mmi);
+            return error("No frequencies found");
+        }
+
+        // Fit amplitudes for each freq
+        double *fit_amplitudes = (double *)malloc(2*num_freqs*sizeof(double));
+        if (fit_sinusoids(time, mmi, num_obs, fit_freqs, num_freqs, fit_amplitudes))
+        {
+            free(fit_amplitudes);
+            free(fit_freqs);
+            free(time);
+            free(mmi);
+            return error("Fit failed");
+        }
+
+        // Calculate amplitude and phase for each freq
+        printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
+        for (int i = 0; i < num_freqs; i++)
+        {
+            double a = fit_amplitudes[2*i+1];
+            double b = fit_amplitudes[2*i];
+            double amp = sqrt(a*a + b*b);
+            double phase = atan2(b, a)*180/M_PI;
+            while (phase > 360) phase -= 360;
+            while (phase < 0) phase += 360;
+
+            printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*fit_freqs[i], 1/fit_freqs[i], amp, phase);
+        }
+
+        // Prewhiten
+        for (int i = 0; i < num_obs; i++)
+        {
+            double model = 0;
+            for (int j = 0; j < num_freqs; j++)
+            {
+                double phase = 2*M_PI*fit_freqs[j]*time[i];
+                model += fit_amplitudes[2*j]*cos(phase);
+                model += fit_amplitudes[2*j+1]*sin(phase);
+            }
+            mmi[i] -= model;
+        }
+        fclose(file);
+        free(fit_amplitudes);
+        free(fit_freqs);
+    }
+
+    // Calculate DFT
+    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
+    double *freq = (double *)malloc(num_uhz*sizeof(double));
+    double *ampl = (double *)malloc(num_uhz*sizeof(double));
+
+    calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mmi, num_obs, freq, ampl, num_uhz);
+
+    // Save output
+    file = fopen(outFile, "w");
+    if (file == NULL)
+    {
+        free(ampl);
+        free(freq);
+        free(time);
+        free(mmi);
+        return error("Unable to open file: %s", outFile);
+    }
+
+    for (int i = 0; i < num_uhz; i++)
+        fprintf(file, "%f %f\n", freq[i], ampl[i]);
+
+    fclose(file);
+
+    free(ampl);
+    free(freq);
+    free(time);
+    free(mmi);
+
+    return 0;
+}
+
 int main( int argc, char *argv[] )
 {
     // `tsreduce create-flat "/bin/ls dome-*.fits.gz" 5 master-dark.fits.gz master-dome.fits.gz`
@@ -1472,6 +1632,10 @@ int main( int argc, char *argv[] )
     // `tsreduce model july2011_run2.ts dftfreq.dat 0.0678829 6.3125 0.0001 fit.dat [residuals.dat]`
     else if ((argc == 8 || argc == 9) && strncmp(argv[1], "model", 5) == 0)
         return model_fit(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], (argc == 9) ? argv[8] : NULL);
+
+    // `tsreduce model july2011_run2.ts 100 10000 0.01 dft.dat [dftfreq.dat]`
+    else if ((argc == 7 || argc == 8) && strncmp(argv[1], "dft", 3) == 0)
+        return dft_bjd(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), argv[6], (argc == 8) ? argv[7] : NULL);
 
     else
         error("Invalid args");

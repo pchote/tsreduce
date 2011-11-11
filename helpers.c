@@ -199,7 +199,7 @@ int ask_ds9(char *title, char *command, char **outbuf)
 // Calculate the amplitude spectrum of the signal defined by numData points in (time, data)
 // in the frequency range (fmin, fmax)
 // numOut results are stored in (outFreq, outPower)
-void calculate_amplitude_spectrum(float fmin, float fmax, float *t, float *data, int numData, float *outFreq, float *outAmpl, int numOut)
+void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *data, int numData, double *outFreq, double *outAmpl, int numOut)
 {
     double df = (fmax-fmin)/numOut;
     for (int j = 0; j < numOut; j++)
@@ -218,3 +218,24 @@ void calculate_amplitude_spectrum(float fmin, float fmax, float *t, float *data,
         outAmpl[j] = 2*sqrt(real*real + imag*imag);
     }
 }
+
+void calculate_amplitude_spectrum_float(float fmin, float fmax, float *t, float *data, int numData, float *outFreq, float *outAmpl, int numOut)
+{
+    double df = (fmax-fmin)/numOut;
+    for (int j = 0; j < numOut; j++)
+    {
+        double real = 0;
+        double imag = 0;
+        outFreq[j] = fmin + j*df;
+
+        for (int i = 0; i < numData; i++)
+        {
+            double phase = -outFreq[j]*2*M_PI*(t[i]-t[0]);
+            real += data[i]*cos(phase)/numData;
+            imag += data[i]*sin(phase)/numData;
+        }
+
+        outAmpl[j] = 2*sqrt(real*real + imag*imag);
+    }
+}
+

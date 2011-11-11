@@ -19,5 +19,6 @@ int init_ds9(char *);
 int tell_ds9(char *title, char *command, void *data, int dataSize);
 int ask_ds9(char *title, char *command, char **outbuf);
 
-void calculate_amplitude_spectrum(float fmin, float fmax, float *time, float *data, int numData, float *outFreq, float *outAmpl, int numOut);
+void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *data, int numData, double *outFreq, double *outAmpl, int numOut);
+void calculate_amplitude_spectrum_float(float fmin, float fmax, float *time, float *data, int numData, float *outFreq, float *outAmpl, int numOut);
 #endif

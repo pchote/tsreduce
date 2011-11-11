@@ -11,5 +11,6 @@
 
 int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, double dt, char *modelFile, char *residualsFile);
 int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFile, char *freqFile);
+int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz);
 
 #endif

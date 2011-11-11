@@ -8,5 +8,6 @@
 #ifndef FIT_H
 #define FIT_H
 
+int fit_sinusoids(double *x, double *y, int c, double *freqs, int numFreqs, double *amplitudes);
 int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree);
 #endif

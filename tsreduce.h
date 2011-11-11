@@ -53,5 +53,6 @@ typedef struct
     double plot_max_uhz;
 } datafile;
 
+datafile read_data_header(char *dataFile);
 
 #endif

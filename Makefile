@@ -15,7 +15,7 @@ ifeq ($(shell uname),Darwin)
     LFLAGS += -L/usr/X11R6/lib -lX11 -L/sw/lib -laquaterm -Wl,-framework -Wl,Foundation -L/sw/lib/pgplot -lpng
 endif
 
-SRC = tsreduce.c framedata.c helpers.c aperture.c fit.c
+SRC = tsreduce.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c ts_analysis.c
 OBJ = $(SRC:.c=.o)
 
 

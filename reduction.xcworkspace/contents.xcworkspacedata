@@ -1,37 +1,63 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Workspace
    version = "1.0">
+   <Group
+      location = "container:"
+      name = "Main Routines">
+      <FileRef
+         location = "group:dft_analysis.c">
+      </FileRef>
+      <FileRef
+         location = "group:dft_analysis.h">
+      </FileRef>
+      <FileRef
+         location = "group:reduction.c">
+      </FileRef>
+      <FileRef
+         location = "group:reduction.h">
+      </FileRef>
+      <FileRef
+         location = "group:ts_analysis.c">
+      </FileRef>
+      <FileRef
+         location = "group:ts_analysis.h">
+      </FileRef>
+   </Group>
+   <Group
+      location = "container:"
+      name = "Calculation Routines">
+      <FileRef
+         location = "group:framedata.c">
+      </FileRef>
+      <FileRef
+         location = "group:framedata.h">
+      </FileRef>
+      <FileRef
+         location = "group:fit.c">
+      </FileRef>
+      <FileRef
+         location = "group:fit.h">
+      </FileRef>
+      <FileRef
+         location = "group:helpers.h">
+      </FileRef>
+      <FileRef
+         location = "group:helpers.c">
+      </FileRef>
+      <FileRef
+         location = "group:aperture.h">
+      </FileRef>
+      <FileRef
+         location = "group:aperture.c">
+      </FileRef>
+   </Group>
    <FileRef
-      location = "group:framedata.c">
-   </FileRef>
-   <FileRef
-      location = "group:framedata.h">
-   </FileRef>
-   <FileRef
-      location = "group:Makefile">
+      location = "group:tsreduce.h">
    </FileRef>
    <FileRef
       location = "group:tsreduce.c">
    </FileRef>
    <FileRef
-      location = "group:tsreduce.h">
-   </FileRef>
-   <FileRef
-      location = "group:fit.c">
-   </FileRef>
-   <FileRef
-      location = "group:fit.h">
-   </FileRef>
-   <FileRef
-      location = "group:helpers.h">
-   </FileRef>
-   <FileRef
-      location = "group:helpers.c">
-   </FileRef>
-   <FileRef
-      location = "group:aperture.h">
-   </FileRef>
-   <FileRef
-      location = "group:aperture.c">
+      location = "group:Makefile">
    </FileRef>
 </Workspace>

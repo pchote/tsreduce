@@ -213,6 +213,13 @@ int main( int argc, char *argv[] )
     // `tsreduce optimisefreq july2011_run2.ts dftfreq.dat`
     else if (argc == 4 && strncmp(argv[1], "optimizefreqs", 13) == 0)
         return nonlinear_fit(argv[2], argv[3]);
+
+    else if (argc == 3 && strncmp(argv[1], "fittime", 7) == 0)
+        return fit_time(argv[2]);
+
+    else if (argc == 4 && strncmp(argv[1], "offsettime", 10) == 0)
+        return offset_time(argv[2], atof(argv[3]));
+
     else
         error("Invalid args");
     return 0;

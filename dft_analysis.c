@@ -668,3 +668,93 @@ int nonlinear_fit(char *tsFile, char *freqFile)
 
     return 0;
 }
+
+/*
+ * Shift 2011 first july run observations forward and backward
+ * in time to find the best fit to the 2nd july run model
+ */
+int fit_time(char *tsFile)
+{
+    // Second july run fit parameters
+    int num_freqs = 14;
+    double freqs[] =
+    {
+        0.0022362400,
+        0.0044724500,
+        0.0023613300,
+        0.0029726500,
+        0.0067087500,
+        0.0052088500,
+        0.0046091000,
+        0.0016810000,
+        0.0022336800,
+        0.0074450700,
+        0.0029182400,
+        0.0089449700,
+        0.0037938300,
+        0.0023581800
+    };
+    double amplitudes[] =
+    {
+        -32.735226, -20.399597,
+        11.016796, -1.155572,
+         8.461928, -1.198719,
+        -4.585997,  3.090083,
+        -3.266993,  2.921126,
+         0.534985, -3.280352,
+         1.121596,  2.381564,
+         1.657419, -1.233287,
+        -0.241483, -2.256900,
+         0.901674,  1.725242,
+        -1.622693, -0.596785,
+         0.864272, -1.399492,
+        -0.009832, -1.506967,
+         1.560148, -1.033600
+    };
+
+    double *time = NULL, *mmi = NULL;
+    int num_obs = load_tsfile(tsFile, &time, &mmi);
+
+    if (num_obs <= 0)
+        return error("ts load failed");
+
+    else if (num_obs == 0)
+    {
+        free(time);
+        free(mmi);
+        return error("No observations in ts file");
+    }
+    printf("Read %d observations\n", num_obs);
+
+    double best_chi2 = -1;
+    double best_offset = 0;
+    int num_steps = 40;
+    double step_size = 20;
+    for(int i = -num_steps; i <= num_steps; i++)
+    {
+        double offset = i*step_size;
+
+        double chi2 = 0;
+        for (int i = 0; i < num_obs; i++)
+        {
+            double model = 0;
+            for (int j = 0; j < num_freqs; j++)
+            {
+                double phase = 2*M_PI*freqs[j]*(time[i]-offset);
+                model += amplitudes[2*j]*cos(phase);
+                model += amplitudes[2*j+1]*sin(phase);
+            }
+            chi2 += (mmi[i] - model)*(mmi[i]-model);
+        }
+        printf("%f: %f\n", offset, chi2);
+        if (chi2 < best_chi2 || best_chi2 < 0)
+        {
+            best_chi2 = chi2;
+            best_offset = offset;
+        }
+    }
+    printf("Best offset is %f (%d frames) with chi2 %f\n", best_offset, (int)best_offset/20, best_chi2);
+    free(time);
+    free(mmi);
+    return 0;
+}

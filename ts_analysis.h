@@ -14,5 +14,5 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);
 int plot_fits(char *dataPath);
 int amplitude_spectrum(char *dataPath);
-
+int offset_time(char *mmiFile, double offset);
 #endif

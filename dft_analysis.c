@@ -527,6 +527,7 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     }
 
     // Prewhiten
+    double chi2 = 0;
     for (int i = 0; i < num_obs; i++)
     {
         double model = 0;
@@ -537,10 +538,12 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
             model += fit_amplitudes[2*j+1]*sin(phase);
         }
         mmi[i] -= model;
+        chi2 += mmi[i]*mmi[i];
     }
     fclose(file);
     free(fit_amplitudes);
     free(fit_freqs);
+    printf("Chi^2: %f\n", chi2);
 
     // Calculate DFT
     int num_uhz = (int)((maxUHz - minUHz)/dUHz);

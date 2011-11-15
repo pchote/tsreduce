@@ -198,11 +198,11 @@ int main( int argc, char *argv[] )
     else if ((argc == 8 || argc == 9) && strncmp(argv[1], "model", 5) == 0)
         return model_fit(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], (argc == 9) ? argv[8] : NULL);
 
-    // `tsreduce model july2011_run2.ts 100 10000 0.01 dft.dat [dftfreq.dat]`
+    // `tsreduce dft july2011_run2.ts 100 10000 0.01 dft.dat [dftfreq.dat]`
     else if ((argc == 7 || argc == 8) && strncmp(argv[1], "dft", 3) == 0)
         return dft_bjd(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), argv[6], (argc == 8) ? argv[7] : NULL);
 
-    // `tsreduce findfreq july2011_run2.ts 100 10000 1 dftfreq.dat`
+    // `tsreduce findfreq july2011_run2.ts dftfreq.dat 100 10000 1`
     else if (argc == 7 && strncmp(argv[1], "findfreq", 8) == 0)
         return find_max_freq(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]));
 

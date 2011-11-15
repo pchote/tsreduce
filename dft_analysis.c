@@ -13,17 +13,26 @@
 #include "helpers.h"
 #include "fit.h"
 
+
 /*
- * Fit the frequencies defined in freqFile to the data in tsFile
- * and output a model lightcurve between startTime and endTime with increments of dt to modelFile
- * Residuals are saved to residualsFile if it is non-NULL
+ * Allocates memory and loads timeseries data, returning pointers via the passed args
+ * Returns the number of data points loaded, or -1 on error
  */
-int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, double dt, char *modelFile, char *residualsFile)
+static int load_tsfile(char *tsFile, double **time, double **mmi)
 {
+    if (*time != NULL || *mmi != NULL)
+    {
+        error("time or mmi array is non-null");
+        return -1;
+    }
+
     char linebuf[1024];
     FILE *file = fopen(tsFile, "r+");
     if (file == NULL)
-        return error("Unable to open file: %s", tsFile);
+    {
+        error("Unable to open file: %s", tsFile);
+        return -1;
+    }
 
     // Count the number of entries to allocate
     int total_obs = 0;
@@ -33,37 +42,43 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
     rewind(file);
 
     int num_obs = 0;
-    double *time = (double *)malloc(total_obs*sizeof(double));
-    double *mmi = (double *)malloc(total_obs*sizeof(double));
+    *time = (double *)malloc(total_obs*sizeof(double));
+    *mmi = (double *)malloc(total_obs*sizeof(double));
+    if (*time == NULL || *mmi == NULL)
+    {
+        error("Unable to allocate memory");
+        return -1;
+    }
+
     while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
     {
         // Skip comment / empty lines
         if (linebuf[0] == '#' || linebuf[0] == '\n')
             continue;
 
-        sscanf(linebuf, "%lf %lf\n", &time[num_obs], &mmi[num_obs]);
+        sscanf(linebuf, "%lf %lf\n", &(*time)[num_obs], &(*mmi)[num_obs]);
 
         // Convert to seconds
-        time[num_obs] *= 86400;
+        (*time)[num_obs] *= 86400;
         num_obs++;
     }
+
     fclose(file);
-    printf("Read %d observations\n", num_obs);
+    return num_obs;
+}
 
-    if (num_obs == 0)
-    {
-        free(time);
-        free(mmi);
-        return error("No observations found");
-    }
-
-    // Load freqs
-    file = fopen(freqFile, "r+");
+/*
+ * Allocates memory and loads frequency data, returning a pointers via the passed arg
+ * Returns the number of frequencies loaded, or -1 on error
+ */
+static int load_freqfile(char *freqFile, double **freqs)
+{
+    char linebuf[1024];
+    FILE *file = fopen(freqFile, "r+");
     if (file == NULL)
     {
-        free(time);
-        free(mmi);
-        return error("Unable to open file: %s", freqFile);
+        error("Unable to open file: %s", freqFile);
+        return -1;
     }
 
     int total_freqs = 0;
@@ -73,7 +88,7 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
     rewind(file);
 
     int num_freqs = 0;
-    double *fit_freqs = (double *)malloc(total_freqs*sizeof(double));
+    *freqs = (double *)malloc(total_freqs*sizeof(double));
     while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
     {
         // Skip comment / empty lines
@@ -81,16 +96,79 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
             continue;
 
         int use;
-        sscanf(linebuf, "%*d %lf %d\n", &fit_freqs[num_freqs], &use);
+        sscanf(linebuf, "%*d %lf %d %*s\n", &(*freqs)[num_freqs], &use);
 
         // Convert to Hz
-        fit_freqs[num_freqs] *= 1e-6;
+        (*freqs)[num_freqs] *= 1e-6;
         if (use)
             num_freqs++;
     }
     fclose(file);
+    return num_freqs;
+}
 
+static void print_freq_table(double *freqs, double *amplitudes, int numFreqs)
+{
+    printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
+    for (int i = 0; i < numFreqs; i++)
+    {
+        double a = amplitudes[2*i+1];
+        double b = amplitudes[2*i];
+        double amp = sqrt(a*a + b*b);
+        double phase = atan2(b, a)*180/M_PI;
+        while (phase > 360) phase -= 360;
+        while (phase < 0) phase += 360;
+        printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*freqs[i], 1/freqs[i], amp, phase);
+    }
+}
+
+static double calculate_chi2(double *freqs, double *amplitudes, int numFreqs, double *mmi, double *time, int numObs)
+{
+    double chi2 = 0;
+    for (int i = 0; i < numObs; i++)
+    {
+        double model = 0;
+        for (int j = 0; j < numFreqs; j++)
+        {
+            double phase = 2*M_PI*freqs[j]*time[i];
+            model += amplitudes[2*j]*cos(phase);
+            model += amplitudes[2*j+1]*sin(phase);
+        }
+        chi2 += (mmi[i] - model)*(mmi[i]-model);
+    }
+    return chi2;
+}
+
+/*
+ * Fit the frequencies defined in freqFile to the data in tsFile
+ * and output a model lightcurve between startTime and endTime with increments of dt to modelFile
+ * Residuals are saved to residualsFile if it is non-NULL
+ */
+int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, double dt, char *modelFile, char *residualsFile)
+{
+    double *time = NULL, *mmi = NULL, *fit_freqs = NULL;
+    int num_obs = load_tsfile(tsFile, &time, &mmi);
+    if (num_obs <= 0)
+        return error("ts load failed");
+    else if (num_obs == 0)
+    {
+        free(time);
+        free(mmi);
+        return error("No observations in ts file");
+    }
+    printf("Read %d observations\n", num_obs);
+
+    // Load freqs
+    int num_freqs = load_freqfile(freqFile, &fit_freqs);
+
+    if (num_freqs < 0)
+    {
+        free(time);
+        free(mmi);
+        return error("freq load failed");
+    }
     printf("Read %d freqs\n", num_freqs);
+
     if (num_freqs == 0)
     {
         free(fit_freqs);
@@ -110,22 +188,12 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
         return error("Fit failed");
     }
 
-    // Calculate amplitude and phase for each freq
-    printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
-    for (int i = 0; i < num_freqs; i++)
-    {
-        double a = fit_amplitudes[2*i+1];
-        double b = fit_amplitudes[2*i];
-        double amp = sqrt(a*a + b*b);
-        double phase = atan2(b, a)*180/M_PI;
-        while (phase > 360) phase -= 360;
-        while (phase < 0) phase += 360;
-
-        printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*fit_freqs[i], 1/fit_freqs[i], amp, phase);
-    }
+    print_freq_table(fit_freqs, fit_amplitudes, num_freqs);
+    double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+    printf("Chi^2: %f\n", chi2);
 
     // Output model curve
-    file = fopen(modelFile, "w");
+    FILE *file = fopen(modelFile, "w");
     if (file == NULL)
     {
         free(fit_amplitudes);
@@ -191,79 +259,33 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
  */
 int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFile, char *freqFile)
 {
-    char linebuf[1024];
-    FILE *file = fopen(tsFile, "r+");
-    if (file == NULL)
-        return error("Unable to open file: %s", tsFile);
-
-    // Count the number of entries to allocate
-    int total_obs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-        if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_obs++;
-    rewind(file);
-
-    int num_obs = 0;
-    double *time = (double *)malloc(total_obs*sizeof(double));
-    double *mmi = (double *)malloc(total_obs*sizeof(double));
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
-    {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-            continue;
-
-        sscanf(linebuf, "%lf %lf\n", &time[num_obs], &mmi[num_obs]);
-
-        // Convert to seconds
-        time[num_obs] *= 86400;
-        num_obs++;
-    }
-    fclose(file);
-    printf("Read %d observations\n", num_obs);
-
-    if (num_obs == 0)
+    double *time = NULL, *mmi = NULL;
+    int num_obs = load_tsfile(tsFile, &time, &mmi);
+    if (num_obs <= 0)
+        return error("ts load failed");
+    else if (num_obs == 0)
     {
         free(time);
         free(mmi);
-        return error("No observations found");
+        return error("No observations in ts file");
     }
+    printf("Read %d observations\n", num_obs);
 
     // Load freqs
     if (freqFile)
     {
-        file = fopen(freqFile, "r+");
-        if (file == NULL)
+        // Load freqs
+        double *fit_freqs;
+        int num_freqs = load_freqfile(freqFile, &fit_freqs);
+
+        if (num_freqs < 0)
         {
             free(time);
             free(mmi);
-            return error("Unable to open file: %s", freqFile);
+            return error("freq load failed");
         }
+        printf("Read %d freqs\n", num_freqs);
 
-        int total_freqs = 0;
-        while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-            if (linebuf[0] != '#' && linebuf[0] != '\n')
-                total_freqs++;
-        rewind(file);
-
-        int num_freqs = 0;
-        double *fit_freqs = (double *)malloc(total_freqs*sizeof(double));
-        while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
-        {
-            // Skip comment / empty lines
-            if (linebuf[0] == '#' || linebuf[0] == '\n')
-                continue;
-
-            int use;
-            sscanf(linebuf, "%*d %lf %d\n", &fit_freqs[num_freqs], &use);
-
-            // Convert to Hz
-            fit_freqs[num_freqs] *= 1e-6;
-            if (use)
-                num_freqs++;
-        }
-        fclose(file);
-
-        printf("Using %d of %d freqs\n", num_freqs, total_freqs);
         if (num_freqs == 0)
         {
             free(fit_freqs);
@@ -283,19 +305,10 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
             return error("Fit failed");
         }
 
-        // Calculate amplitude and phase for each freq
-        printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
-        for (int i = 0; i < num_freqs; i++)
-        {
-            double a = fit_amplitudes[2*i+1];
-            double b = fit_amplitudes[2*i];
-            double amp = sqrt(a*a + b*b);
-            double phase = atan2(b, a)*180/M_PI;
-            while (phase > 360) phase -= 360;
-            while (phase < 0) phase += 360;
+        print_freq_table(fit_freqs, fit_amplitudes, num_freqs);
+        double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+        printf("Chi^2: %f\n", chi2);
 
-            printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*fit_freqs[i], 1/fit_freqs[i], amp, phase);
-        }
 
         // Prewhiten
         for (int i = 0; i < num_obs; i++)
@@ -309,7 +322,6 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
             }
             mmi[i] -= model;
         }
-        fclose(file);
         free(fit_amplitudes);
         free(fit_freqs);
     }
@@ -322,7 +334,7 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
     calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mmi, num_obs, freq, ampl, num_uhz);
 
     // Save output
-    file = fopen(outFile, "w");
+    FILE *file = fopen(outFile, "w");
     if (file == NULL)
     {
         free(ampl);
@@ -351,73 +363,39 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
  */
 int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, double dUHz, char *outFile)
 {
-    char linebuf[1024];
-    FILE *file = fopen(tsFile, "r+");
-    if (file == NULL)
-        return error("Unable to open file: %s", tsFile);
-
-    // Count the number of entries to allocate
-    int total_obs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-        if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_obs++;
-    rewind(file);
-
-    int num_obs = 0;
-    double *time = (double *)malloc(total_obs*sizeof(double));
-    double *mmi = (double *)malloc(total_obs*sizeof(double));
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
-    {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-            continue;
-
-        sscanf(linebuf, "%lf %*f\n", &time[num_obs]);
-
-        // Convert to seconds
-        time[num_obs] *= 86400;
-        mmi[num_obs] = sin(2e-6*M_PI*windowFreq*time[num_obs]);
-        num_obs++;
-    }
-    fclose(file);
-    printf("Read %d observations\n", num_obs);
-
-    if (num_obs == 0)
+    double *time = NULL, *mmi = NULL;
+    int num_obs = load_tsfile(tsFile, &time, &mmi);
+    if (num_obs <= 0)
+        return error("ts load failed");
+    else if (num_obs == 0)
     {
         free(time);
         free(mmi);
-        return error("No observations found");
+        return error("No observations in ts file");
     }
+    printf("Read %d observations\n", num_obs);
+
 
     // Calculate DFT
     int num_uhz = (int)((maxUHz - minUHz)/dUHz);
     double *freq = (double *)malloc(num_uhz*sizeof(double));
     double *ampl = (double *)malloc(num_uhz*sizeof(double));
-
     calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mmi, num_obs, freq, ampl, num_uhz);
 
     // Save output
-    file = fopen(outFile, "w");
-    if (file == NULL)
+    FILE *file = fopen(outFile, "w");
+    if (file != NULL)
     {
-        free(ampl);
-        free(freq);
-        free(time);
-        free(mmi);
-        return error("Unable to open file: %s", outFile);
+        for (int i = 0; i < num_uhz; i++)
+            fprintf(file, "%f %f\n", 1e6*freq[i], ampl[i]);
+        fclose(file);
     }
-
-    for (int i = 0; i < num_uhz; i++)
-        fprintf(file, "%f %f\n", 1e6*freq[i], ampl[i]);
-
-    fclose(file);
 
     free(ampl);
     free(freq);
     free(time);
     free(mmi);
-
-    return 0;
+    return file != NULL ? 0 : error("Unable to open file: %s", outFile);
 }
 
 /*
@@ -428,78 +406,28 @@ int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, do
  */
 int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz)
 {
-    char linebuf[1024];
-    FILE *file = fopen(tsFile, "r+");
-    if (file == NULL)
-        return error("Unable to open file: %s", tsFile);
-
-    // Count the number of entries to allocate
-    int total_obs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-        if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_obs++;
-    rewind(file);
-
-    int num_obs = 0;
-    double *time = (double *)malloc(total_obs*sizeof(double));
-    double *mmi = (double *)malloc(total_obs*sizeof(double));
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    double *time = NULL, *mmi = NULL, *fit_freqs = NULL;
+    int num_obs = load_tsfile(tsFile, &time, &mmi);
+    if (num_obs <= 0)
+        return error("ts load failed");
+    else if (num_obs == 0)
     {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-            continue;
-
-        sscanf(linebuf, "%lf %lf\n", &time[num_obs], &mmi[num_obs]);
-
-        // Convert to seconds
-        time[num_obs] *= 86400;
-        num_obs++;
+        free(time);
+        free(mmi);
+        return error("No observations in ts file");
     }
-    fclose(file);
     printf("Read %d observations\n", num_obs);
 
-    if (num_obs == 0)
-    {
-        free(time);
-        free(mmi);
-        return error("No observations found");
-    }
-
     // Load freqs
+    int num_freqs = load_freqfile(freqFile, &fit_freqs);
 
-    file = fopen(freqFile, "r+");
-    if (file == NULL)
+    if (num_freqs < 0)
     {
         free(time);
         free(mmi);
-        return error("Unable to open file: %s", freqFile);
+        return error("freq load failed");
     }
-
-    int total_freqs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-        if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_freqs++;
-    rewind(file);
-
-    int num_freqs = 0;
-    double *fit_freqs = (double *)malloc(total_freqs*sizeof(double));
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
-    {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-            continue;
-
-        int use;
-        sscanf(linebuf, "%*d %lf %d %*s\n", &fit_freqs[num_freqs], &use);
-
-        // Convert to Hz
-        fit_freqs[num_freqs] *= 1e-6;
-        if (use)
-            num_freqs++;
-    }
-    fclose(file);
-
-    printf("Using %d of %d freqs\n", num_freqs, total_freqs);
+    printf("Read %d freqs\n", num_freqs);
 
     // Fit amplitudes for each freq
     double *fit_amplitudes = (double *)malloc(2*num_freqs*sizeof(double));
@@ -512,22 +440,11 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
         return error("Fit failed");
     }
 
-    // Calculate amplitude and phase for each freq
-    printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
-    for (int i = 0; i < num_freqs; i++)
-    {
-        double a = fit_amplitudes[2*i+1];
-        double b = fit_amplitudes[2*i];
-        double amp = sqrt(a*a + b*b);
-        double phase = atan2(b, a)*180/M_PI;
-        while (phase > 360) phase -= 360;
-        while (phase < 0) phase += 360;
-
-        printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*fit_freqs[i], 1/fit_freqs[i], amp, phase);
-    }
+    print_freq_table(fit_freqs, fit_amplitudes, num_freqs);
+    double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+    printf("Chi^2: %f\n", chi2);
 
     // Prewhiten
-    double chi2 = 0;
     for (int i = 0; i < num_obs; i++)
     {
         double model = 0;
@@ -538,12 +455,9 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
             model += fit_amplitudes[2*j+1]*sin(phase);
         }
         mmi[i] -= model;
-        chi2 += mmi[i]*mmi[i];
     }
-    fclose(file);
     free(fit_amplitudes);
     free(fit_freqs);
-    printf("Chi^2: %f\n", chi2);
 
     // Calculate DFT
     int num_uhz = (int)((maxUHz - minUHz)/dUHz);
@@ -621,39 +535,6 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     return 0;
 }
 
-static void print_freq_table(double *fit_freqs, double *fit_amplitudes, int num_freqs)
-{
-    printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
-    for (int i = 0; i < num_freqs; i++)
-    {
-        double a = fit_amplitudes[2*i+1];
-        double b = fit_amplitudes[2*i];
-        double amp = sqrt(a*a + b*b);
-        double phase = atan2(b, a)*180/M_PI;
-        while (phase > 360) phase -= 360;
-        while (phase < 0) phase += 360;
-
-        printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*fit_freqs[i], 1/fit_freqs[i], amp, phase);
-    }
-}
-
-static double calculate_chi2(double *fit_freqs, double *fit_amplitudes, int num_freqs, double *mmi, double *time, int num_obs)
-{
-    double chi2 = 0;
-    for (int i = 0; i < num_obs; i++)
-    {
-        double model = 0;
-        for (int j = 0; j < num_freqs; j++)
-        {
-            double phase = 2*M_PI*fit_freqs[j]*time[i];
-            model += fit_amplitudes[2*j]*cos(phase);
-            model += fit_amplitudes[2*j+1]*sin(phase);
-        }
-        chi2 += (mmi[i] - model)*(mmi[i]-model);
-    }
-    return chi2;
-}
-
 static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
                      double *mmi, double *time, int num_obs,
                      int vary_freq, double centerFreq, double stepSize, int numSteps,
@@ -678,78 +559,29 @@ static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
 
 int nonlinear_fit(char *tsFile, char *freqFile)
 {
-    char linebuf[1024];
-    FILE *file = fopen(tsFile, "r+");
-    if (file == NULL)
-        return error("Unable to open file: %s", tsFile);
+    double *time = NULL, *mmi = NULL, *init_freqs = NULL;
+    int num_obs = load_tsfile(tsFile, &time, &mmi);
 
-    // Count the number of entries to allocate
-    int total_obs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-        if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_obs++;
-    rewind(file);
+    if (num_obs <= 0)
+        return error("ts load failed");
 
-    int num_obs = 0;
-    double *time = (double *)malloc(total_obs*sizeof(double));
-    double *mmi = (double *)malloc(total_obs*sizeof(double));
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    else if (num_obs == 0)
     {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-            continue;
-
-        sscanf(linebuf, "%lf %lf\n", &time[num_obs], &mmi[num_obs]);
-
-        // Convert to seconds
-        time[num_obs] *= 86400;
-        num_obs++;
+        free(time);
+        free(mmi);
+        return error("No observations in ts file");
     }
-    fclose(file);
     printf("Read %d observations\n", num_obs);
 
-    if (num_obs == 0)
-    {
-        free(time);
-        free(mmi);
-        return error("No observations found");
-    }
-
     // Load freqs
-
-    file = fopen(freqFile, "r+");
-    if (file == NULL)
+    int num_freqs = load_freqfile(freqFile, &init_freqs);
+    if (num_freqs < 0)
     {
         free(time);
         free(mmi);
-        return error("Unable to open file: %s", freqFile);
+        return error("freq load failed");
     }
-
-    int total_freqs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-        if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_freqs++;
-    rewind(file);
-
-    int num_freqs = 0;
-    double *init_freqs = (double *)malloc(total_freqs*sizeof(double));
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
-    {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-            continue;
-
-        int use;
-        sscanf(linebuf, "%*d %lf %d %*s\n", &init_freqs[num_freqs], &use);
-
-        // Convert to Hz
-        init_freqs[num_freqs] *= 1e-6;
-        if (use)
-            num_freqs++;
-    }
-    fclose(file);
-
-    printf("Using %d of %d freqs\n", num_freqs, total_freqs);
+    printf("Read %d freqs\n", num_freqs);
 
     // Fit amplitudes for each freq
     double *fit_amplitudes = (double *)malloc(2*num_freqs*sizeof(double));
@@ -768,7 +600,7 @@ int nonlinear_fit(char *tsFile, char *freqFile)
     double chi2 = calculate_chi2(init_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
     printf("Chi^2: %f\n", chi2);
 
-    double *fit_freqs = (double *)malloc(total_freqs*sizeof(double));
+    double *fit_freqs = (double *)malloc(num_freqs*sizeof(double));
     for (int j = 0; j < num_freqs; j++)
         fit_freqs[j] = init_freqs[j];
 

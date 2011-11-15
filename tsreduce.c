@@ -206,6 +206,10 @@ int main( int argc, char *argv[] )
     else if (argc == 7 && strncmp(argv[1], "findfreq", 8) == 0)
         return find_max_freq(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]));
 
+    // `tsreduce window july2011_run2.ts 1000 800 1200 0.01 window.dat`
+    else if (argc == 8 && strncmp(argv[1], "window", 6) == 0)
+        return dft_window(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7]);
+
     else
         error("Invalid args");
     return 0;

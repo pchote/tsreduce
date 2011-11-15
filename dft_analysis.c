@@ -345,6 +345,80 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
     return 0;
 }
 
+/*
+ * Calculate the DFT window at freq (in uHz) for the BJD/mma data in tsFile between minUHz and maxUHz in increments dUHz
+ * Output is saved to outFile with frequencies in uHz.
+ */
+int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, double dUHz, char *outFile)
+{
+    char linebuf[1024];
+    FILE *file = fopen(tsFile, "r+");
+    if (file == NULL)
+        return error("Unable to open file: %s", tsFile);
+
+    // Count the number of entries to allocate
+    int total_obs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total_obs++;
+    rewind(file);
+
+    int num_obs = 0;
+    double *time = (double *)malloc(total_obs*sizeof(double));
+    double *mmi = (double *)malloc(total_obs*sizeof(double));
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        sscanf(linebuf, "%lf %*f\n", &time[num_obs]);
+
+        // Convert to seconds
+        time[num_obs] *= 86400;
+        mmi[num_obs] = sin(2e-6*M_PI*windowFreq*time[num_obs]);
+        num_obs++;
+    }
+    fclose(file);
+    printf("Read %d observations\n", num_obs);
+
+    if (num_obs == 0)
+    {
+        free(time);
+        free(mmi);
+        return error("No observations found");
+    }
+
+    // Calculate DFT
+    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
+    double *freq = (double *)malloc(num_uhz*sizeof(double));
+    double *ampl = (double *)malloc(num_uhz*sizeof(double));
+
+    calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mmi, num_obs, freq, ampl, num_uhz);
+
+    // Save output
+    file = fopen(outFile, "w");
+    if (file == NULL)
+    {
+        free(ampl);
+        free(freq);
+        free(time);
+        free(mmi);
+        return error("Unable to open file: %s", outFile);
+    }
+
+    for (int i = 0; i < num_uhz; i++)
+        fprintf(file, "%f %f\n", 1e6*freq[i], ampl[i]);
+
+    fclose(file);
+
+    free(ampl);
+    free(freq);
+    free(time);
+    free(mmi);
+
+    return 0;
+}
 
 /*
  * Calculate the DFT of the BJD/mma data in tsFile between minUHz and maxUHz in increments dUHz

@@ -620,3 +620,219 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
 
     return 0;
 }
+
+static void print_freq_table(double *fit_freqs, double *fit_amplitudes, int num_freqs)
+{
+    printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
+    for (int i = 0; i < num_freqs; i++)
+    {
+        double a = fit_amplitudes[2*i+1];
+        double b = fit_amplitudes[2*i];
+        double amp = sqrt(a*a + b*b);
+        double phase = atan2(b, a)*180/M_PI;
+        while (phase > 360) phase -= 360;
+        while (phase < 0) phase += 360;
+
+        printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*fit_freqs[i], 1/fit_freqs[i], amp, phase);
+    }
+}
+
+static double calculate_chi2(double *fit_freqs, double *fit_amplitudes, int num_freqs, double *mmi, double *time, int num_obs)
+{
+    double chi2 = 0;
+    for (int i = 0; i < num_obs; i++)
+    {
+        double model = 0;
+        for (int j = 0; j < num_freqs; j++)
+        {
+            double phase = 2*M_PI*fit_freqs[j]*time[i];
+            model += fit_amplitudes[2*j]*cos(phase);
+            model += fit_amplitudes[2*j+1]*sin(phase);
+        }
+        chi2 += (mmi[i] - model)*(mmi[i]-model);
+    }
+    return chi2;
+}
+
+static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
+                     double *mmi, double *time, int num_obs,
+                     int vary_freq, double centerFreq, double stepSize, int numSteps,
+                     double *best_freq, double *best_chi2)
+{
+    for (int j = -numSteps; j <= numSteps; j++)
+    {
+        fit_freqs[vary_freq] = centerFreq + j*stepSize;
+
+        if (fit_sinusoids(time, mmi, num_obs, fit_freqs, num_freqs, fit_amplitudes))
+            continue;
+
+        double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+        if (chi2 < *best_chi2)
+        {
+            *best_chi2 = chi2;
+            *best_freq = fit_freqs[vary_freq];
+        }
+    }
+    return 0;
+}
+
+int nonlinear_fit(char *tsFile, char *freqFile)
+{
+    char linebuf[1024];
+    FILE *file = fopen(tsFile, "r+");
+    if (file == NULL)
+        return error("Unable to open file: %s", tsFile);
+
+    // Count the number of entries to allocate
+    int total_obs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total_obs++;
+    rewind(file);
+
+    int num_obs = 0;
+    double *time = (double *)malloc(total_obs*sizeof(double));
+    double *mmi = (double *)malloc(total_obs*sizeof(double));
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        sscanf(linebuf, "%lf %lf\n", &time[num_obs], &mmi[num_obs]);
+
+        // Convert to seconds
+        time[num_obs] *= 86400;
+        num_obs++;
+    }
+    fclose(file);
+    printf("Read %d observations\n", num_obs);
+
+    if (num_obs == 0)
+    {
+        free(time);
+        free(mmi);
+        return error("No observations found");
+    }
+
+    // Load freqs
+
+    file = fopen(freqFile, "r+");
+    if (file == NULL)
+    {
+        free(time);
+        free(mmi);
+        return error("Unable to open file: %s", freqFile);
+    }
+
+    int total_freqs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total_freqs++;
+    rewind(file);
+
+    int num_freqs = 0;
+    double *init_freqs = (double *)malloc(total_freqs*sizeof(double));
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        int use;
+        sscanf(linebuf, "%*d %lf %d %*s\n", &init_freqs[num_freqs], &use);
+
+        // Convert to Hz
+        init_freqs[num_freqs] *= 1e-6;
+        if (use)
+            num_freqs++;
+    }
+    fclose(file);
+
+    printf("Using %d of %d freqs\n", num_freqs, total_freqs);
+
+    // Fit amplitudes for each freq
+    double *fit_amplitudes = (double *)malloc(2*num_freqs*sizeof(double));
+    if (fit_sinusoids(time, mmi, num_obs, init_freqs, num_freqs, fit_amplitudes))
+    {
+        free(fit_amplitudes);
+        free(init_freqs);
+        free(time);
+        free(mmi);
+        return error("Fit failed");
+    }
+
+    // Calculate amplitude and phase for each freq
+    printf("Initial settings:\n");
+    print_freq_table(init_freqs, fit_amplitudes, num_freqs);
+    double chi2 = calculate_chi2(init_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+    printf("Chi^2: %f\n", chi2);
+
+    double *fit_freqs = (double *)malloc(total_freqs*sizeof(double));
+    for (int j = 0; j < num_freqs; j++)
+        fit_freqs[j] = init_freqs[j];
+
+    // Vary frequency between x-20 .. x + 20 in 0.01 steps
+    double coarse_step = 1e-6;
+    int coarse_step_count = 5;
+    double fine_step = 0.01e-6;
+    int fine_step_count = 20;
+
+    double lastchi2 = chi2;
+    for (int i = 0; i < num_freqs; i++)
+    {
+        double best_chi2 = chi2;
+        double best_freq = fit_freqs[i];
+
+        // Start with a rough step
+        printf("Freq %f\n", init_freqs[i]);
+        int iterate_mode = 2;
+        double step = coarse_step;
+        int num_steps = coarse_step_count;
+        printf("\tUsing coarse steps\n");
+        do
+        {
+            double last_best_freq = best_freq;
+            if (step_freq(fit_freqs, fit_amplitudes, num_freqs,
+                          mmi, time, num_obs,
+                          i, best_freq, step, num_steps,
+                          &best_freq, &best_chi2))
+            {
+                free(fit_amplitudes);
+                free(init_freqs);
+                free(fit_freqs);
+                free(time);
+                free(mmi);
+                return error("Variation failed");
+            }
+
+            if (best_chi2 < lastchi2)
+            {
+                printf("\t%10.2f -> %10.2f dchi2: %f\n", 1e6*last_best_freq, 1e6*best_freq, lastchi2 - best_chi2);
+                lastchi2 = best_chi2;
+            }
+            else
+            {
+                // Switch to fine iteration
+                if (--iterate_mode)
+                {
+                    printf("\tUsing fine steps\n");
+                    step = fine_step;
+                    num_steps = fine_step_count;
+                }
+            }
+        }
+        while (iterate_mode);
+
+        fit_freqs[i] = best_freq;
+        chi2 = lastchi2;
+    }
+
+    free(fit_freqs);
+    free(fit_amplitudes);
+    free(init_freqs);
+    free(time);
+    free(mmi);
+
+    return 0;
+}

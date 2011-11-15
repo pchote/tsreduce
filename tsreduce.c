@@ -210,6 +210,9 @@ int main( int argc, char *argv[] )
     else if (argc == 8 && strncmp(argv[1], "window", 6) == 0)
         return dft_window(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7]);
 
+    // `tsreduce optimisefreq july2011_run2.ts dftfreq.dat`
+    else if (argc == 4 && strncmp(argv[1], "optimizefreqs", 13) == 0)
+        return nonlinear_fit(argv[2], argv[3]);
     else
         error("Invalid args");
     return 0;

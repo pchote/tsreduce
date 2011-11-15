@@ -13,5 +13,5 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
 int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFile, char *freqFile);
 int dft_window(char *tsFile, double freq, double minUHz, double maxUHz, double dUHz, char *outFile);
 int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz);
-
+int nonlinear_fit(char *tsFile, char *freqFile);
 #endif

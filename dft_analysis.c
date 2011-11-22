@@ -375,6 +375,9 @@ int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, do
     }
     printf("Read %d observations\n", num_obs);
 
+    // Generate sinusoid
+    for (int i = 0; i < num_obs; i++)
+        mmi[i] = sin(2*M_PI*windowFreq*1e-6*time[i]);
 
     // Calculate DFT
     int num_uhz = (int)((maxUHz - minUHz)/dUHz);

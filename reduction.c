@@ -29,7 +29,7 @@ int normalize_flat(framedata *flat, void *data)
     if (dark->dtype != FRAMEDATA_DBL || flat->dtype != FRAMEDATA_DBL)
         return error("normalize_flat frames must be type DBL");
     
-    if (dark->rows != flat->rows || dark->cols != flat->rows)
+    if (dark->rows != flat->rows || dark->cols != flat->cols)
         return error("normalize_flat frames must have same size");
     
     int flatexp = framedata_get_header_int(flat, "EXPTIME");
@@ -103,8 +103,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     fits_create_file(&out, outbuf, &status);
     
     /* Create the primary array image (16-bit short integer pixels */
-    long size[2] = { dark.rows, dark.cols };
-    fits_create_img(out, DOUBLE_IMG, 2, size, &status);
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){dark.cols, dark.rows}, &status);
     
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, dark.rows*dark.cols, flat, &status))
@@ -134,7 +133,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
         return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
     }
     
-    framedata base = framedata_new(frames[0], FRAMEDATA_INT);
+    framedata base = framedata_new(frames[0], FRAMEDATA_DBL);
     int exptime = framedata_get_header_int(&base, "EXPTIME");
     double *dark = (double *)malloc(base.rows*base.cols*sizeof(double));
     if (dark == NULL)
@@ -158,9 +157,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     fits_create_file(&out, outbuf, &status);
     
     // Create the primary array image (16-bit short integer pixels
-    long size[2] = { base.rows, base.cols };
-    fits_create_img(out, DOUBLE_IMG, 2, size, &status);
-    
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){base.cols, base.rows}, &status);
     fits_update_key(out, TINT, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
     
     // Write the frame data to the image
@@ -206,8 +203,7 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     fits_create_file(&out, outbuf, &status);
     
     // Create the primary array image
-    long size[2] = { base.rows, base.cols };
-    fits_create_img(out, DOUBLE_IMG, 2, size, &status);
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){base.cols, base.rows}, &status);
     
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, base.dbl_data, &status))

@@ -372,7 +372,7 @@ int plot_fits(char *dataPath)
             polyfit[i] += pow*coeffs[j];
             pow *= time[i];
         }
-        mmi[i] = 1000*(ratio[i] - polyfit[i])/ratio[i];
+        mmi[i] = ratio[i] > 0 ? 1000*(ratio[i] - polyfit[i])/ratio[i] : 0;
         mmi_mean += mmi[i];
     }
     mmi_mean /= data.num_obs;

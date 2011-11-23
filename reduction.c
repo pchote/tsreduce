@@ -462,7 +462,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     }
     
     char command[128];
-    snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.rows, frame.cols);
+    snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.cols, frame.rows);
     if (tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
     {
         framedata_free(frame);

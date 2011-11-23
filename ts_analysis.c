@@ -423,7 +423,7 @@ int plot_fits(char *dataPath)
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, time[data.num_obs-1], min_mmi, max_mmi);
-    cpgline(data.num_obs, time, mmi);
+    cpgpt(data.num_obs, time, mmi, 2);
 
     // Ratio
     cpgsvp(0.1, 0.9, 0.55, 0.75);
@@ -432,7 +432,7 @@ int plot_fits(char *dataPath)
     cpgbox("bcst", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, time[data.num_obs-1], min_ratio, max_ratio);
-    cpgline(data.num_obs, time, ratio);
+    cpgpt(data.num_obs, time, ratio, 2);
 
     // Plot the polynomial fit
     cpgsci(2);
@@ -450,7 +450,7 @@ int plot_fits(char *dataPath)
     {
         cpgswin(0,time[data.num_obs-1], 0, data.plot_max_raw/data.targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
-        cpgline(data.num_obs, time, &raw[j*data.num_obs]);
+        cpgpt(data.num_obs, time, &raw[j*data.num_obs], 2);
     }
     cpgend();
 

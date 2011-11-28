@@ -606,59 +606,70 @@ int nonlinear_fit(char *tsFile, char *freqFile)
 
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
     double coarse_step = 1e-6;
-    int coarse_step_count = 5;
+    int coarse_step_count = 2;
     double fine_step = 0.01e-6;
     int fine_step_count = 20;
 
+    double initialchi2 = chi2;
+    double lastouterchi2 = chi2;
     double lastchi2 = chi2;
-    for (int i = 0; i < num_freqs; i++)
+    
+    do
     {
-        double best_chi2 = chi2;
-        double best_freq = fit_freqs[i];
-
-        // Start with a rough step
-        printf("Freq %f\n", init_freqs[i]);
-        int iterate_mode = 2;
-        double step = coarse_step;
-        int num_steps = coarse_step_count;
-        printf("\tUsing coarse steps\n");
-        do
+        lastouterchi2 = chi2;
+        for (int i = 0; i < num_freqs; i++)
         {
-            double last_best_freq = best_freq;
-            if (step_freq(fit_freqs, fit_amplitudes, num_freqs,
-                          mmi, time, num_obs,
-                          i, best_freq, step, num_steps,
-                          &best_freq, &best_chi2))
-            {
-                free(fit_amplitudes);
-                free(init_freqs);
-                free(fit_freqs);
-                free(time);
-                free(mmi);
-                return error("Variation failed");
-            }
+            double best_chi2 = chi2;
+            double best_freq = fit_freqs[i];
 
-            if (best_chi2 < lastchi2)
+            // Start with a rough step
+            printf("Freq %10.2f\n", 1e6*init_freqs[i]);
+            int iterate_mode = 2;
+            double step = coarse_step;
+            int num_steps = coarse_step_count;
+            printf("\tUsing coarse steps\n");
+            do
             {
-                printf("\t%10.2f -> %10.2f dchi2: %f\n", 1e6*last_best_freq, 1e6*best_freq, lastchi2 - best_chi2);
-                lastchi2 = best_chi2;
-            }
-            else
-            {
-                // Switch to fine iteration
-                if (--iterate_mode)
+                double last_best_freq = best_freq;
+                if (step_freq(fit_freqs, fit_amplitudes, num_freqs,
+                              mmi, time, num_obs,
+                              i, best_freq, step, num_steps,
+                              &best_freq, &best_chi2))
                 {
-                    printf("\tUsing fine steps\n");
-                    step = fine_step;
-                    num_steps = fine_step_count;
+                    free(fit_amplitudes);
+                    free(init_freqs);
+                    free(fit_freqs);
+                    free(time);
+                    free(mmi);
+                    return error("Variation failed");
+                }
+
+                if (best_chi2 < lastchi2)
+                {
+                    printf("\t%10.2f -> %10.2f dchi2: %f\n", 1e6*last_best_freq, 1e6*best_freq, lastchi2 - best_chi2);
+                    lastchi2 = best_chi2;
+                }
+                else
+                {
+                    // Switch to fine iteration
+                    if (--iterate_mode)
+                    {
+                        printf("\tUsing fine steps\n");
+                        step = fine_step;
+                        num_steps = fine_step_count;
+                    }
                 }
             }
-        }
-        while (iterate_mode);
+            while (iterate_mode);
 
-        fit_freqs[i] = best_freq;
-        chi2 = lastchi2;
-    }
+            fit_freqs[i] = best_freq;
+            chi2 = lastchi2;
+        }
+    } while (chi2 < lastouterchi2);
+
+    printf("%f -> %f (%f)\n", initialchi2, chi2, initialchi2 - chi2);
+    for (int i = 0; i < num_freqs; i++)
+        printf("%d %10.2f 1\n", i, 1e6*fit_freqs[i]);
 
     free(fit_freqs);
     free(fit_amplitudes);

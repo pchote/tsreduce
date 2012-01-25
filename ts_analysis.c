@@ -423,7 +423,7 @@ int plot_fits(char *dataPath)
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, time[data.num_obs-1], min_mmi, max_mmi);
-    cpgpt(data.num_obs, time, mmi, 2);
+    cpgpt(data.num_obs, time, mmi, 20);
 
     // Ratio
     cpgsvp(0.1, 0.9, 0.55, 0.75);
@@ -432,7 +432,7 @@ int plot_fits(char *dataPath)
     cpgbox("bcst", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, time[data.num_obs-1], min_ratio, max_ratio);
-    cpgpt(data.num_obs, time, ratio, 2);
+    cpgpt(data.num_obs, time, ratio, 20);
 
     // Plot the polynomial fit
     cpgsci(2);
@@ -450,7 +450,7 @@ int plot_fits(char *dataPath)
     {
         cpgswin(0,time[data.num_obs-1], 0, data.plot_max_raw/data.targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
-        cpgpt(data.num_obs, time, &raw[j*data.num_obs], 2);
+        cpgpt(data.num_obs, time, &raw[j*data.num_obs], 20);
     }
     cpgend();
 
@@ -484,7 +484,7 @@ int plot_fits(char *dataPath)
     // DFT
     cpgsvp(0.1, 0.9, 0.075, 0.9);
     cpgswin(data.plot_min_uhz, data.plot_max_uhz, 0, max_dft_ampl);
-    cpgbox("bcstn", 0, 0, "bcnst", 10, 2);
+    cpgbox("bcstn", 0, 0, "bcnst", 5, 5);
 
     cpgswin(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, 0, max_dft_ampl);
     cpgsci(12);
@@ -495,7 +495,7 @@ int plot_fits(char *dataPath)
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
 
     cpgsch(1.25);
-    cpgmtxt("t", 1.5, 0.5, 0.5, "Amplitude Spectrum");
+    cpgmtxt("t", 1.5, 0.5, 0.5, "Fourier Amplitude Spectrum");
 
     free(coeffs);
     free(ampl);

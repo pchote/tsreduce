@@ -609,9 +609,9 @@ int nonlinear_fit(char *tsFile, char *freqFile)
 
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
     double coarse_step = 1e-6;
-    int coarse_step_count = 2;
+    int coarse_step_count = 25;
     double fine_step = 0.01e-6;
-    int fine_step_count = 20;
+    int fine_step_count = 200;
 
     double initialchi2 = chi2;
     double lastouterchi2 = chi2;
@@ -630,7 +630,7 @@ int nonlinear_fit(char *tsFile, char *freqFile)
             int iterate_mode = 2;
             double step = coarse_step;
             int num_steps = coarse_step_count;
-            printf("\tUsing coarse steps\n");
+            printf("\tUsing %d coarse steps\n", num_steps);
             do
             {
                 double last_best_freq = best_freq;

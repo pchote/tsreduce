@@ -65,6 +65,73 @@ int normalize_flat(framedata *flat, void *data)
     return 0;
 }
 
+
+// Calculate the standard deviation of pixels in a data cube
+// The standard deviation is calculated as the sum of differences from the per-pixel
+// mean, over all frames (the deviation is not calculated per-frame, and then averaged)
+//
+//    Data is a pointer to a data cube
+//        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[numFrames] = frame[0][1,0] etc
+//    num_frames is the number of frames worth of data
+//    num_pixels is the number of pixels in each frame
+double calculate_cube_stddev(double *data, int num_frames, int num_pixels)
+{
+    // Calculate a mean master-bias
+    double *mean = (double *)malloc(num_pixels*sizeof(double));
+    for (int j = 0; j < num_pixels; j++)
+    {
+        mean[j] = 0;
+        for (int i = 0; i < num_frames; i++)
+            mean[j] += data[num_frames*j + i];
+        mean[j] /= num_frames;
+    }
+
+    // Calculate and return standard deviation from pixel mean over the cube
+    double std = 0;
+    for (int j = 0; j < num_pixels; j++)
+        for (int i = 0; i < num_frames; i++)
+            std += (data[num_frames*j + i] - mean[j])*(data[num_frames*j + i] - mean[j]);
+    return sqrt(std/(num_pixels*num_frames));
+}
+
+// Calculate the CCD read noise from the overscan bias in a collection of frames
+// Read noise is given by the standard deviation away from the mean bias level
+int ccd_readnoise(const char *framePattern)
+{
+    char **frames;
+    int num_frames = get_matching_files(framePattern, &frames);
+
+    // TODO: Check fits headers for an appropriate header
+    int x_min = 525;
+    int x_max = 535;
+    int y_min = 5;
+    int y_max = 508;
+
+    int num_pixels = (y_max - y_min)*(x_max - x_min);
+    double *data = (double *)malloc(num_pixels*num_frames*sizeof(double));
+    int p = 0;
+
+    // Load overscan region into a data cube
+    for (int k = 0; k < num_frames; k++)
+    {
+        framedata frame = framedata_new(frames[k], FRAMEDATA_DBL);
+
+        // Copy overscan pixels
+        for (int j = y_min; j < y_max; j++)
+            for (int i = x_min; i < x_max; i++)
+                data[p++] = frame.dbl_data[j*frame.cols + i];
+
+        framedata_free(frame);
+    }
+
+    double readnoise = calculate_cube_stddev(data, num_frames, num_pixels);
+    printf("Read noise from %d frames: %f ADU\n", num_frames, readnoise);
+
+    free(data);
+    free_2d_array(frames, num_frames);
+
+    return 0;
+}
 // Create a flat field frame from the frames listed by the command `flatcmd',
 // rejecting `minmax' highest and lowest pixel values after subtracting
 // the dark frame `masterdark'.

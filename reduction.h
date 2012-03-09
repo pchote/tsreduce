@@ -12,7 +12,7 @@
 int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname);
 int create_dark(const char *pattern, int minmax, const char *outname);
 
-
+int ccd_readnoise(const char *framePattern);
 int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath);
 int update_reduction(char *dataPath);
 int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath);

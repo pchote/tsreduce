@@ -71,7 +71,7 @@ static int load_tsfile(char *tsFile, double **time, double **mmi)
  * Allocates memory and loads frequency data, returning a pointers via the passed arg
  * Returns the number of frequencies loaded, or -1 on error
  */
-static int load_freqfile(char *freqFile, double **freqs)
+static int load_freqfile(char *freqFile, double **freqs, int **extra)
 {
     char linebuf[1024];
     FILE *file = fopen(freqFile, "r+");
@@ -89,6 +89,9 @@ static int load_freqfile(char *freqFile, double **freqs)
 
     int num_freqs = 0;
     *freqs = (double *)malloc(total_freqs*sizeof(double));
+    if (extra)
+        *extra = (int *)malloc(total_freqs*sizeof(int));
+
     while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
     {
         // Skip comment / empty lines
@@ -96,10 +99,14 @@ static int load_freqfile(char *freqFile, double **freqs)
             continue;
 
         int use;
-        sscanf(linebuf, "%*d %lf %d %*s\n", &(*freqs)[num_freqs], &use);
+        sscanf(linebuf, "%*s %lf %d %*s\n", &(*freqs)[num_freqs], &use);
 
         // Convert to Hz
         (*freqs)[num_freqs] *= 1e-6;
+
+        if (extra)
+            (*extra)[num_freqs] = use;
+
         if (use)
             num_freqs++;
     }
@@ -159,7 +166,7 @@ int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, do
     printf("Read %d observations\n", num_obs);
 
     // Load freqs
-    int num_freqs = load_freqfile(freqFile, &fit_freqs);
+    int num_freqs = load_freqfile(freqFile, &fit_freqs, NULL);
 
     if (num_freqs < 0)
     {
@@ -276,7 +283,7 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
     {
         // Load freqs
         double *fit_freqs;
-        int num_freqs = load_freqfile(freqFile, &fit_freqs);
+        int num_freqs = load_freqfile(freqFile, &fit_freqs, NULL);
 
         if (num_freqs < 0)
         {
@@ -422,7 +429,7 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     printf("Read %d observations\n", num_obs);
 
     // Load freqs
-    int num_freqs = load_freqfile(freqFile, &fit_freqs);
+    int num_freqs = load_freqfile(freqFile, &fit_freqs, NULL);
 
     if (num_freqs < 0)
     {
@@ -563,6 +570,7 @@ static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
 int nonlinear_fit(char *tsFile, char *freqFile)
 {
     double *time = NULL, *mmi = NULL, *init_freqs = NULL;
+    int *use_freqs = NULL;
     int num_obs = load_tsfile(tsFile, &time, &mmi);
 
     if (num_obs <= 0)
@@ -577,7 +585,8 @@ int nonlinear_fit(char *tsFile, char *freqFile)
     printf("Read %d observations\n", num_obs);
 
     // Load freqs
-    int num_freqs = load_freqfile(freqFile, &init_freqs);
+    int num_freqs = load_freqfile(freqFile, &init_freqs, &use_freqs);
+
     if (num_freqs < 0)
     {
         free(time);
@@ -608,10 +617,10 @@ int nonlinear_fit(char *tsFile, char *freqFile)
         fit_freqs[j] = init_freqs[j];
 
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
-    double coarse_step = 1e-6;
-    int coarse_step_count = 25;
+    double coarse_step = 1.0/(24*3600);
+    int coarse_step_count = 5;
     double fine_step = 0.01e-6;
-    int fine_step_count = 200;
+    int fine_step_count = 10;
 
     double initialchi2 = chi2;
     double lastouterchi2 = chi2;
@@ -622,6 +631,10 @@ int nonlinear_fit(char *tsFile, char *freqFile)
         lastouterchi2 = chi2;
         for (int i = 0; i < num_freqs; i++)
         {
+            // Only fit freqs with 3rd column > 1
+            if (use_freqs[i] < 2)
+                continue;
+
             double best_chi2 = chi2;
             double best_freq = fit_freqs[i];
 

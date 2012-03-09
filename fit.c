@@ -196,6 +196,11 @@ int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
     return ret;
 }
 
+int fit_polynomial_d(double *x, double *y, int c, double *coeffs, int degree)
+{
+    return fit(x, y, c, coeffs, degree + 1, polynomial_fit, NULL);
+}
+
 
 /*
  * Takes a list of frequencies 0..N-1

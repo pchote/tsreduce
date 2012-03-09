@@ -785,3 +785,119 @@ int fit_time(char *tsFile)
     free(mmi);
     return 0;
 }
+
+int ratio_to_mmi_and_dft(char *dataPath)
+{
+    int poly_degree = 2;
+    int min_uhz = 0;
+    int max_uhz = 10000;
+    int num_uhz = 1000;
+
+    char linebuf[1024];
+    FILE *file = fopen(dataPath, "r+");
+    if (file == NULL)
+    {
+        error("Unable to open file: %s", dataPath);
+        return -1;
+    }
+
+    // Count the number of entries to allocate
+    int total_obs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total_obs++;
+    rewind(file);
+
+    int num_obs = 0;
+    double *time = (double *)malloc(total_obs*sizeof(double));
+    double *ratio = (double *)malloc(total_obs*sizeof(double));
+    double *err = (double *)malloc(total_obs*sizeof(double));
+    if (time == NULL || ratio == NULL || err == NULL)
+    {
+        error("Unable to allocate memory");
+        return -1;
+    }
+
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        sscanf(linebuf, "%lf %lf %lf\n", &time[num_obs], &ratio[num_obs], &err[num_obs]);
+
+        // Convert to seconds
+        time[num_obs] *= 3600;
+        num_obs++;
+    }
+    fclose(file);
+
+    // Calculate polynomial fit to the ratio
+    double *coeffs = (double *)malloc((poly_degree+1)*sizeof(double));
+    if (coeffs == NULL)
+        return error("malloc failed");
+
+    if (fit_polynomial_d(time, ratio, num_obs, coeffs, poly_degree))
+    {
+        free(coeffs);
+        free(ratio);
+        free(err);
+        free(time);
+        return error("Fit failed");
+    }
+
+    double *mmi = (double *)malloc(num_obs*sizeof(double));
+    if (mmi == NULL)
+        return error("malloc failed");
+
+    for (int i = 0; i < num_obs; i++)
+    {
+        // Subtract polynomial fit and convert to mmi
+        double polyfit = 0;
+        double pow = 1;
+        for (int j = 0; j <= poly_degree; j++)
+        {
+            polyfit += pow*coeffs[j];
+            pow *= time[i];
+        }
+        mmi[i] = ratio[i] > 0 ? 1000*(ratio[i] - polyfit)/ratio[i] : 0;
+        err[i] = ratio[i] > 0 ? 1000*polyfit*err[i]/(ratio[i]*ratio[i]) : 0;
+    }
+
+    printf("Fit: ");
+    for (int j = 0; j <= poly_degree; j++)
+    {
+        printf("%e x^%d + ", coeffs[j], j);
+    }
+    printf("\n");
+
+    // DFT data
+    double *freq = (double *)malloc(num_uhz*sizeof(double));
+    if (freq == NULL)
+        return error("malloc failed");
+
+    double *ampl = (double *)malloc(num_uhz*sizeof(double));
+    if (ampl == NULL)
+        return error("malloc failed");
+
+    calculate_amplitude_spectrum(min_uhz*1e-6, max_uhz*1e-6, time, mmi, num_obs, freq, ampl, num_uhz);
+
+    FILE *out = fopen("mmi.dat", "w");
+    for (int i = 0; i < num_obs; i++)
+        fprintf(out, "%f %f %f\n", time[i], mmi[i], err[i]);
+    fclose(out);
+
+    out = fopen("dft.dat", "w");
+    for (int i = 0; i < num_uhz; i++)
+        fprintf(out, "%f %f\n", freq[i], ampl[i]);
+    fclose(out);
+
+    free(ampl);
+    free(freq);
+    free(coeffs);
+    free(ratio);
+    free(time);
+    free(mmi);
+
+    return 0;
+}

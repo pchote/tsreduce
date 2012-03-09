@@ -10,4 +10,5 @@
 
 int fit_sinusoids(double *x, double *y, int c, double *freqs, int numFreqs, double *amplitudes);
 int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree);
+int fit_polynomial_d(double *x, double *y, int c, double *coeffs, int degree);
 #endif

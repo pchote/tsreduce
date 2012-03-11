@@ -14,56 +14,12 @@
 #include <string.h>
 #include <dirent.h>
 #include <regex.h>
+#include <stdbool.h>
 
 #include "tsreduce.h"
 #include "framedata.h"
 #include "helpers.h"
 #include "aperture.h"
-
-// Subtracts the dark count, then normalizes the frame to average to unity
-// (not that we actually care about the total photometric counts)
-int normalize_flat(framedata *flat, void *data)
-{
-    framedata *dark = (framedata *)data;
-    
-    if (dark->dtype != FRAMEDATA_DBL || flat->dtype != FRAMEDATA_DBL)
-        return error("normalize_flat frames must be type DBL");
-    
-    if (dark->rows != flat->rows || dark->cols != flat->cols)
-        return error("normalize_flat frames must have same size");
-    
-    int flatexp = framedata_get_header_int(flat, "EXPTIME");
-    int darkexp = framedata_get_header_int(dark, "EXPTIME");
-    int n = flat->rows*flat->cols;
-    
-    // Calculate mean
-    double mean = 0;
-    for (int i = 0; i < n; i++)
-    {
-        flat->dbl_data[i] -= flatexp*1.0/darkexp*dark->dbl_data[i];
-        mean += flat->dbl_data[i];
-    }
-    mean /= n;
-    
-    // Calculate standard deviation
-    double std = 0;
-    for (int i = 0; i < n; i++)
-        std += (flat->dbl_data[i] - mean)*(flat->dbl_data[i] - mean);
-    std = sqrt(std/n);
-    
-    // Recalculate the mean, excluding outliers at 3 sigma
-    double mean_new = 0;
-    for (int i = 0; i < n; i++)
-        if (fabs(flat->dbl_data[i] - mean) < 3*std)
-            mean_new += flat->dbl_data[i];
-    mean_new /= n;
-    
-    // Normalize flat to unity counts
-    for (int i = 0; i < n; i++)
-        flat->dbl_data[i] /= mean_new;
-    
-    return 0;
-}
 
 
 // Calculate the standard deviation of pixels in a data cube
@@ -71,7 +27,7 @@ int normalize_flat(framedata *flat, void *data)
 // mean, over all frames (the deviation is not calculated per-frame, and then averaged)
 //
 //    Data is a pointer to a data cube
-//        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[numFrames] = frame[0][1,0] etc
+//        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
 //    num_frames is the number of frames worth of data
 //    num_pixels is the number of pixels in each frame
 double calculate_cube_stddev(double *data, int num_frames, int num_pixels)
@@ -132,58 +88,281 @@ int ccd_readnoise(const char *framePattern)
 
     return 0;
 }
+
+// Convenience function for calculating the mean signal in a sub-region of a frame
+// Assumes that the frame type is double, and that the region is inside the frame
+double mean_in_region(framedata *frame, int x_min, int x_max, int y_min, int y_max)
+{
+    int num_px = (x_max - x_min)*(y_max - y_min);
+    double mean = 0;
+    for (int j = y_min; j < y_max; j++)
+        for (int i = x_min; i < x_max; i++)
+            mean += frame->dbl_data[j*frame->cols + i]/num_px;
+
+    return mean;
+}
+
+// Prepare a raw flat frame for combining into the master-flat
+// Frame is dark (and bias if overscanned) subtracted, and normalized so the mean count is 1
+//
+// dark is expected to be bias subtracted if overscan is present
+// This ensures that the bias is correctly removed, as the scaling of the dark intensity would otherwise prevent this
+//
+// Returns the mean intensity before normalization
+double prepare_flat(framedata *flat, framedata *dark)
+{
+    int flatexp = framedata_get_header_int(flat, "EXPTIME");
+    int darkexp = framedata_get_header_int(dark, "EXPTIME");
+    int n = flat->rows*flat->cols;
+
+    // Calculate and subtract bias if the frame has overscan
+    // TODO: have acquisition software save regions into a header key
+    // and use this for determining overscan
+    bool use_overscan = (flat->rows != flat->cols);
+    double mean_bias = 0;
+    if (use_overscan)
+    {
+        int bias_rgn[4] = {525, 535, 5, 508};
+        mean_bias = mean_in_region(flat, bias_rgn[0], bias_rgn[1], bias_rgn[2], bias_rgn[3]);
+    }
+
+    // Calculate mean
+    double mean = 0;
+    for (int i = 0; i < n; i++)
+    {
+        flat->dbl_data[i] -= flatexp*1.0/darkexp*dark->dbl_data[i] + mean_bias;
+        mean += flat->dbl_data[i];
+    }
+    mean /= n;
+
+    // Calculate standard deviation
+    double std = 0;
+    for (int i = 0; i < n; i++)
+        std += (flat->dbl_data[i] - mean)*(flat->dbl_data[i] - mean);
+    std = sqrt(std/n);
+
+    // Recalculate the mean, excluding outliers at 3 sigma
+    double mean_new = 0;
+    for (int i = 0; i < n; i++)
+        if (fabs(flat->dbl_data[i] - mean) < 3*std)
+            mean_new += flat->dbl_data[i];
+    mean_new /= n;
+
+    // Normalize flat to unity counts
+    for (int i = 0; i < n; i++)
+        flat->dbl_data[i] /= mean_new;
+
+    // Return original mean level
+    return mean_new;
+}
+
 // Create a flat field frame from the frames listed by the command `flatcmd',
 // rejecting `minmax' highest and lowest pixel values after subtracting
 // the dark frame `masterdark'.
 // Save the resulting image to the file `outname'
+//
+// Also calculates the readnoise and gain if overscan is available
 int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname)
 {
-    char **frames;
-    int numMatched = get_matching_files(pattern, &frames);
-    
-    if (numMatched <= 2*minmax)
+    char **frame_paths;
+    int num_frames = get_matching_files(pattern, &frame_paths);
+
+    if (num_frames <= 2*minmax)
     {
-        free_2d_array(frames, numMatched);
-        return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
+        free_2d_array(frame_paths, num_frames);
+        return error("Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
     }
-    
+
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
-    double *flat = (double *)malloc(dark.rows*dark.cols*sizeof(double));
-    if (flat == NULL)
-        return error("malloc failed");
-    
-    // Load the flat frames, discarding the 5 outermost pixels for each
-    if (load_reject_minmax( (const char **)frames, numMatched, dark.rows, dark.cols, minmax, minmax, flat, normalize_flat, (void *)&dark))
+
+    // Calculate the mean bias level in the master-dark
+    // TODO: Save and read this from the fits header
+    int bias_rgn[4] = {525, 535, 5, 508};
+    int image_rgn[4] = {0, 512, 0, 512};
+    int num_image_px = (image_rgn[1] - image_rgn[0])*(image_rgn[3] - image_rgn[2]);
+
+    int num_bias_px = 0;
+    bool use_overscan = (dark.rows != dark.cols);
+    if (use_overscan)
+    {
+        num_bias_px = (bias_rgn[1] - bias_rgn[0])*(bias_rgn[3] - bias_rgn[2]);
+
+        // Subtract bias from master-dark
+        double mean_bias = mean_in_region(&dark, bias_rgn[0], bias_rgn[1], bias_rgn[2], bias_rgn[3]);
+        for (int j = 0; j < dark.rows*dark.cols; j++)
+            dark.dbl_data[j] -= mean_bias;
+    }
+
+    // Calculate mean dark level
+    double mean_dark_intensity = 0;
+    for (int j = image_rgn[2]; j < image_rgn[3]; j++)
+        for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+            mean_dark_intensity += dark.dbl_data[dark.cols*j + i];
+
+    mean_dark_intensity /= num_image_px;
+
+    // Data cube for flat image data
+    double *data_cube = (double *)malloc(num_frames*dark.cols*dark.rows*sizeof(double));
+    if (data_cube == NULL)
     {
         framedata_free(dark);
-        free(flat);
-        free_2d_array(frames, numMatched);
-        return error("frame loading failed");
+        free_2d_array(frame_paths, num_frames);
+        return error("malloc failed");
     }
+
+    // We need to iterate over the individual frames multiple times to calculate gain
+    framedata *frames = (framedata *)malloc(num_frames*sizeof(framedata));
+
+    // Mean intensity of each flat frame
+    double *mean_intensity = (double *)malloc(num_frames*sizeof(double));
+    if (mean_intensity == NULL)
+    {
+        free(data_cube);
+        framedata_free(dark);
+        free_2d_array(frame_paths, num_frames);
+        return error("malloc failed");
+    }
+
+    // Load flat field frames into a data cube for the image data, and a cube for the bias data
+    // data[0] = flat[0][0,0], data[1] = flat[1][0,0] ... data[num_frames] = flat[0][0,1] etc
+    for(int i = 0; i < num_frames; i++)
+    {
+        printf("loading `%s`\n", frame_paths[i]);
+        frames[i] = framedata_new(frame_paths[i], FRAMEDATA_DBL);
+
+        if (frames[i].rows != dark.rows || frames[i].cols != dark.cols)
+        {
+            int err = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)", frames[i], dark.rows, dark.cols, frames[i].rows, frames[i].cols);
+            for (int j = 0; j <= i; j++)
+                framedata_free(frames[j]);
+
+            free(data_cube);
+            framedata_free(dark);
+            free_2d_array(frame_paths, num_frames);
+            return err;
+        }
+
+        // Dark-subtract and normalize the frame, recording the mean level for calculating the gain
+        mean_intensity[i] = prepare_flat(&frames[i], &dark);
+
+        // Store normalized data in data cube
+        for (int j = 0; j < dark.rows*dark.cols; j++)
+            data_cube[num_frames*j+i] = frames[i].dbl_data[j];
+    }
+
+    // Calculate read noise from overscan region
+    // Subtracting master-dark removed the mean level, so just add
+    double readnoise = 0;
+    if (use_overscan)
+    {
+        double var = 0;
+        for (int j = bias_rgn[2]; j < bias_rgn[3]; j++)
+            for (int i = bias_rgn[0]; i < bias_rgn[1]; i++)
+                for (int k = 0; k < num_frames; k++)
+                {
+                    // Need to multiply by the mean level for the frame to give the variance in ADU
+                    double temp = mean_intensity[k]*data_cube[num_frames*(dark.cols*j + i) + k];
+                    var += temp*temp;
+                }
+        readnoise = sqrt(var/(num_bias_px*num_frames));
+    }
+
+    // Calculate median image for the master-flat
+    // Loop over the pixels, sorting the values from each image into increasing order
+    double *median_flat = (double *)malloc(dark.rows*dark.cols*sizeof(double));
+    if (median_flat == NULL)
+    {
+        for (int j = 0; j <= num_frames; j++)
+            framedata_free(frames[j]);
+
+        free(data_cube);
+        framedata_free(dark);
+        free_2d_array(frame_paths, num_frames);
+        return error("malloc failed");
+    }
+
+    for (int j = 0; j < dark.rows*dark.cols; j++)
+    {
+        qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
+
+        // then average the non-rejected pixels into the output array
+        median_flat[j] = 0;
+        for (int i = minmax; i < num_frames - minmax; i++)
+            median_flat[j] += data_cube[num_frames*j + i];
+        median_flat[j] /= (num_frames - 2*minmax);
+    }
+    free(data_cube);
+
+    // Calculate gain over the image area
+    double gain = 0;
+    if (use_overscan)
+    {
+        for(int k = 0; k < num_frames; k++)
+        {
+            // Calculate the variance by taking the difference between
+            // the (normalized) frame and the (normalized) master-flat
+            double var = 0;
+            for (int j = image_rgn[2]; j < image_rgn[3]; j++)
+                for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+                {
+                    // Multiply by mean intensity to give a value in ADU
+                    double temp = mean_intensity[k]*(frames[k].dbl_data[dark.cols*j + i] - median_flat[dark.cols*j + i]);
+                    var += temp*temp;
+                }
+            var /= num_image_px;
+            printf("var: %f mean: %f read: %f ", var, mean_intensity[k], readnoise);
+
+            double g = (mean_intensity[k] + mean_dark_intensity) / (var - readnoise*readnoise);
+            printf("%d: %f\n", k, g);
+            gain += g / num_frames;
+        }
+    }
+    free(mean_intensity);
+
+    for (int j = 0; j < num_frames; j++)
+        framedata_free(frames[j]);
+
+    // Replace values in the overscan region with 1, so overscan survives flatfielding
+    if (use_overscan)
+        for (int j = bias_rgn[2]; j < bias_rgn[3]; j++)
+            for (int i = bias_rgn[0]; i < bias_rgn[1]; i++)
+                median_flat[j*dark.cols + i] = 1;
+
     framedata_free(dark);
-    
+
     // Create a new fits file
     fitsfile *out;
     int status = 0;
-    char outbuf[2048];
-    sprintf(outbuf, "!%s", outname);
+    char *outbuf;
+    asprintf(&outbuf, "!%s", outname);
     fits_create_file(&out, outbuf, &status);
-    
-    /* Create the primary array image (16-bit short integer pixels */
+    free(outbuf);
+
+    // Create the primary array image (16-bit short integer pixels
     fits_create_img(out, DOUBLE_IMG, 2, (long []){dark.cols, dark.rows}, &status);
-    
+
+    // Set header keys for readout noise and gain
+    if (use_overscan)
+    {
+        fits_update_key(out, TDOUBLE, "CCD-READ", &readnoise, "Estimated read noise (ADU)", &status);
+        fits_update_key(out, TDOUBLE, "CCD-GAIN", &gain, "Estimated gain (electrons/ADU)", &status);
+
+        printf("Readnoise: %f\n", readnoise);
+        printf("Gain: %f\n", gain);
+    }
+
     // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, dark.rows*dark.cols, flat, &status))
+    if (fits_write_img(out, TDOUBLE, 1, dark.rows*dark.cols, median_flat, &status))
     {
         fits_close_file(out, &status);
-        free(flat);
-        free_2d_array(frames, numMatched);
+        free(median_flat);
+        free_2d_array(frame_paths, num_frames);
         return error("fits_write_img failed with status %d", status);
     }
-    
+
     fits_close_file(out, &status);
-    free(flat);
-    free_2d_array(frames, numMatched);
+    free(median_flat);
+    free_2d_array(frame_paths, num_frames);
     return 0;
 }
 

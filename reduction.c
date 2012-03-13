@@ -113,43 +113,50 @@ double prepare_flat(framedata *flat, framedata *dark)
 {
     int flatexp = framedata_get_header_int(flat, "EXPTIME");
     int darkexp = framedata_get_header_int(dark, "EXPTIME");
-    int n = flat->rows*flat->cols;
 
     // Calculate and subtract bias if the frame has overscan
     // TODO: have acquisition software save regions into a header key
     // and use this for determining overscan
     bool use_overscan = (flat->rows != flat->cols);
+    int bias_rgn[4] = {525, 535, 5, 508};
+    int image_rgn[4] = {0, 512, 0, 512};
+    int num_image_px = (image_rgn[1] - image_rgn[0])*(image_rgn[3] - image_rgn[2]);
+
     double mean_bias = 0;
     if (use_overscan)
-    {
-        int bias_rgn[4] = {525, 535, 5, 508};
         mean_bias = mean_in_region(flat, bias_rgn[0], bias_rgn[1], bias_rgn[2], bias_rgn[3]);
-    }
 
-    // Calculate mean
-    double mean = 0;
-    for (int i = 0; i < n; i++)
-    {
+    // Dark subtract frame
+    for (int i = 0; i < flat->rows*flat->cols; i++)
         flat->dbl_data[i] -= flatexp*1.0/darkexp*dark->dbl_data[i] + mean_bias;
-        mean += flat->dbl_data[i];
-    }
-    mean /= n;
+
+    // Calculate mean in image area only
+    double mean = mean_in_region(flat, image_rgn[0], image_rgn[1], image_rgn[2], image_rgn[3]);
 
     // Calculate standard deviation
     double std = 0;
-    for (int i = 0; i < n; i++)
-        std += (flat->dbl_data[i] - mean)*(flat->dbl_data[i] - mean);
-    std = sqrt(std/n);
+    for (int j = image_rgn[2]; j < image_rgn[3]; j++)
+        for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+        {
+            double temp = flat->dbl_data[flat->cols*j + i] - mean;
+            std += temp*temp;
+        }
+    std = sqrt(std/num_image_px);
 
     // Recalculate the mean, excluding outliers at 3 sigma
     double mean_new = 0;
-    for (int i = 0; i < n; i++)
-        if (fabs(flat->dbl_data[i] - mean) < 3*std)
-            mean_new += flat->dbl_data[i];
-    mean_new /= n;
+    int count = 0;
+    for (int j = image_rgn[2]; j < image_rgn[3]; j++)
+        for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+            if (fabs(flat->dbl_data[flat->cols*j + i] - mean) < 3*std)
+            {
+                mean_new += flat->dbl_data[flat->cols*j + i];
+                count++;
+            }
+    mean_new /= count;
 
-    // Normalize flat to unity counts
-    for (int i = 0; i < n; i++)
+    // Normalize flat so the image region mean is 1
+    for (int i = 0; i < flat->rows*flat->cols; i++)
         flat->dbl_data[i] /= mean_new;
 
     // Return original mean level

@@ -296,8 +296,14 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         median_flat[j] /= (num_frames - 2*minmax);
     }
 
-    // Calculate gain over the image area
-    double gain = 0;
+    // Calculate gain from each image
+    double *gain = (double *)malloc(num_frames*sizeof(double));
+    if (gain == NULL)
+    {
+        return_status = error("malloc failed");
+        goto gain_failed;
+    }
+
     if (use_overscan)
     {
         for(int k = 0; k < num_frames; k++)
@@ -308,18 +314,24 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
             for (int j = image_rgn[2]; j < image_rgn[3]; j++)
                 for (int i = image_rgn[0]; i < image_rgn[1]; i++)
                 {
-                    // Multiply by mean intensity to give a value in ADU
                     double temp = mean_flat[k]*(frames[k].dbl_data[dark.cols*j + i] - median_flat[dark.cols*j + i]);
                     var += temp*temp;
                 }
             var /= num_image_px;
-            printf("var: %f mean: %f read: %f ", var, mean_flat[k], readnoise);
-
-            double g = (mean_flat[k] + mean_dark) / (var - readnoise*readnoise);
-            printf("%d: %f\n", k, g);
-            gain += g / num_frames;
+            gain[k] = (mean_flat[k] + mean_dark) / (var - readnoise*readnoise);
+            printf("%d var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
         }
     }
+
+    // Find median value
+    qsort(gain, num_frames, sizeof(double), compare_double);
+    double median_gain = gain[num_frames/2];
+
+    // Find mean value
+    double mean_gain = 0;
+    for(int k = 0; k < num_frames; k++)
+        mean_gain += gain[k];
+    mean_gain /= num_frames;
 
     // Replace values in the overscan region with 1, so overscan survives flatfielding
     if (use_overscan)
@@ -342,10 +354,10 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     if (use_overscan)
     {
         fits_update_key(out, TDOUBLE, "CCD-READ", &readnoise, "Estimated read noise (ADU)", &status);
-        fits_update_key(out, TDOUBLE, "CCD-GAIN", &gain, "Estimated gain (electrons/ADU)", &status);
+        fits_update_key(out, TDOUBLE, "CCD-GAIN", &median_gain, "Estimated gain (electrons/ADU)", &status);
 
         printf("Readnoise: %f\n", readnoise);
-        printf("Gain: %f\n", gain);
+        printf("Gain mean: %f median: %f\n", mean_gain, median_gain);
     }
 
     // Write the frame data to the image
@@ -358,6 +370,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     fits_close_file(out, &status);
 
     // Cleanup
+    free(gain);
+gain_failed:
     free(median_flat);
 median_failed:
     for (int j = 0; j < num_frames; j++)

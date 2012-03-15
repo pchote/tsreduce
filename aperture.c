@@ -182,13 +182,13 @@ double2 calculate_background(target r, framedata *frame)
         std += (data[i] - mean)*(data[i] - mean);
     std = sqrt(std/n);
 
-    int oldN = n;
     // Discard pixels brighter than mean + 10*stddev
+    int oldN = n;
     while (data[n-1] > mean + 10*std)
-    {
-        printf("discarding bright sky pixel %f\n", data[n-1]);
         n--;
-    }
+
+    if (oldN != n)
+        printf("\tdiscarding %d bright sky pixels\n", oldN - n);
 
     // Calculate improved mean and median
     if (n != oldN)

@@ -505,7 +505,8 @@ int update_reduction(char *dataPath)
     
     // Read file header
     datafile data = read_data_header(dataPath);
-    
+    int start_obs = data.num_obs;
+
     if (data.file == NULL)
         return error("Error opening data file");
     
@@ -554,11 +555,12 @@ int update_reduction(char *dataPath)
                 processed = TRUE;
                 break;
             }
-        printf("%s: processed %d\n", filename, processed);
-        
+
         if (processed)
             continue;
         
+        printf("Reducing %s\n", filename);
+
         framedata frame = framedata_new(filename, FRAMEDATA_DBL);
         
         int exptime = framedata_get_header_int(&frame, "EXPTIME");
@@ -666,7 +668,7 @@ int update_reduction(char *dataPath)
     free(matched);
     regfree(&regex);
     fclose(data.file);
-    
+    printf("Reduced %d observations\n", data.num_obs - start_obs);
     return 0;
 }
 

@@ -21,7 +21,6 @@
 #include "helpers.h"
 #include "aperture.h"
 
-
 // Calculate the standard deviation of pixels in a data cube
 // The standard deviation is calculated as the sum of differences from the per-pixel
 // mean, over all frames (the deviation is not calculated per-frame, and then averaged)
@@ -57,30 +56,30 @@ int ccd_readnoise(const char *framePattern)
     char **frames;
     int num_frames = get_matching_files(framePattern, &frames);
 
-    // TODO: Check fits headers for an appropriate header
-    int x_min = 525;
-    int x_max = 535;
-    int y_min = 5;
-    int y_max = 508;
+    if (!num_frames)
+        return error("No matching frames");
 
-    int num_pixels = (y_max - y_min)*(x_max - x_min);
-    double *data = (double *)malloc(num_pixels*num_frames*sizeof(double));
+    // Load first frame to get frame info
+    framedata frame = framedata_new(frames[0], FRAMEDATA_DBL);
+    int *br = frame.regions.bias_region;
+    double *data = (double *)malloc(frame.regions.bias_px*num_frames*sizeof(double));
+    framedata_free(frame);
     int p = 0;
 
     // Load overscan region into a data cube
     for (int k = 0; k < num_frames; k++)
     {
-        framedata frame = framedata_new(frames[k], FRAMEDATA_DBL);
+        frame = framedata_new(frames[k], FRAMEDATA_DBL);
 
         // Copy overscan pixels
-        for (int j = y_min; j < y_max; j++)
-            for (int i = x_min; i < x_max; i++)
+        for (int j = br[2]; j < br[3]; j++)
+            for (int i = br[0]; i < br[1]; i++)
                 data[p++] = frame.dbl_data[j*frame.cols + i];
 
         framedata_free(frame);
     }
 
-    double readnoise = calculate_cube_stddev(data, num_frames, num_pixels);
+    double readnoise = calculate_cube_stddev(data, num_frames, frame.regions.bias_px);
     printf("Read noise from %d frames: %f ADU\n", num_frames, readnoise);
 
     free(data);
@@ -91,15 +90,26 @@ int ccd_readnoise(const char *framePattern)
 
 // Convenience function for calculating the mean signal in a sub-region of a frame
 // Assumes that the frame type is double, and that the region is inside the frame
-double mean_in_region(framedata *frame, int x_min, int x_max, int y_min, int y_max)
+double mean_in_region(framedata *frame, int rgn[4])
 {
-    int num_px = (x_max - x_min)*(y_max - y_min);
+    int num_px = (rgn[1] - rgn[0])*(rgn[3] - rgn[2]);
     double mean = 0;
-    for (int j = y_min; j < y_max; j++)
-        for (int i = x_min; i < x_max; i++)
+    for (int j = rgn[2]; j < rgn[3]; j++)
+        for (int i = rgn[0]; i < rgn[1]; i++)
             mean += frame->dbl_data[j*frame->cols + i]/num_px;
-
     return mean;
+}
+
+// Calculate and subtract the mean bias level from a frame
+void subtract_bias(framedata *frame)
+{
+    // Calculate and subtract bias if the frame has overscan
+    if (frame->regions.has_overscan)
+        return;
+
+    double mean_bias = mean_in_region(frame, frame->regions.bias_region);
+    for (int i = 0; i < frame->rows*frame->cols; i++)
+        frame->dbl_data[i] -= mean_bias;
 }
 
 // Prepare a raw flat frame for combining into the master-flat
@@ -114,40 +124,33 @@ double prepare_flat(framedata *flat, framedata *dark)
     int flatexp = framedata_get_header_int(flat, "EXPTIME");
     int darkexp = framedata_get_header_int(dark, "EXPTIME");
 
-    // Calculate and subtract bias if the frame has overscan
-    // TODO: have acquisition software save regions into a header key
-    // and use this for determining overscan
-    bool use_overscan = (flat->rows != flat->cols);
-    int bias_rgn[4] = {525, 535, 5, 508};
-    int image_rgn[4] = {0, 512, 0, 512};
-    int num_image_px = (image_rgn[1] - image_rgn[0])*(image_rgn[3] - image_rgn[2]);
+    // Subtract bias
+    subtract_bias(flat);
 
-    double mean_bias = 0;
-    if (use_overscan)
-        mean_bias = mean_in_region(flat, bias_rgn[0], bias_rgn[1], bias_rgn[2], bias_rgn[3]);
-
-    // Dark subtract frame
+    // Subtract dark, normalized to the flat exposure time
+    double exp_ratio = flatexp*1.0/darkexp;
     for (int i = 0; i < flat->rows*flat->cols; i++)
-        flat->dbl_data[i] -= flatexp*1.0/darkexp*dark->dbl_data[i] + mean_bias;
+        flat->dbl_data[i] -= exp_ratio*dark->dbl_data[i];
 
     // Calculate mean in image area only
-    double mean = mean_in_region(flat, image_rgn[0], image_rgn[1], image_rgn[2], image_rgn[3]);
+    int *ir = flat->regions.image_region;
+    double mean = mean_in_region(flat, ir);
 
     // Calculate standard deviation
     double std = 0;
-    for (int j = image_rgn[2]; j < image_rgn[3]; j++)
-        for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+    for (int j = ir[2]; j < ir[3]; j++)
+        for (int i = ir[0]; i < ir[1]; i++)
         {
             double temp = flat->dbl_data[flat->cols*j + i] - mean;
             std += temp*temp;
         }
-    std = sqrt(std/num_image_px);
+    std = sqrt(std/flat->regions.image_px);
 
     // Recalculate the mean, excluding outliers at 3 sigma
     double mean_new = 0;
     int count = 0;
-    for (int j = image_rgn[2]; j < image_rgn[3]; j++)
-        for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+    for (int j = ir[2]; j < ir[3]; j++)
+        for (int i = ir[0]; i < ir[1]; i++)
             if (fabs(flat->dbl_data[flat->cols*j + i] - mean) < 3*std)
             {
                 mean_new += flat->dbl_data[flat->cols*j + i];
@@ -188,26 +191,9 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Frame geometry for all subsequent frames is assumed to match the master-dark
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
 
-    // Extract image and bias regions
-    // TODO: Acquisition code should save this into the fits header
-    int bias_rgn[4] = {525, 535, 5, 508};
-    int image_rgn[4] = {0, 512, 0, 512};
-    int num_image_px = (image_rgn[1] - image_rgn[0])*(image_rgn[3] - image_rgn[2]);
-
-    int num_bias_px = 0;
-    bool use_overscan = (dark.rows != dark.cols);
-    if (use_overscan)
-    {
-        num_bias_px = (bias_rgn[1] - bias_rgn[0])*(bias_rgn[3] - bias_rgn[2]);
-
-        // Subtract bias from master-dark
-        double mean_bias = mean_in_region(&dark, bias_rgn[0], bias_rgn[1], bias_rgn[2], bias_rgn[3]);
-        for (int j = 0; j < dark.rows*dark.cols; j++)
-            dark.dbl_data[j] -= mean_bias;
-    }
-
-    // Calculate mean dark level
-    double mean_dark = mean_in_region(&dark, image_rgn[0], image_rgn[1], image_rgn[2], image_rgn[3]);
+    // Subtract bias from flat
+    // TODO: Put this into the master-dark creation
+    subtract_bias(&dark);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
@@ -262,18 +248,19 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Calculate read noise from overscan region
     // Subtracting master-dark removed the mean level, so just add
     double readnoise = 0;
-    if (use_overscan)
+    if (dark.regions.has_overscan)
     {
+        int *br = dark.regions.bias_region;
         double var = 0;
-        for (int j = bias_rgn[2]; j < bias_rgn[3]; j++)
-            for (int i = bias_rgn[0]; i < bias_rgn[1]; i++)
+        for (int j = br[2]; j < br[3]; j++)
+            for (int i = br[0]; i < br[1]; i++)
                 for (int k = 0; k < num_frames; k++)
                 {
                     // Need to multiply by the mean level for the frame to give the variance in ADU
                     double temp = mean_flat[k]*data_cube[num_frames*(dark.cols*j + i) + k];
                     var += temp*temp;
                 }
-        readnoise = sqrt(var/(num_bias_px*num_frames));
+        readnoise = sqrt(var/(dark.regions.bias_px*num_frames));
     }
 
     // Calculate median image for the master-flat
@@ -304,20 +291,24 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         goto gain_failed;
     }
 
-    if (use_overscan)
+    if (dark.regions.has_overscan)
     {
+        // Calculate mean dark level for gain calculation
+        int *ir = dark.regions.image_region;
+        double mean_dark = mean_in_region(&dark, ir);
+
         for(int k = 0; k < num_frames; k++)
         {
             // Calculate the variance by taking the difference between
             // the (normalized) frame and the (normalized) master-flat
             double var = 0;
-            for (int j = image_rgn[2]; j < image_rgn[3]; j++)
-                for (int i = image_rgn[0]; i < image_rgn[1]; i++)
+            for (int j = ir[2]; j < ir[3]; j++)
+                for (int i = ir[0]; i < ir[1]; i++)
                 {
                     double temp = mean_flat[k]*(frames[k].dbl_data[dark.cols*j + i] - median_flat[dark.cols*j + i]);
                     var += temp*temp;
                 }
-            var /= num_image_px;
+            var /= dark.regions.image_px;
             gain[k] = (mean_flat[k] + mean_dark) / (var - readnoise*readnoise);
             printf("%d var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
         }
@@ -334,10 +325,13 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     mean_gain /= num_frames;
 
     // Replace values in the overscan region with 1, so overscan survives flatfielding
-    if (use_overscan)
-        for (int j = bias_rgn[2]; j < bias_rgn[3]; j++)
-            for (int i = bias_rgn[0]; i < bias_rgn[1]; i++)
+    if (dark.regions.has_overscan)
+    {
+        int *br = dark.regions.bias_region;
+        for (int j = br[2]; j < br[3]; j++)
+            for (int i = br[0]; i < br[1]; i++)
                 median_flat[j*dark.cols + i] = 1;
+    }
 
     // Create a new fits file
     fitsfile *out;
@@ -351,7 +345,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     fits_create_img(out, DOUBLE_IMG, 2, (long []){dark.cols, dark.rows}, &status);
 
     // Set header keys for readout noise and gain
-    if (use_overscan)
+    if (dark.regions.has_overscan)
     {
         fits_update_key(out, TDOUBLE, "CCD-READ", &readnoise, "Estimated read noise (ADU)", &status);
         fits_update_key(out, TDOUBLE, "CCD-GAIN", &median_gain, "Estimated gain (electrons/ADU)", &status);

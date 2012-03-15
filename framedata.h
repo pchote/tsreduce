@@ -5,6 +5,7 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
+#include <stdbool.h>
 #include <fitsio.h>
 
 #ifndef FRAMEDATA_H
@@ -18,14 +19,23 @@ typedef enum
 
 typedef struct
 {
+    bool has_overscan;
+    int image_region[4];
+    int image_px;
+    int bias_region[4];
+    int bias_px;
+} frameregions;
+
+typedef struct
+{
     fitsfile *_fptr;
     int rows;
     int cols;
     framedata_type dtype;
     int *data;
     double *dbl_data;
+    frameregions regions;
 } framedata;
-
 
 framedata framedata_new(const char *filename, framedata_type dtype);
 int framedata_get_header_int(framedata *this, const char *key);

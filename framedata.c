@@ -50,6 +50,25 @@ framedata framedata_new(const char *filename, framedata_type dtype)
         if (fits_read_pix(this._fptr, TDOUBLE, fpixel, this.cols*this.rows, 0, this.dbl_data, NULL, &status))
             die("fits_read_pix failed");
     }
+
+    // Load image regions
+    // TODO: have acquisition software save regions into a header key
+    this.regions.has_overscan = (this.cols != this.rows);
+    int *ir = this.regions.image_region;
+    int *br = this.regions.bias_region;
+    if (this.regions.has_overscan)
+    {
+        ir[0] = 0; ir[1] = 512; ir[2] = 0; ir[3] = 512;
+        br[0] = 525; br[1] = 535; br[2] = 5; br[3] = 508;
+    }
+    else
+    {
+        ir[0] = 0; ir[1] = this.cols; ir[2] = 0; ir[3] = this.rows;
+        br[0] = br[1] = br[2] = br[3] = 0;
+    }
+
+    this.regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
+    this.regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
     return this;
 }
 

@@ -32,8 +32,7 @@ typedef struct
     double plot_scale;
 } target;
 
-double2 center_aperture(target reg, double2 bg2, framedata *frame);
-double2 converge_aperture(target r, framedata *frame);
+double2 center_aperture(target r, framedata *frame);
 double2 calculate_background(target r, framedata *frame);
 double integrate_aperture(double2 xy, double r, framedata *frame);
 

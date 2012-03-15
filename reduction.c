@@ -615,25 +615,24 @@ int update_reduction(char *dataPath)
                     t.y = last.y;
             }
             
-            printf("using aperture (%f,%f) orig (%f,%f)\n", t.x, t.y, data.targets[i].x, data.targets[i].y);
-            double2 xy = converge_aperture(t, &frame);
+            double2 xy = center_aperture(t, &frame);
             double sky = 0;
             double intensity = 0;
             
-            if (xy.x > 0) // converge_aperture returns negative or nan
-            {
-                double r = t.r;
-                double2 bg = calculate_background(t, &frame);
-                
-                sky = bg.x*M_PI*r*r / exptime;
-                intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
-            }
-            else
+            if (xy.x < 0) // center_aperture returns negative on error
             {
                 xy.x = 0;
                 xy.y = 0;
             }
-            
+            else
+            {
+                double r = t.r;
+                double2 bg = calculate_background(t, &frame);
+
+                sky = bg.x*M_PI*r*r / exptime;
+                intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
+            }
+
             fprintf(data.file, "%.2f ", intensity); // intensity (ADU/s)
             fprintf(data.file, "%.2f ", sky); // sky intensity (ADU/s)
             fprintf(data.file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
@@ -813,7 +812,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
             
             last = t;
             // Calculate a rough center and background: Estimates will improve as we converge
-            double2 xy = converge_aperture(t, &frame);
+            double2 xy = center_aperture(t, &frame);
             if (xy.x < 0)
             {
                 free(ds9buf);

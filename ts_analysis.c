@@ -155,7 +155,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     }
 
     target t = data.targets[targetIndex];
-    double2 xy = converge_aperture(t, &frame);
+    double2 xy = center_aperture(t, &frame);
     t.x = xy.x; t.y = xy.y;
     double2 bg = calculate_background(t, &frame);
 

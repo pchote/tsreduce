@@ -19,8 +19,10 @@
 // Find the center of the star within the inner circle
 //   Takes the search circle and imagedata
 //   Returns x,y coordinates for the star center
-double2 center_aperture(target reg, double2 bg2, framedata *frame)
+static double2 center_aperture_inner(target reg, double2 bg2, framedata *frame)
 {
+    double2 err = {-1,-1};
+
     // Round to the nearest pixel
     int x = (int)reg.x;
     int y = (int)reg.y;
@@ -32,14 +34,21 @@ double2 center_aperture(target reg, double2 bg2, framedata *frame)
     double total = 0;
     double *xm = (double *)malloc(2*r*sizeof(double));
     if (xm == NULL)
+    {
         error("malloc failed");
+        return err;
+    }
+
     for (int i = 0; i < 2*r; i++)
         xm[i] = 0;
 
     double *ym = (double *)malloc(2*r*sizeof(double));
     if (ym == NULL)
+    {
         error("malloc failed");
-    
+        return err;
+    }
+
     for (int j = 0; j < 2*r; j++)
         ym[j] = 0;
         
@@ -77,9 +86,9 @@ double2 center_aperture(target reg, double2 bg2, framedata *frame)
 
 
 // Iterate center_aperture to converge on the best aperture position
-double2 converge_aperture(target r, framedata *frame)
+double2 center_aperture(target r, framedata *frame)
 {
-    double2 error = {-1,-1};
+    double2 err = {-1,-1};
     double2 bg, xy;
     target last;
 
@@ -101,22 +110,28 @@ double2 converge_aperture(target r, framedata *frame)
             }
             xy.x /= 5;
             xy.y /= 5;
-            printf("Converge failed - using average of last 5 iterations: (%f,%f)\n", xy.x, xy.y);
+            error("\tConverge failed - using average of last 5 iterations: (%f,%f)", xy.x, xy.y);
             break;
         }
 
         if (r.x - r.r < 0 || r.x + r.r >= frame->cols || r.y - r.r < 0 || r.y + r.r >= frame->rows)
         {
-            fprintf(stderr, "Aperture outside chip - skipping\n");
-            return error;
+            error("\tAperture outside chip - skipping");
+            return err;
         }
 
         last = r;
         bg = calculate_background(r, frame);
-        xy = center_aperture(r, bg, frame);
+        xy = center_aperture_inner(r, bg, frame);
+
+        // center_aperture_inner failed
+        if (!(xy.x >= 0))
+        {
+            error("\tcenter_aperture_inner failed");
+            return err;
+        }
         pos[n] = xy;
 
-        printf("%d: (%f,%f) -> (%f,%f) [%f,%f]\n", n, r.x, r.y, xy.x, xy.y, bg.x, bg.y);
         r.x = xy.x;
         r.y = xy.y;
 

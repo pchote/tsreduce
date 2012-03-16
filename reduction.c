@@ -88,30 +88,6 @@ int ccd_readnoise(const char *framePattern)
     return 0;
 }
 
-// Convenience function for calculating the mean signal in a sub-region of a frame
-// Assumes that the frame type is double, and that the region is inside the frame
-double mean_in_region(framedata *frame, int rgn[4])
-{
-    int num_px = (rgn[1] - rgn[0])*(rgn[3] - rgn[2]);
-    double mean = 0;
-    for (int j = rgn[2]; j < rgn[3]; j++)
-        for (int i = rgn[0]; i < rgn[1]; i++)
-            mean += frame->dbl_data[j*frame->cols + i]/num_px;
-    return mean;
-}
-
-// Calculate and subtract the mean bias level from a frame
-void subtract_bias(framedata *frame)
-{
-    // Calculate and subtract bias if the frame has overscan
-    if (frame->regions.has_overscan)
-        return;
-
-    double mean_bias = mean_in_region(frame, frame->regions.bias_region);
-    for (int i = 0; i < frame->rows*frame->cols; i++)
-        frame->dbl_data[i] -= mean_bias;
-}
-
 // Prepare a raw flat frame for combining into the master-flat
 // Frame is dark (and bias if overscanned) subtracted, and normalized so the mean count is 1
 //
@@ -190,10 +166,6 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Load the master dark frame
     // Frame geometry for all subsequent frames is assumed to match the master-dark
     framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
-
-    // Subtract bias from flat
-    // TODO: Put this into the master-dark creation
-    subtract_bias(&dark);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
@@ -429,6 +401,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
             goto loaddark_failed;
         }
 
+        subtract_bias(&f);
         for (int j = 0; j < base.rows*base.cols; j++)
             data_cube[num_frames*j+i] = f.dbl_data[j];
 
@@ -489,6 +462,9 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     framedata dark = framedata_new(darkPath, FRAMEDATA_DBL);
     framedata flat = framedata_new(flatPath, FRAMEDATA_DBL);
     
+    // Subtract bias
+    subtract_bias(&base);
+
     // Subtract dark counts
     if (dark.dbl_data != NULL)
         framedata_subtract(&base, &dark);
@@ -616,6 +592,9 @@ int update_reduction(char *dataPath)
         time_t frame_time = timegm(&t);
         starttime = difftime(frame_time, data.reference_time);
         
+        // Subtract bias
+        subtract_bias(&frame);
+
         // Subtract dark counts
         if (dark.dbl_data != NULL)
             framedata_subtract(&frame, &dark);
@@ -738,6 +717,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     
     // Open the file to find the reference time
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
+    subtract_bias(&frame);
     char datetimebuf[257];
     if (framedata_has_header_string(&frame, "UTC-BEG"))
     {

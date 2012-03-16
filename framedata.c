@@ -170,3 +170,27 @@ void framedata_free(framedata this)
         free(this.dbl_data);
     fits_close_file(this._fptr, &status);
 }
+
+// Convenience function for calculating the mean signal in a sub-region of a frame
+// Assumes that the frame type is double, and that the region is inside the frame
+double mean_in_region(framedata *frame, int rgn[4])
+{
+    int num_px = (rgn[1] - rgn[0])*(rgn[3] - rgn[2]);
+    double mean = 0;
+    for (int j = rgn[2]; j < rgn[3]; j++)
+        for (int i = rgn[0]; i < rgn[1]; i++)
+            mean += frame->dbl_data[j*frame->cols + i]/num_px;
+    return mean;
+}
+
+// Calculate and subtract the mean bias level from a frame
+void subtract_bias(framedata *frame)
+{
+    // Calculate and subtract bias if the frame has overscan
+    if (!frame->regions.has_overscan)
+        return;
+
+    double mean_bias = mean_in_region(frame, frame->regions.bias_region);
+    for (int i = 0; i < frame->rows*frame->cols; i++)
+        frame->dbl_data[i] -= mean_bias;
+}

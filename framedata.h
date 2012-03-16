@@ -50,4 +50,7 @@ void framedata_divide_const(framedata *this, int div);
 void framedata_divide(framedata *this, framedata *div);
 void framedata_free(framedata this);
 
+double mean_in_region(framedata *frame, int rgn[4]);
+void subtract_bias(framedata *frame);
+
 #endif

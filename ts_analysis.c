@@ -134,6 +134,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     }
 
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
+    subtract_bias(&frame);
     if (data.dark_template != NULL)
     {
         framedata dark = framedata_new(data.dark_template, FRAMEDATA_DBL);

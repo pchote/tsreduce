@@ -13,6 +13,7 @@
 void free_2d_array(char **array, int len);
 int get_matching_files(const char *pattern, char ***files);
 int get_first_matching_file(char *pattern, char *filenamebuf, int buflen);
+int compare_double(const void *a, const void *b);
 int error(const char * format, ...);
 void die(const char * format, ...) __attribute__ ((noreturn));
 int init_ds9(char *);

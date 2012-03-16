@@ -389,29 +389,65 @@ insufficient_frames:
 // Save the resulting image to the file `outname'
 int create_dark(const char *pattern, int minmax, const char *outname)
 {
-    char **frames;
-    int numMatched = get_matching_files(pattern, &frames);
-    if (numMatched < 2*minmax)
+    int return_status = 0;
+
+    char **frame_paths;
+    int num_frames = get_matching_files(pattern, &frame_paths);
+    if (num_frames < 2*minmax)
     {
-        free_2d_array(frames, numMatched);
-        return error("Insufficient frames. %d found, %d will be discarded", numMatched, 2*minmax);
+        return_status = error("Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
+        goto insufficient_frames;
     }
     
-    framedata base = framedata_new(frames[0], FRAMEDATA_DBL);
+    framedata base = framedata_new(frame_paths[0], FRAMEDATA_DBL);
     int exptime = framedata_get_header_int(&base, "EXPTIME");
-    double *dark = (double *)malloc(base.rows*base.cols*sizeof(double));
-    if (dark == NULL)
-        return error("malloc failed");
-    
-    // Load the flat frames, discarding the 5 outermost pixels for each
-    if (load_reject_minmax( (const char **)frames, numMatched, base.rows, base.cols, minmax, minmax, dark, NULL, NULL))
+    double *median_dark = (double *)malloc(base.rows*base.cols*sizeof(double));
+    if (median_dark == NULL)
     {
-        free(dark);
-        framedata_free(base);
-        free_2d_array(frames, numMatched);
-        return error("frame loading failed");
+        return_status = error("malloc failed");
+        goto dark_failed;
     }
     
+    // Data cube for processing the flat data
+    //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
+    double *data_cube = (double *)malloc(num_frames*base.cols*base.rows*sizeof(double));
+    if (data_cube == NULL)
+    {
+        return_status = error("malloc failed");
+        goto datacube_failed;
+    }
+
+    for( int i = 0; i < num_frames; i++)
+    {
+        printf("loading `%s`\n", frame_paths[i]);
+        framedata f = framedata_new(frame_paths[i], FRAMEDATA_DBL);
+
+        if (f.rows != base.rows || f.cols != base.cols)
+        {
+            framedata_free(f);
+            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)", frame_paths[i], base.rows, base.cols, f.rows, f.cols);
+            goto loaddark_failed;
+        }
+
+        for (int j = 0; j < base.rows*base.cols; j++)
+            data_cube[num_frames*j+i] = f.dbl_data[j];
+
+        framedata_free(f);
+    }
+    
+    // Loop over the pixels, sorting the values from each image into increasing order
+    for (int j = 0; j < base.rows*base.cols; j++)
+    {
+        qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
+
+        // then average the non-rejected pixels into the output array
+        median_dark[j] = 0;
+        for (int i = minmax; i < num_frames - minmax; i++)
+            median_dark[j] += data_cube[num_frames*j + i];
+        median_dark[j] /= (num_frames - 2*minmax);
+    }
+    free(data_cube);
+
     // Create a new fits file
     fitsfile *out;
     int status = 0;
@@ -425,21 +461,23 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     fits_update_key(out, TINT, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
     
     // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, dark, &status))
+    if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, median_dark, &status))
     {
-        fits_close_file(out, &status);
-        free(dark);
-        framedata_free(base);
-        free_2d_array(frames, numMatched);
-        return error("fits_write_img failed with status %d", status);
+        // Warn, but continue
+        error("fits_write_img failed with status %d", status);
     }
-    
+
     fits_close_file(out, &status);
-    free(dark);
+loaddark_failed:
+datacube_failed:
+    free(median_dark);
+dark_failed:
     framedata_free(base);
-    free_2d_array(frames, numMatched);
-    
-    return 0;
+
+insufficient_frames:
+    free_2d_array(frame_paths, num_frames);
+
+    return return_status;
 }
 
 // Dark-subtract and flatfield the frame at `framePath' using the dark

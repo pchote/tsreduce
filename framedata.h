@@ -50,7 +50,4 @@ void framedata_divide_const(framedata *this, int div);
 void framedata_divide(framedata *this, framedata *div);
 void framedata_free(framedata this);
 
-int compare_double(const void *a, const void *b);
-int load_reject_minmax( const char **frames, int numFrames, int rows, int cols, int rejectHigh, int rejectLow, double *outFrame, int (*preprocess_func)(framedata*, void*), void *preprocess_data);
-
 #endif

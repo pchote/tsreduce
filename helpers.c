@@ -98,6 +98,15 @@ int get_first_matching_file(char *pattern, char *filenamebuf, int buflen)
     return found;
 }
 
+// qsort() doubles in ascending order
+int compare_double(const void *a, const void *b)
+{
+    const double *da = (const double *)a;
+    const double *db = (const double *)b;
+
+    return (*da > *db) - (*da < *db);
+}
+
 // Prints an vararg error to stderr then returns 1
 int error(const char * format, ...)
 {

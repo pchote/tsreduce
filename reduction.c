@@ -1041,3 +1041,71 @@ int create_mmi(char *dataPath)
 
     return 0;
 }
+
+double variance_in_region(framedata *frame, int ir[4], double mean)
+{
+    double var = 0;
+    int count = 0;
+    for (int j = ir[2]; j < ir[3]; j++)
+        for (int i = ir[0]; i < ir[1]; i++)
+        {
+            double temp = frame->dbl_data[frame->cols*j + i] - mean;
+            var += temp*temp;
+            count++;
+        }
+    return var / count;
+}
+
+double mean_sigmaexclude(framedata *frame, int ir[4])
+{
+    double first_mean = mean_in_region(frame, ir);
+
+    // Calculate standard deviation
+    double std = sqrt(variance_in_region(frame, ir, first_mean));
+
+    // Recalculate the mean, excluding outliers at 3 sigma
+    double mean = 0;
+    int count = 0;
+    for (int j = ir[2]; j < ir[3]; j++)
+        for (int i = ir[0]; i < ir[1]; i++)
+            if (fabs(frame->dbl_data[frame->cols*j + i] - first_mean) < 3*std)
+            {
+                mean += frame->dbl_data[frame->cols*j + i];
+                count++;
+            }
+    return mean / count;
+}
+
+// Report the mean signal and variance calculated from
+// two frames for establishing the CCD transfer curve
+int transfercurve(char *first_path, char *second_path)
+{
+    framedata first = framedata_new(first_path, FRAMEDATA_DBL);
+    framedata second = framedata_new(second_path, FRAMEDATA_DBL);
+
+    subtract_bias(&first);
+    subtract_bias(&second);
+
+    // Calculate mean levels
+    int *ir = first.regions.image_region;
+    double first_mean = mean_sigmaexclude(&first, ir);
+    double second_mean = mean_sigmaexclude(&second, ir);
+
+    printf("Mean levels: %f %f %f\n", first_mean, second_mean, (first_mean + second_mean)/2);
+
+    // Calculate readnoise
+    double readnoise = (variance_in_region(&first, ir, 0) + variance_in_region(&second, ir, 0)) / 2;
+    printf("readnoise: %f\n", readnoise);
+
+    // Subtract and calculate variance
+    framedata_subtract(&first, &second);
+    double diff_mean = mean_in_region(&first, ir);
+    double var = variance_in_region(&first, ir, 0) / sqrt(2);
+
+    printf("diff mean: %f\n", diff_mean);
+    printf("%f %f\n", var, (first_mean + second_mean)/2);
+
+    framedata_free(second);
+    framedata_free(first);
+    return 0;
+}

@@ -11,8 +11,7 @@ LFLAGS = -lcfitsio -lxpa  -lcpgplot -lpgplot
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
     LINKER = gfortran
-    CFLAGS += -I/sw/lib/pgplot
-    LFLAGS += -L/usr/X11R6/lib -lX11 -L/sw/lib -laquaterm -Wl,-framework -Wl,Foundation -L/sw/lib/pgplot -lpng
+    LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng
 endif
 
 SRC = tsreduce.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c ts_analysis.c

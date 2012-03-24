@@ -296,13 +296,18 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         mean_gain += gain[k];
     mean_gain /= num_frames;
 
-    // Replace values in the overscan region with 1, so overscan survives flatfielding
+    // Replace values outside the image region with 1, so overscan survives flatfielding
     if (dark.regions.has_overscan)
     {
-        int *br = dark.regions.bias_region;
-        for (int j = br[2]; j < br[3]; j++)
-            for (int i = br[0]; i < br[1]; i++)
-                median_flat[j*dark.cols + i] = 1;
+        int *br = dark.regions.image_region;
+        for (int k = 0; k < dark.rows*dark.cols; k++)
+        {
+            int x = k % dark.cols;
+            int y = k / dark.cols;
+            bool in_image = x >= br[0] && x < br[1] && y >= br[2] && y < br[3];
+            if (!in_image)
+                median_flat[k] = 1;
+        }
     }
 
     // Create a new fits file

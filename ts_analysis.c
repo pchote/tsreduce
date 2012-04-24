@@ -419,7 +419,7 @@ int plot_fits(char *dataPath)
     cpgmtxt("t", 2, 0.5, 0.5, "Time Series Data");
     cpgsch(1.0);
 
-    cpgmtxt("l", 2.5, 0.5, 0.5, "MMI");
+    cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
     cpgswin(min_time, max_time, min_mmi, max_mmi);
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
@@ -483,9 +483,28 @@ int plot_fits(char *dataPath)
     cpgscf(2);
 
     // DFT
-    cpgsvp(0.1, 0.9, 0.075, 0.9);
-    cpgswin(data.plot_min_uhz, data.plot_max_uhz, 0, max_dft_ampl);
-    cpgbox("bcstn", 0, 0, "bcnst", 5, 5);
+    cpgsvp(0.1, 0.9, 0.075, 0.87);
+    cpgswin(data.plot_min_uhz, data.plot_max_uhz, 0, 1);
+    cpgbox("bstn", 0, 0, "bcnst", 5, 5);
+
+    cpgsci(1);
+    // Plot period on top axis
+    cpgmove(data.plot_min_uhz, 1);
+    cpgdraw(data.plot_max_uhz, 1);
+    int default_periods[] = {100, 125, 150, 200, 300, 500, 2000};
+    int default_period_count = 7;
+    char buf[20];
+    for (int i = 0; i < default_period_count; i++)
+    {
+        double freq = 1e6/default_periods[i];
+        if (freq < data.plot_min_uhz || freq > data.plot_max_uhz)
+            continue;
+
+        cpgmove(freq, 1);
+        cpgdraw(freq, 0.98);
+        snprintf(buf, 20, "%d", default_periods[i]);
+        cpgptxt(freq, 1.02, 0, 0.5, buf);
+    }
 
     cpgswin(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, 0, max_dft_ampl);
     cpgsci(12);
@@ -494,9 +513,10 @@ int plot_fits(char *dataPath)
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
+    cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
 
     cpgsch(1.25);
-    cpgmtxt("t", 1.5, 0.5, 0.5, "Fourier Amplitude Spectrum");
+    cpgmtxt("t", 3.2, 0.5, 0.5, "Fourier Amplitude Spectrum");
 
     free(coeffs);
     free(ampl);

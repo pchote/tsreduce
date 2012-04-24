@@ -279,7 +279,7 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-int plot_fits(char *dataPath)
+int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 {
     int plot_colors_max = 8;
     int plot_colors[] = {4,2,8,3,5,6,7,9};
@@ -403,11 +403,13 @@ int plot_fits(char *dataPath)
     float min_mmi = (mmi_corrected_mean - 5*mmi_std);
     float max_mmi = (mmi_corrected_mean + 5*mmi_std);
 
-    if (cpgopen("5/xs") <= 0)
+    if (cpgopen(tsDevice ? tsDevice : "5/xs") <= 0)
         return error("Unable to open PGPLOT window");
 
     // 800 x 480
-    cpgpap(9.41, 0.6);
+    if (!tsDevice)
+        cpgpap(9.41, 0.6);
+
     cpgask(0);
     cpgslw(3);
     cpgsfs(2);
@@ -472,11 +474,13 @@ int plot_fits(char *dataPath)
         max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
     max_dft_ampl *= 1.1;
 
-    if (cpgopen("6/xs") <= 0)
+    if (cpgopen(dftDevice ? dftDevice : "6/xs") <= 0)
         return error("Unable to open PGPLOT window");
 
     // 800 x 480
-    cpgpap(9.41, 0.6);
+    if (!dftDevice)
+        cpgpap(9.41, 0.6);
+
     cpgask(0);
     cpgslw(3);
     cpgsfs(2);

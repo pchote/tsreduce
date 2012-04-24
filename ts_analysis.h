@@ -12,7 +12,7 @@
 int display_targets(char *dataPath, int obsIndex);
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);
-int plot_fits(char *dataPath);
+int plot_fits(char *dataPath, char *tsDevice, char *dftDevice);
 int amplitude_spectrum(char *dataPath);
 int offset_time(char *mmiFile, double offset);
 #endif

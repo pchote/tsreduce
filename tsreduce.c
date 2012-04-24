@@ -191,8 +191,8 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)
         return detect_repeats(argv[2]);
 
-    else if (argc == 3 && strncmp(argv[1], "plot", 4) == 0)
-        return plot_fits(argv[2]);
+    else if ((argc >= 3 && argc <= 5) && strncmp(argv[1], "plot", 4) == 0)
+        return plot_fits(argv[2], argc > 3 ? argv[3] : NULL, argc > 4 ? argv[4] : NULL);
 
     // `tsreduce model july2011_run2.ts dftfreq.dat 0.0678829 6.3125 0.0001 fit.dat [residuals.dat]`
     else if ((argc == 8 || argc == 9) && strncmp(argv[1], "model", 5) == 0)

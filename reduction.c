@@ -634,16 +634,11 @@ int update_reduction(char *dataPath)
                     t.y = last.y;
             }
             
-            double2 xy = center_aperture(t, &frame);
             double sky = 0;
             double intensity = 0;
-            
-            if (xy.x < 0) // center_aperture returns negative on error
-            {
-                xy.x = 0;
-                xy.y = 0;
-            }
-            else
+            double2 xy = {0,0};
+
+            if (!center_aperture(t, &frame, &xy))
             {
                 if (calculate_background(t, &frame, &sky, NULL))
                     sky = 0;
@@ -833,8 +828,8 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
             
             last = t;
             // Calculate a rough center and background: Estimates will improve as we converge
-            double2 xy = center_aperture(t, &frame);
-            if (xy.x < 0)
+            double2 xy;
+            if (center_aperture(t, &frame, &xy))
             {
                 free(ds9buf);
                 framedata_free(frame);

@@ -32,7 +32,7 @@ typedef struct
     double plot_scale;
 } target;
 
-double2 center_aperture(target r, framedata *frame);
+int center_aperture(target r, framedata *frame, double2 *center);
 int calculate_background(target r, framedata *frame, double *sky_mode, double *sky_std_dev);
 double integrate_aperture(double2 xy, double r, framedata *frame);
 

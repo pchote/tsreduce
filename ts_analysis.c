@@ -156,7 +156,12 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     }
 
     target t = data.targets[targetIndex];
-    double2 xy = center_aperture(t, &frame);
+    double2 xy;
+    if (center_aperture(t, &frame, &xy))
+    {
+        fclose(data.file);
+        return error("Aperture centering failed");
+    }
     t.x = xy.x; t.y = xy.y;
 
     double sky_intensity, sky_std_dev;

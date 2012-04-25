@@ -30,7 +30,7 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
     double *xm = (double *)malloc(2*r*sizeof(double));
     double *ym = (double *)malloc(2*r*sizeof(double));
     if (xm == NULL || ym == NULL)
-        return error("malloc failed");
+        return error("\tmalloc failed");
 
     for (int i = 0; i < 2*r; i++)
         xm[i] = ym[i] = 0;
@@ -53,7 +53,7 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
         }
 
     if (total == 0)
-        return error("No signal inside aperture");
+        return error("\tNo signal inside aperture");
 
     // Calculate x and y moments
     double xc = 0, yc = 0;
@@ -73,10 +73,8 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
 
 
 // Iterate center_aperture to converge on the best aperture position
-double2 center_aperture(target r, framedata *frame)
+int center_aperture(target r, framedata *frame, double2 *center)
 {
-    double2 err = {-1,-1};
-
     // Allow up to 20 iterations to center
     double2 pos[20];
     double move;
@@ -108,36 +106,27 @@ double2 center_aperture(target r, framedata *frame)
         }
 
         // Set initial position from the previous iteration
-        pos[n].x = pos[n-1].x;
-        pos[n].y = pos[n-1].y;
+        pos[n] = pos[n-1];
 
         if (pos[n].x - r.r < 0 || pos[n].x + r.r >= frame->cols ||
             pos[n].y - r.r < 0 || pos[n].y + r.r >= frame->rows)
-        {
-            error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y);
-            return err;
-        }
+            return error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y);
 
         // Calculate new background
         double sky_intensity, sky_std_dev;
         if (calculate_background(r, frame, &sky_intensity, &sky_std_dev))
-        {
-            error("\tcalculate_background failed");
-            return err;
-        }
+            return error("\tcalculate_background failed");
 
         // Iterate centering
         if (center_aperture_inner(&pos[n], r.r, sky_intensity, sky_std_dev, frame))
-        {
-            error("\tcenter_aperture_inner failed");
-            return err;
-        }
+            return error("\tcenter_aperture_inner failed");
 
         // Calculate shift
         move = (pos[n].x - pos[n-1].x)*(pos[n].x - pos[n-1].x) + (pos[n].y - pos[n-1].y)*(pos[n].y - pos[n-1].y);
     } while (move >= 0.00390625);
 
-    return pos[n];
+    *center = pos[n];
+    return 0;
 }
 
 

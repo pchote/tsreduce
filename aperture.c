@@ -16,51 +16,35 @@
 #include "helpers.h"
 #include "framedata.h"
 
-// Find the center of the star within the inner circle
-//   Takes the search circle and imagedata
-//   Returns x,y coordinates for the star center
-static double2 center_aperture_inner(target reg, double2 bg2, framedata *frame)
+// Optimize the centering of a circular aperture (radius r, initial position xy)
+// over a star in frame
+// Input position is modified in place, or an error code returned 
+static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, double sky_std_dev, framedata *frame)
 {
-    double2 err = {-1,-1};
+    // Square within the frame to sample
+    int x = floor(xy->x);
+    int y = floor(xy->y);
+    int r = ceil(rd) + 1;
 
-    // Round to the nearest pixel
-    int x = (int)reg.x;
-    int y = (int)reg.y;
-    int r = (int)reg.r;
-    double bg = bg2.x;
-    double std = bg2.y;
-    
     // Calculate x and y marginals (sum the image into 1d lines in x and y)
-    double total = 0;
     double *xm = (double *)malloc(2*r*sizeof(double));
-    if (xm == NULL)
-    {
-        error("malloc failed");
-        return err;
-    }
+    double *ym = (double *)malloc(2*r*sizeof(double));
+    if (xm == NULL || ym == NULL)
+        return error("malloc failed");
 
     for (int i = 0; i < 2*r; i++)
-        xm[i] = 0;
+        xm[i] = ym[i] = 0;
 
-    double *ym = (double *)malloc(2*r*sizeof(double));
-    if (ym == NULL)
-    {
-        error("malloc failed");
-        return err;
-    }
-
-    for (int j = 0; j < 2*r; j++)
-        ym[j] = 0;
-        
+    double total = 0;
     for (int j = 0; j < 2*r; j++)
         for (int i = 0; i < 2*r; i++)
         {            
-            // Ignore points outside the circle
+            // Ignore pixels outside the circle
             if ((i-r)*(i-r) + (j-r)*(j-r) > r*r)
                 continue;
 
-            double px = frame->dbl_data[frame->cols*(y+j-r) + (x+i-r)] - bg;
-            if (fabs(px) < 3*std)
+            double px = frame->dbl_data[frame->cols*(y+j-r) + (x+i-r)] - sky_intensity;
+            if (fabs(px) < 3*sky_std_dev)
                 continue;
 
             xm[i] += px;
@@ -68,20 +52,23 @@ static double2 center_aperture_inner(target reg, double2 bg2, framedata *frame)
             total += px;
         }
 
+    if (total == 0)
+        return error("No signal inside aperture");
+
     // Calculate x and y moments
-    double xc = 0;
-    double yc = 0;
+    double xc = 0, yc = 0;
     for (int i = 0; i < 2*r; i++)
+    {
         xc += (double)i*xm[i] / total;
-    
-    for (int j = 0; j < 2*r; j++)
-        yc += (double)j*ym[j] / total;
-    
+        yc += (double)i*ym[i] / total;
+    }
+
     free(xm);
     free(ym);
-    
-    double2 ret = {xc + x - r,yc + y - r};
-    return ret;
+
+    xy->x = xc + x - r;
+    xy->y = yc + y - r;
+    return 0;
 }
 
 
@@ -89,62 +76,68 @@ static double2 center_aperture_inner(target reg, double2 bg2, framedata *frame)
 double2 center_aperture(target r, framedata *frame)
 {
     double2 err = {-1,-1};
-    double2 sky_estimate, xy;
-    target last;
 
-    int n = 0;
-    double move = 0;
+    // Allow up to 20 iterations to center
     double2 pos[20];
+    double move;
+    int n = 0;
+
+    // Set initial center from the given target
+    pos[0].x = r.x;
+    pos[0].y = r.y;
+
     // Iterate until we move less than 1/16 of a pixel or reach 20 iterations
     do
     {
+        n++;
+
         // Most apertures converge within 3 iterations.
         // If we haven't converged by 20, we are probably in a cycle
-        if (n == 20)
+        if (n == 19)
         {
-            xy.x = xy.y = 0;
-            for (int i = 15; i < 20; i++)
+            pos[n].x = pos[n].y = 0;
+            for (int i = 14; i < 19; i++)
             {
-                xy.x += pos[i].x;
-                xy.y += pos[i].y;
+                pos[n].x += pos[i].x;
+                pos[n].y += pos[i].y;
             }
-            xy.x /= 5;
-            xy.y /= 5;
-            error("\tConverge failed - using average of last 5 iterations: (%f,%f)", xy.x, xy.y);
+            pos[n].x /= 5;
+            pos[n].y /= 5;
+            error("\tConverge failed - using average of last 5 iterations: (%f,%f)", pos[n].x, pos[n].y);
             break;
         }
 
-        if (r.x - r.r < 0 || r.x + r.r >= frame->cols || r.y - r.r < 0 || r.y + r.r >= frame->rows)
+        // Set initial position from the previous iteration
+        pos[n].x = pos[n-1].x;
+        pos[n].y = pos[n-1].y;
+
+        if (pos[n].x - r.r < 0 || pos[n].x + r.r >= frame->cols ||
+            pos[n].y - r.r < 0 || pos[n].y + r.r >= frame->rows)
         {
-            error("\tAperture outside chip - skipping");
+            error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y);
             return err;
         }
 
-        last = r;
-        if (calculate_background(r, frame, &sky_estimate.x, &sky_estimate.y))
+        // Calculate new background
+        double sky_intensity, sky_std_dev;
+        if (calculate_background(r, frame, &sky_intensity, &sky_std_dev))
         {
             error("\tcalculate_background failed");
             return err;
         }
 
-        xy = center_aperture_inner(r, sky_estimate, frame);
-
-        // center_aperture_inner failed
-        if (!(xy.x >= 0))
+        // Iterate centering
+        if (center_aperture_inner(&pos[n], r.r, sky_intensity, sky_std_dev, frame))
         {
             error("\tcenter_aperture_inner failed");
             return err;
         }
-        pos[n] = xy;
 
-        r.x = xy.x;
-        r.y = xy.y;
-
-        move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
-        n++;
+        // Calculate shift
+        move = (pos[n].x - pos[n-1].x)*(pos[n].x - pos[n-1].x) + (pos[n].y - pos[n-1].y)*(pos[n].y - pos[n-1].y);
     } while (move >= 0.00390625);
 
-    return xy;
+    return pos[n];
 }
 
 

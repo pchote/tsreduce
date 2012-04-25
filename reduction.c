@@ -20,6 +20,7 @@
 #include "framedata.h"
 #include "helpers.h"
 #include "aperture.h"
+#include "fit.h"
 
 // Calculate the standard deviation of pixels in a data cube
 // The standard deviation is calculated as the sum of differences from the per-pixel
@@ -920,5 +921,123 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     
     framedata_free(frame);
     fclose(data);
+    return 0;
+}
+
+int create_mmi(char *dataPath)
+{
+    // Read file header
+    datafile data = read_data_header(dataPath);
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    chdir(data.frame_dir);
+
+    // No data
+    if (data.num_obs <= 0)
+    {
+        fclose(data.file);
+        return error("File specifies no observations");
+    }
+
+    // Time Series data
+    double *time = malloc(data.num_obs*sizeof(double));
+    if (time == NULL)
+        return error("malloc failed");
+
+    double *ratio = malloc(data.num_obs*sizeof(double));
+    if (ratio == NULL)
+        return error("malloc failed");
+
+    double *polyfit = malloc(data.num_obs*sizeof(double));
+    if (polyfit == NULL)
+        return error("malloc failed");
+
+    // Calculate polynomial fit to the ratio
+    double *coeffs = (double *)malloc((data.plot_fit_degree+1)*sizeof(double));
+    if (coeffs == NULL)
+        return error("malloc failed");
+
+    double ratio_mean = 0;
+    for (int i = 0; i < data.num_obs; i++)
+    {
+        time[i] = data.obs[i].time;
+        double target = data.obs[i].star[0];
+        double comparison = 0;
+        for (int j = 1; j < data.num_targets; j++)
+            comparison += data.obs[i].star[j];
+
+        ratio[i] = target/comparison;
+        ratio_mean += ratio[i];
+    }
+
+    ratio_mean /= data.num_obs;
+
+    // Calculate standard deviation
+    double ratio_std = 0;
+    for (int i = 0; i < data.num_obs; i++)
+        ratio_std += (ratio[i] - ratio_mean)*(ratio[i] - ratio_mean);
+    ratio_std = sqrt(ratio_std/data.num_obs);
+
+    if (fit_polynomial_d(time, ratio, data.num_obs, coeffs, data.plot_fit_degree))
+    {
+        free(coeffs);
+        free(ratio);
+        free(time);
+        fclose(data.file);
+        return error("Fit failed");
+    }
+
+    double *mmi = malloc(data.num_obs*sizeof(double));
+    if (mmi == NULL)
+        return error("malloc failed");
+
+    double mmi_mean = 0;
+    for (int i = 0; i < data.num_obs; i++)
+    {
+        // Subtract polynomial fit and convert to mmi
+        polyfit[i] = 0;
+        double pow = 1;
+        for (int j = 0; j <= data.plot_fit_degree; j++)
+        {
+            polyfit[i] += pow*coeffs[j];
+            pow *= time[i];
+        }
+        mmi[i] = 1000*(ratio[i] - polyfit[i])/ratio[i];
+        mmi_mean += mmi[i];
+    }
+    mmi_mean /= data.num_obs;
+
+    // Calculate standard deviation
+    double mmi_std = 0;
+    for (int i = 0; i < data.num_obs; i++)
+        mmi_std += (mmi[i] - mmi_mean)*(mmi[i] - mmi_mean);
+    mmi_std = sqrt(mmi_std/data.num_obs);
+
+    double mmi_corrected_mean = 0;
+    int mmi_corrected_count = 0;
+
+    // Discard outliers and recalculate mean
+    for (int i = 0; i < data.num_obs; i++)
+    {
+        if (fabs(mmi[i] - mmi_mean) > 3*mmi_std)
+            mmi[i] = 0;
+        else
+        {
+            mmi_corrected_mean += mmi[i];
+            mmi_corrected_count++;
+        }
+    }
+    mmi_corrected_mean /= mmi_corrected_count;
+
+    for (int i = 0; i < data.num_obs; i++)
+        printf("%f %f\n", time[i]/3600.0, mmi[i]);
+
+    free(coeffs);
+    free(mmi);
+    free(ratio);
+    free(time);
+    fclose(data.file);
+
     return 0;
 }

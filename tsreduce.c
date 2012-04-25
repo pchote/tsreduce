@@ -221,6 +221,8 @@ int main( int argc, char *argv[] )
         return offset_time(argv[2], atof(argv[3]));
     else if (argc == 3 && strncmp(argv[1], "readnoise", 9) == 0)
         return ccd_readnoise(argv[2]);
+    else if (argc == 3 && strncmp(argv[1], "mmi", 3) == 0)
+        return create_mmi(argv[2]);
 
     else
         error("Invalid args");

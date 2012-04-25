@@ -89,7 +89,7 @@ static double2 center_aperture_inner(target reg, double2 bg2, framedata *frame)
 double2 center_aperture(target r, framedata *frame)
 {
     double2 err = {-1,-1};
-    double2 bg, xy;
+    double2 sky_estimate, xy;
     target last;
 
     int n = 0;
@@ -121,8 +121,13 @@ double2 center_aperture(target r, framedata *frame)
         }
 
         last = r;
-        bg = calculate_background(r, frame);
-        xy = center_aperture_inner(r, bg, frame);
+        if (calculate_background(r, frame, &sky_estimate.x, &sky_estimate.y))
+        {
+            error("\tcalculate_background failed");
+            return err;
+        }
+
+        xy = center_aperture_inner(r, sky_estimate, frame);
 
         // center_aperture_inner failed
         if (!(xy.x >= 0))
@@ -144,19 +149,21 @@ double2 center_aperture(target r, framedata *frame)
 
 
 // Calculate the mode intensity and standard deviation within an annulus
-double2 calculate_background(target r, framedata *frame)
+// Pixels brighter than 10 x standard deviation are discarded
+// This provides a robust method for calculating the background sky intensity and uncertainty
+int calculate_background(target r, framedata *frame, double *sky_mode, double *sky_std_dev)
 {
     int minx = (int)fmax(floor(r.x - r.s2), 0);
     int maxx = (int)fmin(ceil(r.x + r.s2), frame->cols-1);
     int miny = (int)fmax(floor(r.y - r.s2), 0);
     int maxy = (int)fmin(ceil(r.y + r.s2), frame->rows-1);
-    
+
     // Copy pixels into a flat list that can be sorted
     // Allocate enough space to store the entire target region, but only copy pixels
     // within the annulus.
     double *data = (double *)malloc((maxy - miny + 1)*(maxx - minx + 1)*sizeof(double));
     if (data == NULL)
-        die("malloc failed");
+        return error("malloc failed");
 
     int n = 0;
     for (int j = miny; j <= maxy; j++)
@@ -183,34 +190,36 @@ double2 calculate_background(target r, framedata *frame)
     std = sqrt(std/n);
 
     // Discard pixels brighter than mean + 10*stddev
-    int oldN = n;
-    while (data[n-1] > mean + 10*std)
-        n--;
+    int filtered_n = n;
+    while (data[filtered_n - 1] > mean + 10*std)
+        filtered_n--;
 
-    if (oldN != n)
-        printf("\tdiscarding %d bright sky pixels\n", oldN - n);
+    if (filtered_n != n)
+        printf("\tdiscarding %d bright sky pixels\n", n - filtered_n);
 
-    // Calculate improved mean and median
-    if (n != oldN)
+    // Recalculate mean and median ignoring discarded pixels
+    if (n != filtered_n)
     {
         mean = std = 0;
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < filtered_n; i++)
             mean += data[i];
-        mean /= n;
+        mean /= filtered_n;
 
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < filtered_n; i++)
             std += (data[i] - mean)*(data[i] - mean);
-        std = sqrt(std/n);
+        std = sqrt(std/filtered_n);
     }
-    
-    // Calculate median
-    double median = (data[n/2] + data[n/2+1])/2;
 
-    //printf("mean: %f median: %f std: %f\n",mean,median,std);
-    
+    // Set return values and clean up
+    double median = (data[filtered_n/2] + data[filtered_n/2+1])/2;
+    if (sky_mode != NULL)
+        *sky_mode = 3*mean - 2*median;
+
+    if (sky_std_dev != NULL)
+        *sky_std_dev = std;
+
     free(data);
-    double2 ret = {3*mean - 2*median, std};
-    return ret;
+    return 0;
 }
 
 // Finds the intersection point of the line defined by p1 and p2 (both x,y)

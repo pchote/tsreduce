@@ -645,11 +645,12 @@ int update_reduction(char *dataPath)
             }
             else
             {
-                double r = t.r;
-                double2 bg = calculate_background(t, &frame);
+                if (calculate_background(t, &frame, &sky, NULL))
+                    sky = 0;
 
-                sky = bg.x*M_PI*r*r / exptime;
-                intensity = integrate_aperture(xy, r, &frame) / exptime - sky;
+                // Integrate sky over the aperture and normalize per unit time
+                sky *= M_PI*t.r*t.r / exptime;
+                intensity = integrate_aperture(xy, t.r, &frame) / exptime - sky;
             }
 
             fprintf(data.file, "%.2f ", intensity); // intensity (ADU/s)
@@ -840,9 +841,17 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
                 fclose(data);
                 return error("Aperture did not converge");
             }
+
             t.x = xy.x; t.y = xy.y;
-            double2 bg = calculate_background(t, &frame);
-            
+            double sky_intensity, sky_std_dev;
+            if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
+            {
+                free(ds9buf);
+                framedata_free(frame);
+                fclose(data);
+                return error("Background calculation failed");
+            }
+
             double lastIntensity = 0;
             double lastProfile = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
             
@@ -850,18 +859,18 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
             int maxRadius = (int)t.s2 + 1;
             for (int radius = 1; radius <= maxRadius; radius++)
             {
-                double intensity = integrate_aperture(xy, radius, &frame) - bg.x*M_PI*radius*radius;
+                double intensity = integrate_aperture(xy, radius, &frame) - sky_intensity*M_PI*radius*radius;
                 double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-                if (profile < 5*bg.y)
+                if (profile < 5*sky_std_dev)
                 {
-                    t.r = radius - 1 + (5*bg.y - lastProfile) / (profile - lastProfile);
+                    t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
                     break;
                 }
                 lastIntensity = intensity;
                 lastProfile = profile;
             }
             
-            printf("Iteration %d: Center: (%f, %f) Radius: %f Background: %f +/- %f\n", n, t.x, t.y, t.r, bg.x, bg.y);
+            printf("Iteration %d: Center: (%f, %f) Radius: %f Background: %f +/- %f\n", n, t.x, t.y, t.r, sky_intensity, sky_std_dev);
             move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
         } while (move >= 0.00390625);
         

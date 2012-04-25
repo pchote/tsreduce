@@ -33,7 +33,7 @@ typedef struct
 } target;
 
 double2 center_aperture(target r, framedata *frame);
-double2 calculate_background(target r, framedata *frame);
+int calculate_background(target r, framedata *frame, double *sky_mode, double *sky_std_dev);
 double integrate_aperture(double2 xy, double r, framedata *frame);
 
 #endif

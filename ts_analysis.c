@@ -158,7 +158,13 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     target t = data.targets[targetIndex];
     double2 xy = center_aperture(t, &frame);
     t.x = xy.x; t.y = xy.y;
-    double2 bg = calculate_background(t, &frame);
+
+    double sky_intensity, sky_std_dev;
+    if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
+    {
+        fclose(data.file);
+        return error("Background calculation failed");
+    }
 
     const int numIntensity = 21;
     double intensity[numIntensity];
@@ -169,7 +175,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     for (int i = 1; i < numIntensity; i++)
     {
         radii[i] = i;
-        intensity[i] = integrate_aperture(xy, radii[i], &frame) - bg.x*M_PI*radii[i]*radii[i];
+        intensity[i] = integrate_aperture(xy, radii[i], &frame) - sky_intensity*M_PI*radii[i]*radii[i];
     }
 
     // Normalize integrated count by area to give an intensity profile
@@ -189,8 +195,8 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     }
 
     // Print sky value
-    printf("# Sky background: %f\n", bg.x);
-    printf("# Sky stddev: %f\n", bg.y);
+    printf("# Sky background: %f\n", sky_intensity);
+    printf("# Sky stddev: %f\n", sky_std_dev);
 
     // Estimate FWHM by linear interpolation between points
     for (int i = 1; i < numIntensity; i++)
@@ -223,15 +229,15 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     // Estimate radius where signal reaches 5x,10x sky sigma
     for (int i = 1; i < numIntensity; i++)
-        if (profile[i] < 5*bg.y)
+        if (profile[i] < 5*sky_std_dev)
         {
-            printf("# Estimated 5 sky sigma: %f\n", i - 1 + (5*bg.y - profile[i-1])/(profile[i] - profile[i-1]));
+            printf("# Estimated 5 sky sigma: %f\n", i - 1 + (5*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
             break;
         }
     for (int i = 1; i < numIntensity; i++)
-        if (profile[i] < 10*bg.y)
+        if (profile[i] < 10*sky_std_dev)
         {
-            printf("# Estimated 10 sky sigma: %f\n", i - 1 + (10*bg.y - profile[i-1])/(profile[i] - profile[i-1]));
+            printf("# Estimated 10 sky sigma: %f\n", i - 1 + (10*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
             break;
         }
 

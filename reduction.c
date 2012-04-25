@@ -1030,6 +1030,13 @@ int create_mmi(char *dataPath)
     }
     mmi_corrected_mean /= mmi_corrected_count;
 
+    printf("#\n");
+    printf("# tgt = %s\n", data.frame_pattern);
+    char buf[25];
+    strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data.reference_time));
+    printf("%s", buf);
+    printf("#\n");
+
     for (int i = 0; i < data.num_obs; i++)
         printf("%f %f\n", time[i]/3600.0, mmi[i]);
 

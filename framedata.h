@@ -39,6 +39,7 @@ typedef struct
 
 framedata framedata_new(const char *filename, framedata_type dtype);
 int framedata_get_header_int(framedata *this, const char *key);
+double framedata_get_header_dbl(framedata *this, const char *key);
 int framedata_has_header_string(framedata *this, const char *key);
 int framedata_has_header_string(framedata *this, const char *key);
 void framedata_get_header_string(framedata *this, const char *key, char *ret);

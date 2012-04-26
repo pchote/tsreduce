@@ -80,6 +80,15 @@ int framedata_get_header_int(framedata *this, const char *key)
     return ret;
 }
 
+double framedata_get_header_dbl(framedata *this, const char *key)
+{
+    double ret;
+    int status = 0;
+    if (fits_read_key(this->_fptr, TDOUBLE, key, &ret, NULL, &status))
+        die("framedata_get_header_dbl failed");
+    return ret;
+}
+
 int framedata_has_header_string(framedata *this, const char *key)
 {
     int status = 0;

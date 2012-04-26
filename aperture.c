@@ -393,4 +393,25 @@ double integrate_aperture(double2 xy, double r, framedata *frame)
     return total;
 }
 
+void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framedata *dark, double readnoise, double gain, double *signal, double *noise)
+{
+    *signal = 0;
+    *noise = 0;
+
+    int bx = floor(xy.x), by = floor(xy.y), br = ceil(r) + 1;
+    for (int i = bx-br; i < bx+br; i++)
+        for (int j = by-br; j < by+br; j++)
+        {
+            double area = pixel_aperture_intesection(xy.x-i, xy.y-j, r);
+            double flux = frame->dbl_data[i + frame->cols*j];
+            double darkflux = dark->dbl_data[i + frame->cols*j];
+
+            *signal += area*flux;
+            *noise += area*(readnoise*readnoise + (flux + darkflux)/gain);
+        }
+
+    // Convert variance to standard deviation
+    *noise = sqrt(*noise);
+}
+
 

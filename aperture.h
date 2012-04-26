@@ -35,5 +35,6 @@ typedef struct
 int center_aperture(target r, framedata *frame, double2 *center);
 int calculate_background(target r, framedata *frame, double *sky_mode, double *sky_std_dev);
 double integrate_aperture(double2 xy, double r, framedata *frame);
+void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framedata *dark, double readnoise, double gain, double *signal, double *noise);
 
 #endif

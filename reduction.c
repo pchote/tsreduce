@@ -1034,7 +1034,7 @@ int create_mmi(char *dataPath)
     }
     mmi_corrected_mean /= mmi_corrected_count;
 
-    printf("#\n");
+    printf("# points = %d; dt = %f\n", data.num_obs, (time[data.num_obs-1] - time[0])/3600.0);
     printf("# tgt = %s\n", data.frame_pattern);
     char buf[25];
     strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data.reference_time));

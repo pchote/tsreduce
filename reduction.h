@@ -16,6 +16,6 @@ int ccd_readnoise(const char *framePattern);
 int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath);
 int update_reduction(char *dataPath);
 int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath);
-
+int create_mmi(char *dataPath);
 
 #endif

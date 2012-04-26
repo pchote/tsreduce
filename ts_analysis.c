@@ -135,19 +135,12 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
     subtract_bias(&frame);
-    if (data.dark_template != NULL)
-    {
-        framedata dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
-        framedata_subtract(&frame, &dark);
-        framedata_free(dark);
-    }
 
-    if (data.flat_template != NULL)
-    {
-        framedata flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
-        framedata_divide(&frame, &flat);
-        framedata_free(flat);
-    }
+    framedata dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
+    framedata_subtract(&frame, &dark);
+
+    framedata flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
+    framedata_divide(&frame, &flat);
 
     if (targetIndex < 0 || targetIndex >= data.num_targets)
     {
@@ -173,19 +166,28 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     const int numIntensity = 21;
     double intensity[numIntensity];
+    double noise[numIntensity];
     double radii[numIntensity];
     double profile[numIntensity];
+
+    double readnoise = framedata_get_header_dbl(&flat, "CCD-READ");
+    double gain = framedata_get_header_dbl(&flat, "CCD-GAIN");
+
+    printf("# Read noise: %f\n", readnoise);
+    printf("# Gain: %f\n", gain);
 
     // Calculate the remaining integrated intensities
     for (int i = 1; i < numIntensity; i++)
     {
-        radii[i] = i;
-        intensity[i] = integrate_aperture(xy, radii[i], &frame) - sky_intensity*M_PI*radii[i]*radii[i];
+        radii[i] = i/5.0 + 1;
+        integrate_aperture_and_noise(xy, radii[i], &frame, &dark, readnoise, gain, &intensity[i], &noise[i]);
+        intensity[i] -= sky_intensity*M_PI*radii[i]*radii[i];
     }
 
     // Normalize integrated count by area to give an intensity profile
     // r = 0 value is sampled from the central pixel directly
     radii[0] = 0;
+    noise[0] = 0;
     intensity[0] = 0;
     profile[0] = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
 
@@ -207,7 +209,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     for (int i = 1; i < numIntensity; i++)
         if (profile[i] < profile[0]/2)
         {
-            double fwhm = i - 1 + (profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]);
+            double fwhm = 2*(radii[i - 1] + (radii[i] - radii[i-1])*(profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]));
             printf("# Estimated FWHM: %f px (%f arcsec)\n", fwhm, fwhm*0.68083798727887213);
             break;
         }
@@ -248,7 +250,10 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     // Print profile values
     for (int i = 0; i < numIntensity; i++)
-        printf("%f %f %f\n", radii[i], profile[i], intensity[i]);
+        printf("%f %f %f %f\n", radii[i], profile[i], intensity[i], intensity[i]/noise[i]);
+
+    framedata_free(flat);
+    framedata_free(dark);
 
     return 0;
 }

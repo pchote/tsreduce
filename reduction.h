@@ -17,5 +17,6 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
 int update_reduction(char *dataPath);
 int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath);
 int create_mmi(char *dataPath);
+int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures);
 
 #endif

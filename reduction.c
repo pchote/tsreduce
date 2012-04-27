@@ -1047,3 +1047,147 @@ int create_mmi(char *dataPath)
 
     return 0;
 }
+
+//
+// Iterate a range of aperture sizes over a data set to find the best signal-to-noise ratio
+//
+int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures)
+{
+    // Read file header
+    datafile data = read_data_header(dataPath);
+
+    if (data.file == NULL)
+        return error("Error opening data file");
+
+    if (data.version < 3)
+        return error("Invalid data file version `%d'. Requires version >= 3", data.version);
+
+    chdir(data.frame_dir);
+
+    framedata flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
+    framedata dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
+    double readnoise = framedata_get_header_dbl(&flat, "CCD-READ");
+    double gain = framedata_get_header_dbl(&flat, "CCD-GAIN");
+
+    // Compile the filepattern into a regex
+    regex_t regex;
+    int regerr = 0;
+    if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
+    {
+        char errbuf[1024];
+        regerror(regerr, &regex, errbuf, 1024);
+        regfree(&regex);
+        fclose(data.file);
+        return error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+    }
+
+    struct dirent **matched;
+    char filename[NAME_MAX];
+    int numMatched = scandir(".", &matched, 0, alphasort);
+
+    double *radii = malloc(numApertures*sizeof(double));
+    double *snr = malloc(numApertures*sizeof(double));
+    for (int k = 0; k < numApertures; k++)
+    {
+        radii[k] = minAperture + k*(maxAperture - minAperture)/(numApertures - 1);
+        for (int i = 0; i < data.num_targets; i++)
+            data.targets[i].r = radii[k];
+
+        double totalSignal = 0;
+        double totalNoise = 0;
+        for (int j = 0; j < numMatched; j++)
+        {
+            strncpy(filename, matched[j]->d_name, NAME_MAX);
+            filename[NAME_MAX-1] = '\0';
+
+            // Ignore files that don't match the regex
+            if (regexec(&regex, filename, 0, NULL, 0))
+                continue;
+
+            framedata frame = framedata_new(filename, FRAMEDATA_DBL);
+            int exptime = framedata_get_header_int(&frame, "EXPTIME");
+
+            // Preprocess frame
+            subtract_bias(&frame);
+            framedata_subtract(&frame, &dark);
+            framedata_divide(&frame, &flat);
+
+            // Process frame
+            double comparisonIntensity = 0;
+            double targetIntensity = 0;
+            double comparisonNoise = 0;
+            double targetNoise = 0;
+            for (int i = 0; i < data.num_targets; i++)
+            {
+                // Use the aperture position from the previous frame
+                // as a starting point if it is valid
+                target t = data.targets[i];
+                if (j > 0)
+                {
+                    double2 last = data.obs[j-1].pos[i];
+                    if (last.x > 0 && last.x < frame.cols)
+                        t.x = last.x;
+                    if (last.y > 0 && last.y < frame.rows)
+                        t.y = last.y;
+                }
+
+                double sky = 0;
+                double intensity = 0;
+                double noise = 0;
+                double2 xy = {0,0};
+
+                if (!center_aperture(t, &frame, &xy))
+                {
+                    if (calculate_background(t, &frame, &sky, NULL))
+                        sky = 0;
+
+                    // Integrate sky over the aperture and normalize per unit time
+                    sky *= M_PI*t.r*t.r / exptime;
+
+                    integrate_aperture_and_noise(xy, t.r, &frame, &dark, readnoise, gain, &intensity, &noise);
+                    intensity = intensity/exptime - sky;
+                    noise /= exptime;
+                }
+
+                data.obs[j].pos[i] = xy;
+
+                if (i == 0)
+                {
+                    targetIntensity = intensity;
+                    targetNoise = noise;
+                }
+                else
+                {
+                    comparisonIntensity += intensity;
+                    comparisonNoise += noise;
+                }
+            }
+
+            // Ratio
+            double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
+            double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
+            data.num_obs++;
+            totalSignal += ratio;
+            totalNoise += ratioNoise;
+            framedata_free(frame);
+        }
+
+        snr[k] = totalSignal/totalNoise;
+        printf("Radius: %.2f SNR: %f\n", radii[k], snr[k]);
+
+    }
+
+    framedata_free(dark);
+    for (int i = 0; i < numMatched; i++)
+        free(matched[i]);
+    free(matched);
+    regfree(&regex);
+    fclose(data.file);
+
+    printf("# Radius SNR\n");
+    for (int i = 0; i < numApertures; i++)
+        printf("%.2f %f\n", radii[i], snr[i]);
+    free(radii);
+    free(snr);
+    return 0;
+}

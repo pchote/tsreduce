@@ -223,6 +223,8 @@ int main( int argc, char *argv[] )
         return ccd_readnoise(argv[2]);
     else if (argc == 3 && strncmp(argv[1], "mmi", 3) == 0)
         return create_mmi(argv[2]);
+    else if (argc == 6 && strncmp(argv[1], "snr", 3) == 0)
+        return evaluate_aperture_snr(argv[2], atof(argv[3]), atof(argv[4]), atoi(argv[5]));
 
     else
         error("Invalid args");

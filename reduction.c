@@ -22,6 +22,23 @@
 #include "aperture.h"
 #include "fit.h"
 
+static time_t get_frame_time(framedata *frame)
+{
+    char datebuf[128], timebuf[128], datetimebuf[257];
+    struct tm t;
+    if (framedata_has_header_string(frame, "UTC-BEG"))
+    {
+        framedata_get_header_string(frame, "UTC-DATE", datebuf);
+        framedata_get_header_string(frame, "UTC-BEG", timebuf);
+        sprintf(datetimebuf, "%s %s", datebuf, timebuf);
+    }
+    else if (framedata_has_header_string(frame, "GPSTIME"))
+        framedata_get_header_string(frame, "GPSTIME", datetimebuf);
+
+    strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
+    return timegm(&t);
+}
+
 // Calculate the standard deviation of pixels in a data cube
 // The standard deviation is calculated as the sum of differences from the per-pixel
 // mean, over all frames (the deviation is not calculated per-frame, and then averaged)
@@ -579,24 +596,9 @@ int update_reduction(char *dataPath)
         
         int exptime = framedata_get_header_int(&frame, "EXPTIME");
         
-        // Calculate time at the *start* of the exposure relative to ReferenceTime
-        double starttime = 0;
-        
-        char datebuf[128], timebuf[128], datetimebuf[257];
-        struct tm t;
-        if (framedata_has_header_string(&frame, "UTC-BEG"))
-        {
-            framedata_get_header_string(&frame, "UTC-DATE", datebuf);
-            framedata_get_header_string(&frame, "UTC-BEG", timebuf);
-            
-            sprintf(datetimebuf, "%s %s", datebuf, timebuf);
-        }
-        else if (framedata_has_header_string(&frame, "GPSTIME"))
-            framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
-        
-        strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
-        time_t frame_time = timegm(&t);
-        starttime = difftime(frame_time, data.reference_time);
+        // Calculate time at the start of the exposure relative to ReferenceTime
+        time_t frame_time = get_frame_time(&frame);
+        double starttime = difftime(frame_time, data.reference_time);
         
         // Subtract bias
         subtract_bias(&frame);
@@ -720,18 +722,8 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     // Open the file to find the reference time
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
     subtract_bias(&frame);
-    char datetimebuf[257];
-    if (framedata_has_header_string(&frame, "UTC-BEG"))
-    {
-        char datebuf[128], timebuf[128];
-        framedata_get_header_string(&frame, "UTC-DATE", datebuf);
-        framedata_get_header_string(&frame, "UTC-BEG", timebuf);
-        
-        sprintf(datetimebuf, "%s %s", datebuf, timebuf);
-    }
-    else if (framedata_has_header_string(&frame, "GPSTIME"))
-        framedata_get_header_string(&frame, "GPSTIME", datetimebuf);
-    
+    time_t frame_time = get_frame_time(&frame);
+
     if (darkTemplate != NULL)
     {
         framedata dark = framedata_new(darkTemplate, FRAMEDATA_DBL);
@@ -894,7 +886,10 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     fprintf(data, "# FramePattern: %s\n", framePattern);
     fprintf(data, "# DarkTemplate: %s\n", darkTemplate);
     fprintf(data, "# FlatTemplate: %s\n", flatTemplate);
-    fprintf(data, "# ReferenceTime: %s\n", datetimebuf);
+
+    char datetimebuf[20];
+    strftime(datetimebuf, 20, "%F %H %M %S\n", gmtime(&frame_time));
+    fprintf(data, "# ReferenceTime: %s", datetimebuf);
     for (int i = 0; i < num_targets; i++)
         fprintf(data, "# Target: (%f, %f, %f, %f, %f) [1.0]\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
     

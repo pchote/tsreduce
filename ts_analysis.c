@@ -328,6 +328,10 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     if (raw == NULL)
         return error("malloc failed");
 
+    float *ratio_time = (float *)malloc(data.num_obs*sizeof(float));
+    if (ratio_time == NULL)
+        return error("malloc failed");
+
     float *ratio = (float *)malloc(data.num_obs*sizeof(float));
     if (ratio == NULL)
         return error("malloc failed");
@@ -342,44 +346,56 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
         return error("malloc failed");
 
     double ratio_mean = 0;
+    int process_obs = 0;
     for (int i = 0; i < data.num_obs; i++)
     {
         time[i] = data.obs[i].time;
-        ratio[i] = data.obs[i].ratio;
-        ratio_mean += ratio[i];
 
         for (int j = 0; j < data.num_targets; j++)
             raw[j*data.num_obs + i] = data.obs[i].star[j];
+
+        // Filter bad observations
+        for (int j = 0; j < data.num_blocked_ranges; j++)
+            if (time[i] >= data.blocked_ranges[j].x && time[i] <= data.blocked_ranges[j].y)
+                goto skipObs;
+
+        ratio_time[process_obs] = time[i];
+        ratio[process_obs] = data.obs[i].ratio;
+        ratio_mean += ratio[process_obs];
+        process_obs++;
+        continue;
+    skipObs:
+        printf("Skipping observation at %f\n", time[i]);
     }
     float max_time = min_time + time[data.num_obs-1]/3600;
 
-    ratio_mean /= data.num_obs;
+    ratio_mean /= process_obs;
 
     // Calculate standard deviation
     double ratio_std = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < process_obs; i++)
         ratio_std += (ratio[i] - ratio_mean)*(ratio[i] - ratio_mean);
-    ratio_std = sqrt(ratio_std/data.num_obs);
+    ratio_std = sqrt(ratio_std/process_obs);
     float min_ratio = (ratio_mean - 5*ratio_std);
     float max_ratio = (ratio_mean + 5*ratio_std);
 
-
-    if (fit_polynomial(time, ratio, data.num_obs, coeffs, data.plot_fit_degree))
+    if (fit_polynomial(ratio_time, ratio, process_obs, coeffs, data.plot_fit_degree))
     {
         free(coeffs);
         free(ratio);
         free(raw);
         free(time);
+        free(ratio_time);
         fclose(data.file);
         return error("Fit failed");
     }
 
-    float *mmi = (float *)malloc(data.num_obs*sizeof(float));
+    float *mmi = (float *)malloc(process_obs*sizeof(float));
     if (mmi == NULL)
         return error("malloc failed");
 
     double mmi_mean = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < process_obs; i++)
     {
         // Subtract polynomial fit and convert to mmi
         polyfit[i] = 0;
@@ -387,7 +403,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
         for (int j = 0; j <= data.plot_fit_degree; j++)
         {
             polyfit[i] += pow*coeffs[j];
-            pow *= time[i];
+            pow *= ratio_time[i];
         }
         mmi[i] = ratio[i] > 0 ? 1000*(ratio[i] - polyfit[i])/ratio[i] : 0;
         mmi_mean += mmi[i];
@@ -396,15 +412,15 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     // Calculate standard deviation
     double mmi_std = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < process_obs; i++)
         mmi_std += (mmi[i] - mmi_mean)*(mmi[i] - mmi_mean);
-    mmi_std = sqrt(mmi_std/data.num_obs);
+    mmi_std = sqrt(mmi_std/process_obs);
 
     double mmi_corrected_mean = 0;
     int mmi_corrected_count = 0;
 
     // Discard outliers and recalculate mean
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < process_obs; i++)
     {
         if (fabs(mmi[i] - mmi_mean) > 3*mmi_std)
             mmi[i] = 0;
@@ -442,7 +458,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, time[data.num_obs-1], min_mmi, max_mmi);
-    cpgpt(data.num_obs, time, mmi, 20);
+    cpgpt(process_obs, ratio_time, mmi, 20);
 
     // Ratio
     cpgsvp(0.1, 0.9, 0.55, 0.75);
@@ -451,11 +467,11 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgbox("bcst", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, time[data.num_obs-1], min_ratio, max_ratio);
-    cpgpt(data.num_obs, time, ratio, 20);
+    cpgpt(data.num_obs, ratio_time, ratio, 20);
 
     // Plot the polynomial fit
     cpgsci(2);
-    cpgline(data.num_obs, time, polyfit);
+    cpgline(process_obs, ratio_time, polyfit);
     cpgsci(1);
 
     // Raw Data
@@ -482,7 +498,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     if (ampl == NULL)
         return error("malloc failed");
 
-    calculate_amplitude_spectrum_float(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, time, mmi, data.num_obs, freq, ampl, data.plot_num_uhz);
+    calculate_amplitude_spectrum_float(data.plot_min_uhz*1e-6, data.plot_max_uhz*1e-6, ratio_time, mmi, process_obs, freq, ampl, data.plot_num_uhz);
 
     // Determine max dft ampl
     float max_dft_ampl = 0;
@@ -545,6 +561,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     free(ratio);
     free(raw);
     free(time);
+    free(ratio_time);
     fclose(data.file);
 
     return 0;

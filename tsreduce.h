@@ -18,6 +18,9 @@
 // Maximum number of targets to track
 #define MAX_TARGETS 10
 
+// Maximum number of ranges to block
+#define MAX_BLOCKED_RANGES 10
+
 // Maximum length of the header keys (except for the framedir path)
 // If you change this, you must change the sscanf lines to match
 #define HEADER_MAXLENGTH 128
@@ -51,6 +54,10 @@ typedef struct
     int plot_num_uhz;
     double plot_min_uhz;
     double plot_max_uhz;
+
+    double2 blocked_ranges[MAX_BLOCKED_RANGES];
+    int num_blocked_ranges;
+
 } datafile;
 
 datafile read_data_header(char *dataFile);

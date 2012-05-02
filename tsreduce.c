@@ -42,6 +42,7 @@ datafile read_data_header(char *dataFile)
     h.flat_template[0] = '\0';
     h.num_obs = 0;
     h.num_targets = 0;
+    h.num_blocked_ranges = 0;
     h.plot_fit_degree = 4;
     h.plot_max_raw = 5000;
     h.plot_num_uhz = 1000;
@@ -114,6 +115,13 @@ datafile read_data_header(char *dataFile)
             sscanf(linebuf, "# PlotMaxUhz: %lf\n", &h.plot_max_uhz);
         else if (!strncmp(linebuf,"# PlotNumUhz:", 13))
             sscanf(linebuf, "# PlotNumUhz: %d\n", &h.plot_num_uhz);
+        else if (!strncmp(linebuf,"# BlockRange:", 13))
+        {
+            sscanf(linebuf, "# BlockRange: (%lf, %lf)\n",
+                   &h.blocked_ranges[h.num_blocked_ranges].x,
+                   &h.blocked_ranges[h.num_blocked_ranges].y);
+            h.num_blocked_ranges++;
+        }
 
         // Skip header / comment lines
         if (linebuf[0] == '#')

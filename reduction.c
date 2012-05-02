@@ -1107,68 +1107,83 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
             framedata frame = framedata_new(filename, FRAMEDATA_DBL);
             int exptime = framedata_get_header_int(&frame, "EXPTIME");
 
-            // Preprocess frame
-            subtract_bias(&frame);
-            framedata_subtract(&frame, &dark);
-            framedata_divide(&frame, &flat);
+            // Calculate time at the start of the exposure relative to ReferenceTime
+            double starttime = difftime(get_frame_time(&frame), data.reference_time);
 
-            // Process frame
-            double comparisonIntensity = 0;
-            double targetIntensity = 0;
-            double comparisonNoise = 0;
-            double targetNoise = 0;
-            for (int i = 0; i < data.num_targets; i++)
+            bool skip = false;
+            for (int i = 0; i < data.num_blocked_ranges; i++)
+                if (starttime >= data.blocked_ranges[i].x && starttime <= data.blocked_ranges[i].y)
+                {
+                    printf("Ignoring time %f\n", starttime);
+                    skip = true;
+                    break;
+                }
+
+            if (!skip)
             {
-                // Use the aperture position from the previous frame
-                // as a starting point if it is valid
-                target t = data.targets[i];
-                if (j > 0)
+                // Preprocess frame
+                subtract_bias(&frame);
+                framedata_subtract(&frame, &dark);
+                framedata_divide(&frame, &flat);
+
+                // Process frame
+                double comparisonIntensity = 0;
+                double targetIntensity = 0;
+                double comparisonNoise = 0;
+                double targetNoise = 0;
+                for (int i = 0; i < data.num_targets; i++)
                 {
-                    double2 last = data.obs[j-1].pos[i];
-                    if (last.x > 0 && last.x < frame.cols)
-                        t.x = last.x;
-                    if (last.y > 0 && last.y < frame.rows)
-                        t.y = last.y;
+                    // Use the aperture position from the previous frame
+                    // as a starting point if it is valid
+                    target t = data.targets[i];
+                    if (j > 0)
+                    {
+                        double2 last = data.obs[j-1].pos[i];
+                        if (last.x > 0 && last.x < frame.cols)
+                            t.x = last.x;
+                        if (last.y > 0 && last.y < frame.rows)
+                            t.y = last.y;
+                    }
+
+                    double sky = 0;
+                    double intensity = 0;
+                    double noise = 0;
+                    double2 xy = {0,0};
+
+                    if (!center_aperture(t, &frame, &xy))
+                    {
+                        if (calculate_background(t, &frame, &sky, NULL))
+                            sky = 0;
+
+                        // Integrate sky over the aperture and normalize per unit time
+                        sky *= M_PI*t.r*t.r / exptime;
+
+                        integrate_aperture_and_noise(xy, t.r, &frame, &dark, readnoise, gain, &intensity, &noise);
+                        intensity = intensity/exptime - sky;
+                        noise /= exptime;
+                    }
+
+                    data.obs[j].pos[i] = xy;
+
+                    if (i == 0)
+                    {
+                        targetIntensity = intensity;
+                        targetNoise = noise;
+                    }
+                    else
+                    {
+                        comparisonIntensity += intensity;
+                        comparisonNoise += noise;
+                    }
                 }
 
-                double sky = 0;
-                double intensity = 0;
-                double noise = 0;
-                double2 xy = {0,0};
-
-                if (!center_aperture(t, &frame, &xy))
-                {
-                    if (calculate_background(t, &frame, &sky, NULL))
-                        sky = 0;
-
-                    // Integrate sky over the aperture and normalize per unit time
-                    sky *= M_PI*t.r*t.r / exptime;
-
-                    integrate_aperture_and_noise(xy, t.r, &frame, &dark, readnoise, gain, &intensity, &noise);
-                    intensity = intensity/exptime - sky;
-                    noise /= exptime;
-                }
-
-                data.obs[j].pos[i] = xy;
-
-                if (i == 0)
-                {
-                    targetIntensity = intensity;
-                    targetNoise = noise;
-                }
-                else
-                {
-                    comparisonIntensity += intensity;
-                    comparisonNoise += noise;
-                }
+                // Ratio
+                double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
+                double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
+                data.num_obs++;
+                totalSignal += ratio;
+                totalNoise += ratioNoise;
             }
-
-            // Ratio
-            double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-            double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
-            data.num_obs++;
-            totalSignal += ratio;
-            totalNoise += ratioNoise;
             framedata_free(frame);
         }
 

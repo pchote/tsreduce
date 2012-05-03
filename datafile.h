@@ -1,13 +1,14 @@
 /*
- * Copyright 2010, 2011 Paul Chote
+ * Copyright 2010, 2011, 2012 Paul Chote
  * This file is part of Puoko-nui, which is free software. It is made available
  * to you under the terms of version 3 of the GNU General Public License, as
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
 #include "aperture.h"
-#ifndef TSREDUCE_H
-#define TSREDUCE_H
+
+#ifndef DATAFILE_H
+#define DATAFILE_H
 
 // Maximum number of frames to load when creating a flat or dark frame
 #define MAX_FRAMES 100
@@ -54,10 +55,10 @@ typedef struct
     int plot_num_uhz;
     double plot_min_uhz;
     double plot_max_uhz;
-
+    
     double2 blocked_ranges[MAX_BLOCKED_RANGES];
     int num_blocked_ranges;
-
+    
 } datafile;
 
 datafile load_reduced_data(char *dataFile);

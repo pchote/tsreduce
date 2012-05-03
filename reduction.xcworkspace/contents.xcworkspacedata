@@ -27,6 +27,12 @@
       location = "container:"
       name = "Calculation Routines">
       <FileRef
+         location = "group:datafile.c">
+      </FileRef>
+      <FileRef
+         location = "group:datafile.h">
+      </FileRef>
+      <FileRef
          location = "group:framedata.c">
       </FileRef>
       <FileRef
@@ -51,9 +57,6 @@
          location = "group:aperture.c">
       </FileRef>
    </Group>
-   <FileRef
-      location = "group:tsreduce.h">
-   </FileRef>
    <FileRef
       location = "group:tsreduce.c">
    </FileRef>

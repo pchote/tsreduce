@@ -16,7 +16,7 @@
 #include <regex.h>
 #include <stdbool.h>
 
-#include "tsreduce.h"
+#include "datafile.h"
 #include "framedata.h"
 #include "helpers.h"
 #include "aperture.h"

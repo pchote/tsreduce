@@ -14,7 +14,7 @@
 #include <string.h>
 #include <cpgplot.h>
 
-#include "tsreduce.h"
+#include "datafile.h"
 #include "helpers.h"
 #include "fit.h"
 

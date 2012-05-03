@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "datafile.h"
+#include "helpers.h"
 
 #define PLOT_FIT_DEGREE_DEFAULT 4
 #define PLOT_MAX_RAW_DEFAULT 5000
@@ -25,7 +26,7 @@ datafile *datafile_alloc()
 {
     datafile *dp = malloc(sizeof(datafile));
     dp->file = NULL;
-    dp->version = 0;
+    dp->version = 4;
     dp->frame_dir = NULL;
     dp->frame_pattern = NULL;
     dp->dark_template = NULL;
@@ -187,4 +188,56 @@ void datafile_free(datafile *data)
 
     free(data);
 }
+
+/*
+ * Save the header (but not data) from a struct datafile
+ */
+int datafile_save_header(datafile *data, char *filename)
+{
+    // data->file may point at a different file, so
+    // create a new output
+    FILE *out = fopen(filename, "w+");
+    if (!out)
+        return error("Error opening file %s", filename);
+
+    // Write the file
+    fprintf(out, "# Puoko-nui Online reduction output\n");
+    if (data->version)
+        fprintf(out, "# Version: %d\n", data->version);
+    if (data->frame_dir)
+        fprintf(out, "# FrameDir: %s\n", data->frame_dir);
+    if (data->frame_pattern)
+        fprintf(out, "# FramePattern: %s\n", data->frame_pattern);
+    if (data->dark_template)
+        fprintf(out, "# DarkTemplate: %s\n", data->dark_template);
+    if (data->flat_template)
+        fprintf(out, "# FlatTemplate: %s\n", data->flat_template);
+    if (data->plot_fit_degree != PLOT_FIT_DEGREE_DEFAULT)
+        fprintf(out, "# PlotFitDegree: %d\n", data->plot_fit_degree);
+    if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)
+        fprintf(out, "# PlotMaxRaw: %f\n", data->plot_max_raw);
+    if (data->plot_min_uhz != PLOT_MIN_UHZ_DEFAULT)
+        fprintf(out, "# PlotMinUhz: %f\n", data->plot_min_uhz);
+    if (data->plot_max_uhz != PLOT_MAX_UHZ_DEFAULT)
+        fprintf(out, "# PlotMaxUhz: %f\n", data->plot_max_uhz);
+    if (data->plot_num_uhz != PLOT_NUM_UHZ_DEFAULT)
+        fprintf(out, "# PlotMaxUhz: %d\n", data->plot_num_uhz);
+    if (data->reference_time)
+    {
+        char datetimebuf[20];
+        strftime(datetimebuf, 20, "%F %H:%M:%S", gmtime(&data->reference_time));
+        fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
+    }
+
+    for (int i = 0; i < data->num_targets; i++)
+        fprintf(out, "# Target: (%f, %f, %f, %f, %f) [1.0]\n",
+                data->targets[i].x, data->targets[i].y,
+                data->targets[i].r, data->targets[i].s1, data->targets[i].s2);
+
+    for (int i = 0; i < data->num_blocked_ranges; i++)
+        fprintf(out, "# BlockRange: (%f, %f)\n",
+                data->blocked_ranges[i].x, data->blocked_ranges[i].y);
+
+    fclose(out);
+    return 0;
 }

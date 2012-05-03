@@ -691,76 +691,94 @@ int update_reduction(char *dataPath)
 // Create a reduction file at filePath, with frames from the dir framePath
 // matching the regex framePattern, with dark and flat frames given by
 // darkTemplate and flatTemplate
-int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath)
+int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filename)
 {
-    FILE *data = fopen(filePath, "wx");
-    if (data == NULL)
-        return error("Unable to create data file: %s. Does it already exist?", filePath);
-    
+    int ret = 0;
+
+    // Non-rigorous test that we won't overwrite an existing file
+    FILE *fileTest = fopen(filename, "wx");
+    if (fileTest == NULL)
+        return error("Unable to create data file: %s. Does it already exist?", filename);
+    fclose(fileTest);
+
+    if (!init_ds9("tsreduce"))
+        return error("Unable to launch ds9");
+
     char pathBuf[PATH_MAX];
     realpath(framePath, pathBuf);
-    
+    datafile *data = datafile_alloc();
+
     if (chdir(pathBuf))
     {
-        fclose(data);
-        return error("Invalid frame path: %s", pathBuf);
+        ret = error("Invalid frame path: %s", pathBuf);
+        goto setup_error;
     }
-    
-    if (!init_ds9("tsreduce"))
-    {
-        fclose(data);
-        return error("Unable to launch ds9");
-    }
+    data->frame_dir = strdup(pathBuf);
     
     char filenamebuf[NAME_MAX];
     if (!get_first_matching_file(framePattern, filenamebuf, NAME_MAX))
     {
-        fclose(data);
-        return error("No matching files found");
+        ret = error("No matching files found");
+        goto setup_error;
     }
+    data->frame_pattern = strdup(framePattern);
     
     // Open the file to find the reference time
     framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
+    /*
+    if (!frame)
+    {
+        ret = error("Unable to open frame %s", filenamebuf);
+        goto frameload_error;
+    }
+    */
     subtract_bias(&frame);
-    time_t frame_time = get_frame_time(&frame);
+    data->reference_time = get_frame_time(&frame);
 
-    if (darkTemplate != NULL)
+    framedata dark = framedata_new(darkTemplate, FRAMEDATA_DBL);
+    /*
+    if (!dark)
     {
-        framedata dark = framedata_new(darkTemplate, FRAMEDATA_DBL);
-        framedata_subtract(&frame, &dark);
-        framedata_free(dark);
+        ret = error("Unable to open frame %s", darkTemplate);
+        goto frameload_error;
     }
-    
-    if (flatTemplate != NULL)
+    */
+    framedata_subtract(&frame, &dark);
+    framedata_free(dark);
+    data->dark_template = strdup(darkTemplate);
+
+    framedata flat = framedata_new(flatTemplate, FRAMEDATA_DBL);
+    /*
+    if (!flat)
     {
-        framedata flat = framedata_new(flatTemplate, FRAMEDATA_DBL);
-        framedata_divide(&frame, &flat);
-        framedata_free(flat);
+        ret = error("Unable to open frame %s", flatTemplate);
+        goto frameload_error;
     }
-    
+    */
+    framedata_divide(&frame, &flat);
+    framedata_free(flat);
+    data->flat_template = strdup(flatTemplate);
+
     char command[128];
     snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.cols, frame.rows);
     if (tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
     {
-        framedata_free(frame);
-        fclose(data);
-        return error("ds9 command failed: %s", command);
+        ret = error("ds9 command failed: %s", command);
+        goto frameload_error;
     }
     
     // Set scaling mode
     if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
     {
-        framedata_free(frame);
-        fclose(data);
-        return error("ds9 command failed: scale mode 99.5");
+        ret = error("ds9 command failed: scale mode 99.5");
+        goto frameload_error;
     }
     
     // Flip X axis
     if (tell_ds9("tsreduce", "orient x", NULL, 0))
     {
-        framedata_free(frame);
-        fclose(data);
-        return error("ds9 command failed: orient x");
+        ret = error("ds9 command failed: orient x");
+        goto frameload_error;
     }
     
     printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
@@ -769,18 +787,16 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     char *ds9buf;
     if (ask_ds9("tsreduce", "regions", &ds9buf) || ds9buf == NULL)
     {
-        framedata_free(frame);
-        fclose(data);
-        return error("ds9 request regions failed");
+        ret = error("ds9 request regions failed");
+        goto frameload_error;
     }
     
     // Parse the region definitions
-    target targets[MAX_TARGETS];
-    int num_targets = 0;
     char *cur = ds9buf;
+    double largest_aperture = 0;
     while ((cur = strstr(cur, "circle")) != NULL)
     {
-        if (num_targets == MAX_TARGETS)
+        if (data->num_targets == MAX_TARGETS)
         {
             printf("Limit of %d targets reached. Remaining targets have been ignored", MAX_TARGETS);
             break;
@@ -806,121 +822,84 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         
         printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
         
-        int n = 0;
-        double move = 0;
-        target last;
-        // Converge on the best aperture size and position
-        do
+        double2 xy;
+        if (center_aperture(t, &frame, &xy))
         {
-            if (n++ == 20)
+            ret = error("Aperture did not converge");
+            goto aperture_converge_error;
+        }
+        t.x = xy.x;
+        t.y = xy.y;
+
+        double sky_intensity, sky_std_dev;
+        if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
+        {
+            ret = error("Background calculation failed");
+            goto aperture_converge_error;
+        }
+
+        // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
+        double lastIntensity = 0;
+        double lastProfile = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
+        int maxRadius = (int)t.s2 + 1;
+        for (int radius = 1; radius <= maxRadius; radius++)
+        {
+            double intensity = integrate_aperture(xy, radius, &frame) - sky_intensity*M_PI*radius*radius;
+            double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+            if (profile < 5*sky_std_dev)
             {
-                printf("WARNING: Aperture centering did not converge");
+                // Linear interpolate radii to estimate the radius that gives 5*stddev
+                t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
+                largest_aperture = fmax(largest_aperture, t.r);
                 break;
             }
-            
-            last = t;
-            // Calculate a rough center and background: Estimates will improve as we converge
-            double2 xy;
-            if (center_aperture(t, &frame, &xy))
-            {
-                free(ds9buf);
-                framedata_free(frame);
-                fclose(data);
-                return error("Aperture did not converge");
-            }
+            lastIntensity = intensity;
+            lastProfile = profile;
+        }
 
-            t.x = xy.x; t.y = xy.y;
-            double sky_intensity, sky_std_dev;
-            if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
-            {
-                free(ds9buf);
-                framedata_free(frame);
-                fclose(data);
-                return error("Background calculation failed");
-            }
-
-            double lastIntensity = 0;
-            double lastProfile = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
-            
-            // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
-            int maxRadius = (int)t.s2 + 1;
-            for (int radius = 1; radius <= maxRadius; radius++)
-            {
-                double intensity = integrate_aperture(xy, radius, &frame) - sky_intensity*M_PI*radius*radius;
-                double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-                if (profile < 5*sky_std_dev)
-                {
-                    t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
-                    break;
-                }
-                lastIntensity = intensity;
-                lastProfile = profile;
-            }
-            
-            printf("Iteration %d: Center: (%f, %f) Radius: %f Background: %f +/- %f\n", n, t.x, t.y, t.r, sky_intensity, sky_std_dev);
-            move = (xy.x-last.x)*(xy.x-last.x) + (xy.y-last.y)*(xy.y-last.y);
-        } while (move >= 0.00390625);
-        
         // Set target parameters
-        targets[num_targets++] = t;
+        data->targets[data->num_targets++] = t;
         
         // Increment by one char so strstr will find the next instance
         cur++;
     }
-    free(ds9buf);
-    
-    // Set all target radii equal to the largest one
-    // Temporary workaround (hopefully) until we can determine why different aperture sizes ratio badly
-    double largest = 0;
-    for (int i = 0; i < num_targets; i++)
-        largest = fmax(largest, targets[i].r);
-    for (int i = 0; i < num_targets; i++)
-        targets[i].r = largest;
-    
-    printf("Founds %d targets\n", num_targets);
-    
-    // Write the file
-    fprintf(data, "# Puoko-nui Online reduction output\n");
-    fprintf(data, "# Version: 4\n");
-    fprintf(data, "# FrameDir: %s\n", pathBuf);
-    fprintf(data, "# FramePattern: %s\n", framePattern);
-    fprintf(data, "# DarkTemplate: %s\n", darkTemplate);
-    fprintf(data, "# FlatTemplate: %s\n", flatTemplate);
 
-    char datetimebuf[20];
-    strftime(datetimebuf, 20, "%F %H %M %S\n", gmtime(&frame_time));
-    fprintf(data, "# ReferenceTime: %s", datetimebuf);
-    for (int i = 0; i < num_targets; i++)
-        fprintf(data, "# Target: (%f, %f, %f, %f, %f) [1.0]\n", targets[i].x, targets[i].y, targets[i].r, targets[i].s1, targets[i].s2);
+    // Set aperture radii to the same size, equal to the largest calculated above
+    for (int i = 0; i < data->num_targets; i++)
+        data->targets[i].r = largest_aperture;
     
-    // Display results in ds9
+    printf("Founds %d targets\n", data->num_targets);
+    
+    // Display results in ds9 - errors are non-fatal
     snprintf(command, 128, "regions delete all");
     if (tell_ds9("tsreduce", command, NULL, 0))
-    {
-        framedata_free(frame);
-        fclose(data);
-        return error("ds9 command failed: %s", command);
-    }
+        error("ds9 command failed: %s", command);
     
-    for (int i = 0; i < num_targets; i++)
+    for (int i = 0; i < data->num_targets; i++)
     {
-        double x = targets[i].x + 1;
-        double y = targets[i].y + 1;
+        double x = data->targets[i].x + 1;
+        double y = data->targets[i].y + 1;
         
-        snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, targets[i].r);
+        snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data->targets[i].r);
         if (tell_ds9("tsreduce", command, NULL, 0))
-            fprintf(stderr, "ds9 command failed: %s\n", command);
-        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s1);
+            error("ds9 command failed: %s\n", command);
+        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s1);
         if (tell_ds9("tsreduce", command, NULL, 0))
-            fprintf(stderr, "ds9 command failed: %s\n", command);
-        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, targets[i].s2);
+            error("ds9 command failed: %s\n", command);
+        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s2);
         if (tell_ds9("tsreduce", command, NULL, 0))
-            fprintf(stderr, "ds9 command failed: %s\n", command);
+            error("ds9 command failed: %s\n", command);
     }
-    
+
+    // Save to disk
+    datafile_save_header(data, filename);
+aperture_converge_error:
+    free(ds9buf);
+frameload_error:
     framedata_free(frame);
-    fclose(data);
-    return 0;
+setup_error:
+    datafile_free(data);
+    return ret;
 }
 
 int create_mmi(char *dataPath)

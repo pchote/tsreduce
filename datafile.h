@@ -54,11 +54,11 @@ typedef struct
     
     double2 blocked_ranges[MAX_BLOCKED_RANGES];
     int num_blocked_ranges;
-    
 } datafile;
 
 datafile *datafile_alloc();
 datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
+int datafile_save_header(datafile *data, char *filename);
 
 #endif

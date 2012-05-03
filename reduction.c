@@ -535,7 +535,7 @@ int update_reduction(char *dataPath)
     flat.dbl_data = NULL;
     
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     int start_obs = data.num_obs;
 
     if (data.file == NULL)
@@ -926,7 +926,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 int create_mmi(char *dataPath)
 {
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     if (data.file == NULL)
         return error("Error opening data file");
 
@@ -1054,7 +1054,7 @@ int create_mmi(char *dataPath)
 int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures)
 {
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
 
     if (data.file == NULL)
         return error("Error opening data file");

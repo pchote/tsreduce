@@ -60,6 +60,6 @@ typedef struct
 
 } datafile;
 
-datafile read_data_header(char *dataFile);
+datafile load_reduced_data(char *dataFile);
 
 #endif

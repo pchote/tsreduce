@@ -23,7 +23,7 @@
 int display_targets(char *dataPath, int obsIndex)
 {
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     if (data.file == NULL)
         return error("Error opening data file");
 
@@ -112,7 +112,7 @@ int display_targets(char *dataPath, int obsIndex)
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 {
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     if (data.file == NULL)
         return error("Error opening data file");
 
@@ -263,7 +263,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 int detect_repeats(char *dataPath)
 {
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     if (data.file == NULL)
         return error("Error opening data file");
 
@@ -301,7 +301,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     int plot_colors[] = {4,2,8,3,5,6,7,9};
 
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     if (data.file == NULL)
         return error("Error opening data file");
 
@@ -570,7 +570,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 int amplitude_spectrum(char *dataPath)
 {
     // Read file header
-    datafile data = read_data_header(dataPath);
+    datafile data = load_reduced_data(dataPath);
     if (data.file == NULL)
         return error("Error opening data file");
 

@@ -28,10 +28,8 @@
 #include "reduction.h"
 #include "ts_analysis.h"
 
-// Read the header section from the data file
-// defined as all the lines at the top of the file
-// that start with #
-datafile read_data_header(char *dataFile)
+// Read a reduced data file into a struct datafile
+datafile load_reduced_data(char *dataFile)
 {
     datafile h;
     h.file = NULL;

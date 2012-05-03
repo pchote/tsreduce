@@ -535,33 +535,33 @@ int update_reduction(char *dataPath)
     flat.dbl_data = NULL;
     
     // Read file header
-    datafile data = load_reduced_data(dataPath);
-    int start_obs = data.num_obs;
-
-    if (data.file == NULL)
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
         return error("Error opening data file");
     
-    if (data.version < 3)
-        return error("Invalid data file version `%d'. Requires version >= 3", data.version);
+    int start_obs = data->num_obs;
+
+    if (data->version < 3)
+        return error("Invalid data file version `%d'. Requires version >= 3", data->version);
     
-    chdir(data.frame_dir);
+    chdir(data->frame_dir);
     
-    if (data.flat_template != NULL)
-        flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
+    if (data->flat_template != NULL)
+        flat = framedata_new(data->flat_template, FRAMEDATA_DBL);
     
-    if (data.dark_template != NULL)
-        dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
+    if (data->dark_template != NULL)
+        dark = framedata_new(data->dark_template, FRAMEDATA_DBL);
     
     // Compile the filepattern into a regex
     regex_t regex;
     int regerr = 0;
-    if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
+    if ((regerr = regcomp(&regex, data->frame_pattern, REG_EXTENDED | REG_NOSUB)))
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
         regfree(&regex);
-        datafile_free(&data);
-        return error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+        datafile_free(data);
+        return error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
     }
     
     // Iterate through the files in the directory
@@ -580,8 +580,8 @@ int update_reduction(char *dataPath)
         
         // Check whether the frame has been processed
         int processed = FALSE;
-        for (int i = 0; i < data.num_obs; i++)
-            if (strcmp(filename, data.obs[i].filename) == 0)
+        for (int i = 0; i < data->num_obs; i++)
+            if (strcmp(filename, data->obs[i].filename) == 0)
             {
                 processed = TRUE;
                 break;
@@ -598,7 +598,7 @@ int update_reduction(char *dataPath)
         
         // Calculate time at the start of the exposure relative to ReferenceTime
         time_t frame_time = get_frame_time(&frame);
-        double starttime = difftime(frame_time, data.reference_time);
+        double starttime = difftime(frame_time, data->reference_time);
         
         // Subtract bias
         subtract_bias(&frame);
@@ -616,20 +616,20 @@ int update_reduction(char *dataPath)
         //
         
         // Observation start time
-        fprintf(data.file, "%.1f ", starttime);
-        data.obs[data.num_obs].time = starttime;
+        fprintf(data->file, "%.1f ", starttime);
+        data->obs[data->num_obs].time = starttime;
         
         // Target stars
         double comparisonIntensity = 0;
         double targetIntensity = 0;
-        for (int i = 0; i < data.num_targets; i++)
+        for (int i = 0; i < data->num_targets; i++)
         {
             // Use the aperture position from the previous frame
             // as a starting point if it is valid
-            target t = data.targets[i];
-            if (data.num_obs > 0)
+            target t = data->targets[i];
+            if (data->num_obs > 0)
             {
-                double2 last = data.obs[data.num_obs-1].pos[i];
+                double2 last = data->obs[data->num_obs-1].pos[i];
                 if (last.x > 0 && last.x < frame.cols)
                     t.x = last.x;
                 if (last.y > 0 && last.y < frame.rows)
@@ -650,14 +650,14 @@ int update_reduction(char *dataPath)
                 intensity = integrate_aperture(xy, t.r, &frame) / exptime - sky;
             }
 
-            fprintf(data.file, "%.2f ", intensity); // intensity (ADU/s)
-            fprintf(data.file, "%.2f ", sky); // sky intensity (ADU/s)
-            fprintf(data.file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
+            fprintf(data->file, "%.2f ", intensity); // intensity (ADU/s)
+            fprintf(data->file, "%.2f ", sky); // sky intensity (ADU/s)
+            fprintf(data->file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
             
-            data.obs[data.num_obs].star[i] = intensity;
-            data.obs[data.num_obs].sky[i] = sky;
-            data.obs[data.num_obs].pos[i].x = xy.x;
-            data.obs[data.num_obs].pos[i].y = xy.y;
+            data->obs[data->num_obs].star[i] = intensity;
+            data->obs[data->num_obs].sky[i] = sky;
+            data->obs[data->num_obs].pos[i].x = xy.x;
+            data->obs[data->num_obs].pos[i].y = xy.y;
             
             if (i == 0)
                 targetIntensity = intensity;
@@ -667,13 +667,13 @@ int update_reduction(char *dataPath)
         
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-        fprintf(data.file, "%.3e ", ratio);
-        data.obs[data.num_obs].ratio = ratio;
+        fprintf(data->file, "%.3e ", ratio);
+        data->obs[data->num_obs].ratio = ratio;
         
         // Filename
-        fprintf(data.file, "%s\n", filename);
-        strncpy(data.obs[data.num_obs].filename, filename, sizeof(filename));
-        data.num_obs++;
+        fprintf(data->file, "%s\n", filename);
+        strncpy(data->obs[data->num_obs].filename, filename, sizeof(filename));
+        data->num_obs++;
         
         framedata_free(frame);
     }
@@ -682,8 +682,8 @@ int update_reduction(char *dataPath)
     
     free(matched);
     regfree(&regex);
-    datafile_free(&data);
-    printf("Reduced %d observations\n", data.num_obs - start_obs);
+    datafile_free(data);
+    printf("Reduced %d observations\n", data->num_obs - start_obs);
     return 0;
 }
 
@@ -926,78 +926,78 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 int create_mmi(char *dataPath)
 {
     // Read file header
-    datafile data = load_reduced_data(dataPath);
-    if (data.file == NULL)
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
         return error("Error opening data file");
 
-    chdir(data.frame_dir);
+    chdir(data->frame_dir);
 
     // No data
-    if (data.num_obs <= 0)
+    if (data->num_obs <= 0)
     {
-        datafile_free(&data);
+        datafile_free(data);
         return error("File specifies no observations");
     }
 
     // Time Series data
-    double *time = malloc(data.num_obs*sizeof(double));
+    double *time = malloc(data->num_obs*sizeof(double));
     if (time == NULL)
         return error("malloc failed");
 
-    double *ratio = malloc(data.num_obs*sizeof(double));
+    double *ratio = malloc(data->num_obs*sizeof(double));
     if (ratio == NULL)
         return error("malloc failed");
 
-    double *polyfit = malloc(data.num_obs*sizeof(double));
+    double *polyfit = malloc(data->num_obs*sizeof(double));
     if (polyfit == NULL)
         return error("malloc failed");
 
     // Calculate polynomial fit to the ratio
-    double *coeffs = (double *)malloc((data.plot_fit_degree+1)*sizeof(double));
+    double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
     if (coeffs == NULL)
         return error("malloc failed");
 
     double ratio_mean = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < data->num_obs; i++)
     {
-        time[i] = data.obs[i].time;
-        double target = data.obs[i].star[0];
+        time[i] = data->obs[i].time;
+        double target = data->obs[i].star[0];
         double comparison = 0;
-        for (int j = 1; j < data.num_targets; j++)
-            comparison += data.obs[i].star[j];
+        for (int j = 1; j < data->num_targets; j++)
+            comparison += data->obs[i].star[j];
 
         ratio[i] = target/comparison;
         ratio_mean += ratio[i];
     }
 
-    ratio_mean /= data.num_obs;
+    ratio_mean /= data->num_obs;
 
     // Calculate standard deviation
     double ratio_std = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < data->num_obs; i++)
         ratio_std += (ratio[i] - ratio_mean)*(ratio[i] - ratio_mean);
-    ratio_std = sqrt(ratio_std/data.num_obs);
+    ratio_std = sqrt(ratio_std/data->num_obs);
 
-    if (fit_polynomial_d(time, ratio, data.num_obs, coeffs, data.plot_fit_degree))
+    if (fit_polynomial_d(time, ratio, data->num_obs, coeffs, data->plot_fit_degree))
     {
         free(coeffs);
         free(ratio);
         free(time);
-        datafile_free(&data);
+        datafile_free(data);
         return error("Fit failed");
     }
 
-    double *mmi = malloc(data.num_obs*sizeof(double));
+    double *mmi = malloc(data->num_obs*sizeof(double));
     if (mmi == NULL)
         return error("malloc failed");
 
     double mmi_mean = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < data->num_obs; i++)
     {
         // Subtract polynomial fit and convert to mmi
         polyfit[i] = 0;
         double pow = 1;
-        for (int j = 0; j <= data.plot_fit_degree; j++)
+        for (int j = 0; j <= data->plot_fit_degree; j++)
         {
             polyfit[i] += pow*coeffs[j];
             pow *= time[i];
@@ -1005,19 +1005,19 @@ int create_mmi(char *dataPath)
         mmi[i] = 1000*(ratio[i] - polyfit[i])/ratio[i];
         mmi_mean += mmi[i];
     }
-    mmi_mean /= data.num_obs;
+    mmi_mean /= data->num_obs;
 
     // Calculate standard deviation
     double mmi_std = 0;
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < data->num_obs; i++)
         mmi_std += (mmi[i] - mmi_mean)*(mmi[i] - mmi_mean);
-    mmi_std = sqrt(mmi_std/data.num_obs);
+    mmi_std = sqrt(mmi_std/data->num_obs);
 
     double mmi_corrected_mean = 0;
     int mmi_corrected_count = 0;
 
     // Discard outliers and recalculate mean
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < data->num_obs; i++)
     {
         if (fabs(mmi[i] - mmi_mean) > 3*mmi_std)
             mmi[i] = 0;
@@ -1029,21 +1029,21 @@ int create_mmi(char *dataPath)
     }
     mmi_corrected_mean /= mmi_corrected_count;
 
-    printf("# points = %d; dt = %f\n", data.num_obs, (time[data.num_obs-1] - time[0])/3600.0);
-    printf("# tgt = %s\n", data.frame_pattern);
+    printf("# points = %d; dt = %f\n", data->num_obs, (time[data->num_obs-1] - time[0])/3600.0);
+    printf("# tgt = %s\n", data->frame_pattern);
     char buf[25];
-    strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data.reference_time));
+    strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data->reference_time));
     printf("%s", buf);
     printf("#\n");
 
-    for (int i = 0; i < data.num_obs; i++)
+    for (int i = 0; i < data->num_obs; i++)
         printf("%f %f\n", time[i]/3600.0, mmi[i]);
 
     free(coeffs);
     free(mmi);
     free(ratio);
     free(time);
-    datafile_free(&data);
+    datafile_free(data);
 
     return 0;
 }
@@ -1054,31 +1054,30 @@ int create_mmi(char *dataPath)
 int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures)
 {
     // Read file header
-    datafile data = load_reduced_data(dataPath);
-
-    if (data.file == NULL)
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
         return error("Error opening data file");
 
-    if (data.version < 3)
-        return error("Invalid data file version `%d'. Requires version >= 3", data.version);
+    if (data->version < 3)
+        return error("Invalid data file version `%d'. Requires version >= 3", data->version);
 
-    chdir(data.frame_dir);
+    chdir(data->frame_dir);
 
-    framedata flat = framedata_new(data.flat_template, FRAMEDATA_DBL);
-    framedata dark = framedata_new(data.dark_template, FRAMEDATA_DBL);
+    framedata flat = framedata_new(data->flat_template, FRAMEDATA_DBL);
+    framedata dark = framedata_new(data->dark_template, FRAMEDATA_DBL);
     double readnoise = framedata_get_header_dbl(&flat, "CCD-READ");
     double gain = framedata_get_header_dbl(&flat, "CCD-GAIN");
 
     // Compile the filepattern into a regex
     regex_t regex;
     int regerr = 0;
-    if ((regerr = regcomp(&regex, data.frame_pattern, REG_EXTENDED | REG_NOSUB)))
+    if ((regerr = regcomp(&regex, data->frame_pattern, REG_EXTENDED | REG_NOSUB)))
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
         regfree(&regex);
-        datafile_free(&data);
-        return error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
+        datafile_free(data);
+        return error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
     }
 
     struct dirent **matched;
@@ -1090,8 +1089,8 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
     for (int k = 0; k < numApertures; k++)
     {
         radii[k] = minAperture + k*(maxAperture - minAperture)/(numApertures - 1);
-        for (int i = 0; i < data.num_targets; i++)
-            data.targets[i].r = radii[k];
+        for (int i = 0; i < data->num_targets; i++)
+            data->targets[i].r = radii[k];
 
         double totalSignal = 0;
         double totalNoise = 0;
@@ -1108,11 +1107,11 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
             int exptime = framedata_get_header_int(&frame, "EXPTIME");
 
             // Calculate time at the start of the exposure relative to ReferenceTime
-            double starttime = difftime(get_frame_time(&frame), data.reference_time);
+            double starttime = difftime(get_frame_time(&frame), data->reference_time);
 
             bool skip = false;
-            for (int i = 0; i < data.num_blocked_ranges; i++)
-                if (starttime >= data.blocked_ranges[i].x && starttime <= data.blocked_ranges[i].y)
+            for (int i = 0; i < data->num_blocked_ranges; i++)
+                if (starttime >= data->blocked_ranges[i].x && starttime <= data->blocked_ranges[i].y)
                 {
                     printf("Ignoring time %f\n", starttime);
                     skip = true;
@@ -1131,14 +1130,14 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
                 double targetIntensity = 0;
                 double comparisonNoise = 0;
                 double targetNoise = 0;
-                for (int i = 0; i < data.num_targets; i++)
+                for (int i = 0; i < data->num_targets; i++)
                 {
                     // Use the aperture position from the previous frame
                     // as a starting point if it is valid
-                    target t = data.targets[i];
+                    target t = data->targets[i];
                     if (j > 0)
                     {
-                        double2 last = data.obs[j-1].pos[i];
+                        double2 last = data->obs[j-1].pos[i];
                         if (last.x > 0 && last.x < frame.cols)
                             t.x = last.x;
                         if (last.y > 0 && last.y < frame.rows)
@@ -1163,7 +1162,7 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
                         noise /= exptime;
                     }
 
-                    data.obs[j].pos[i] = xy;
+                    data->obs[j].pos[i] = xy;
 
                     if (i == 0)
                     {
@@ -1180,7 +1179,7 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
                 // Ratio
                 double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
                 double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
-                data.num_obs++;
+                data->num_obs++;
                 totalSignal += ratio;
                 totalNoise += ratioNoise;
             }
@@ -1197,7 +1196,7 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
         free(matched[i]);
     free(matched);
     regfree(&regex);
-    datafile_free(&data);
+    datafile_free(data);
 
     printf("# Radius SNR\n");
     for (int i = 0; i < numApertures; i++)

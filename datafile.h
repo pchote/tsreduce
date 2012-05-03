@@ -57,7 +57,8 @@ typedef struct
     
 } datafile;
 
-datafile load_reduced_data(char *dataFile);
+datafile *datafile_alloc();
+datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
 
 #endif

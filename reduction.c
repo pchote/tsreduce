@@ -71,6 +71,8 @@ double calculate_cube_stddev(double *data, int num_frames, int num_pixels)
 // Read noise is given by the standard deviation away from the mean bias level
 int ccd_readnoise(const char *framePattern)
 {
+    int ret = 0;
+
     char **frames;
     int num_frames = get_matching_files(framePattern, &frames);
 
@@ -79,15 +81,30 @@ int ccd_readnoise(const char *framePattern)
 
     // Load first frame to get frame info
     framedata *frame = framedata_load(frames[0]);
+    if (!frame)
+    {
+        ret = error("Error loading frame %s", frames[0]);
+        goto setup_error;
+    }
+
     int *br = frame->regions.bias_region;
     double *data = (double *)malloc(frame->regions.bias_px*num_frames*sizeof(double));
     framedata_free(frame);
-    int p = 0;
+    if (!data)
+    {
+        ret = error("malloc failed");
+        goto setup_error;
+    }
 
     // Load overscan region into a data cube
-    for (int k = 0; k < num_frames; k++)
+    for (int p = 0, k = 0; k < num_frames; k++)
     {
         frame = framedata_load(frames[k]);
+        if (!frame)
+        {
+            ret = error("Error loading frame %s", frames[k]);
+            goto process_error;
+        }
 
         // Copy overscan pixels
         for (int j = br[2]; j < br[3]; j++)
@@ -100,10 +117,11 @@ int ccd_readnoise(const char *framePattern)
     double readnoise = calculate_cube_stddev(data, num_frames, frame->regions.bias_px);
     printf("Read noise from %d frames: %f ADU\n", num_frames, readnoise);
 
+process_error:
     free(data);
+setup_error:
     free_2d_array(frames, num_frames);
-
-    return 0;
+    return ret;
 }
 
 // Prepare a raw flat frame for combining into the master-flat
@@ -184,6 +202,11 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Load the master dark frame
     // Frame geometry for all subsequent frames is assumed to match the master-dark
     framedata *dark = framedata_load(masterdark);
+    if (!dark)
+    {
+        return_status = error("Error loading frame %s", masterdark);
+        goto insufficient_frames;
+    }
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
@@ -216,6 +239,14 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     {
         printf("loading `%s`\n", frame_paths[i]);
         frames[i] = framedata_load(frame_paths[i]);
+        if (!frames[i])
+        {
+            // Cleanup the frames that we have allocated
+            for (int j = 0; j < i; j++)
+                framedata_free(frames[j]);
+            return_status = error("Error loading frame %s", frame_paths[i]);
+            goto loadflat_failed;
+        }
 
         if (frames[i]->rows != dark->rows || frames[i]->cols != dark->cols)
         {
@@ -396,6 +427,12 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     }
     
     framedata *base = framedata_load(frame_paths[0]);
+    if (!base)
+    {
+        return_status = error("Error loading frame %s", frame_paths[0]);
+        goto insufficient_frames;
+    }
+
     int exptime = framedata_get_header_int(base, "EXPTIME");
     double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
     if (median_dark == NULL)
@@ -417,6 +454,11 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     {
         printf("loading `%s`\n", frame_paths[i]);
         framedata *f = framedata_load(frame_paths[i]);
+        if (!f)
+        {
+            return_status = error("Error loading frame %s", frame_paths[i]);
+            goto loaddark_failed;
+        }
 
         if (f->rows != base->rows || f->cols != base->cols)
         {
@@ -488,21 +530,21 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     framedata *base = framedata_load(framePath);
     if (!base)
     {
-        ret = error("Error loading file %s", framePath);
+        ret = error("Error loading frame %s", framePath);
         goto load_error;
     }
 
     framedata *dark = framedata_load(darkPath);
     if (!dark)
     {
-        ret = error("Error loading file %s", darkPath);
+        ret = error("Error loading frame %s", darkPath);
         goto load_error;
     }
 
     framedata *flat = framedata_load(flatPath);
     if (!flat)
     {
-        ret = error("Error loading file %s", flatPath);
+        ret = error("Error loading frame %s", flatPath);
         goto load_error;
     }
 
@@ -748,7 +790,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     framedata *frame = framedata_load(filenamebuf);
     if (!frame)
     {
-        ret = error("Unable to open frame %s", filenamebuf);
+        ret = error("Error loading frame %s", filenamebuf);
         goto frameload_error;
     }
 
@@ -758,7 +800,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     framedata *dark = framedata_load(darkTemplate);
     if (!dark)
     {
-        ret = error("Unable to open frame %s", darkTemplate);
+        ret = error("Error loading frame %s", darkTemplate);
         goto frameload_error;
     }
 
@@ -769,7 +811,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     framedata *flat = framedata_load(flatTemplate);
     if (!flat)
     {
-        ret = error("Unable to open frame %s", flatTemplate);
+        ret = error("Error loading frame %s", flatTemplate);
         goto frameload_error;
     }
 
@@ -1071,14 +1113,14 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
     {
-        ret = error("Error opening frame %s", data->dark_template);
+        ret = error("Error loading frame %s", data->dark_template);
         goto frameload_error;
     }
 
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
     {
-        ret = error("Error opening frame %s", data->flat_template);
+        ret = error("Error loading frame %s", data->flat_template);
         goto frameload_error;
     }
 

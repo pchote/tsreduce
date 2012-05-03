@@ -22,6 +22,9 @@
 // observation index obsIndex over an image frame in ds9
 int display_targets(char *dataPath, int obsIndex)
 {
+    if (!init_ds9("tsreduce"))
+        return error("Unable to launch ds9");
+
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
@@ -33,19 +36,15 @@ int display_targets(char *dataPath, int obsIndex)
         return error("Requested observation is out of range: max is %d", data->num_obs-1);
     }
 
-    chdir(data->frame_dir);
-
-    if (!init_ds9("tsreduce"))
+    if (chdir(data->frame_dir))
     {
         datafile_free(data);
-        return error("Unable to launch ds9");
+        return error("Invalid frame path: %s", data->frame_dir);
     }
 
     char command[128];
     char filenamebuf[NAME_MAX];
     filenamebuf[0] = '\0';
-
-    // Observation index not specified: open the first image that matches
     if (obsIndex >= 0)
         strncpy(filenamebuf, data->obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data->frame_pattern, filenamebuf, NAME_MAX))
@@ -54,26 +53,18 @@ int display_targets(char *dataPath, int obsIndex)
         return error("No matching files found");
     }
 
+    // DS9 errors are nonfatal
     snprintf(command, 128, "file %s/%s", data->frame_dir, filenamebuf);
     if (tell_ds9("tsreduce", command, NULL, 0))
-    {
-        datafile_free(data);
-        return error("ds9 command failed: %s", command);
-    }
+        error("ds9 command failed: %s", command);
 
     // Set scaling mode
     if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
-    {
-        datafile_free(data);
-        return error("ds9 command failed: scale mode 99.5");
-    }
+        error("ds9 command failed: scale mode 99.5");
 
     // Flip X axis
     if (tell_ds9("tsreduce", "orient x", NULL, 0))
-    {
-        datafile_free(data);
-        return error("ds9 command failed: orient x");
-    }
+        error("ds9 command failed: orient x");
 
     for (int i = 0; i < data->num_targets; i++)
     {
@@ -94,13 +85,15 @@ int display_targets(char *dataPath, int obsIndex)
 
         snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data->targets[i].r);
         if (tell_ds9("tsreduce", command, NULL, 0))
-            fprintf(stderr, "ds9 command failed: %s\n", command);
+            error("ds9 command failed: %s\n", command);
+
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s1);
         if (tell_ds9("tsreduce", command, NULL, 0))
-            fprintf(stderr, "ds9 command failed: %s\n", command);
+            error("ds9 command failed: %s\n", command);
+
         snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s2);
         if (tell_ds9("tsreduce", command, NULL, 0))
-            fprintf(stderr, "ds9 command failed: %s\n", command);
+            error("ds9 command failed: %s\n", command);
     }
 
     datafile_free(data);
@@ -111,6 +104,8 @@ int display_targets(char *dataPath, int obsIndex)
 // the reduction file at dataPath
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 {
+    int ret = 0;
+
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
@@ -118,144 +113,172 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     if (obsIndex >= data->num_obs)
     {
-        datafile_free(data);
-        return error("Requested observation is out of range: max is %d", data->num_obs-1);
+        ret = error("Requested observation is out of range: max is %d", data->num_obs-1);
+        goto setup_error;
     }
 
-    chdir(data->frame_dir);
+    if (chdir(data->frame_dir))
+    {
+        ret = error("Invalid frame path: %s", data->frame_dir);
+        goto setup_error;
+    }
 
     char filenamebuf[NAME_MAX];
     if (obsIndex >= 0)
         strncpy(filenamebuf, data->obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data->frame_pattern, filenamebuf, NAME_MAX))
     {
-        datafile_free(data);
-        return error("No matching files found");
+        ret = error("No matching files found");
+        goto setup_error;
     }
 
     framedata *frame = framedata_load(filenamebuf);
+    if (!frame)
+    {
+        ret = error("Error loading frame %s", filenamebuf);
+        goto setup_error;
+    }
     subtract_bias(frame);
 
     framedata *dark = framedata_load(data->dark_template);
+    if (!dark)
+    {
+        ret = error("Error loading frame %s", data->dark_template);
+        goto dark_error;
+    }
     framedata_subtract(frame, dark);
 
     framedata *flat = framedata_load(data->flat_template);
+    if (!flat)
+    {
+        ret = error("Error loading frame %s", data->flat_template);
+        goto flat_error;
+    }
     framedata_divide(frame, flat);
 
     if (targetIndex < 0 || targetIndex >= data->num_targets)
     {
-        datafile_free(data);
-        return error("Invalid target `%d' selected", targetIndex);
+        ret = error("Invalid target `%d' selected", targetIndex);
+        goto process_error;
     }
 
     target t = data->targets[targetIndex];
     double2 xy;
     if (center_aperture(t, frame, &xy))
     {
-        datafile_free(data);
-        return error("Aperture centering failed");
+        ret = error("Aperture centering failed");
+        goto process_error;
     }
     t.x = xy.x; t.y = xy.y;
 
     double sky_intensity, sky_std_dev;
     if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
     {
-        datafile_free(data);
-        return error("Background calculation failed");
+        ret = error("Background calculation failed");
+        goto process_error;
     }
 
-    const int numIntensity = 21;
-    double intensity[numIntensity];
-    double noise[numIntensity];
-    double radii[numIntensity];
-    double profile[numIntensity];
-
-    double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
-    double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
-
-    printf("# Read noise: %f\n", readnoise);
-    printf("# Gain: %f\n", gain);
-
-    // Calculate the remaining integrated intensities
-    for (int i = 1; i < numIntensity; i++)
+    // Calculation lives in its own scope to ensure jumping to the error handling is safe
+    // TODO: this is a mess - either tidy this up or remove the function completely
     {
-        radii[i] = i/5.0 + 1;
-        integrate_aperture_and_noise(xy, radii[i], frame, dark, readnoise, gain, &intensity[i], &noise[i]);
-        intensity[i] -= sky_intensity*M_PI*radii[i]*radii[i];
+        const int numIntensity = 21;
+        double intensity[numIntensity];
+        double noise[numIntensity];
+        double radii[numIntensity];
+        double profile[numIntensity];
+
+        double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
+        double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
+
+        printf("# Read noise: %f\n", readnoise);
+        printf("# Gain: %f\n", gain);
+
+        // Calculate the remaining integrated intensities
+        for (int i = 1; i < numIntensity; i++)
+        {
+            radii[i] = i/5.0 + 1;
+            integrate_aperture_and_noise(xy, radii[i], frame, dark, readnoise, gain, &intensity[i], &noise[i]);
+            intensity[i] -= sky_intensity*M_PI*radii[i]*radii[i];
+        }
+
+        // Normalize integrated count by area to give an intensity profile
+        // r = 0 value is sampled from the central pixel directly
+        radii[0] = 0;
+        noise[0] = 0;
+        intensity[0] = 0;
+        profile[0] = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
+
+        // Central integrated value is a disk
+        profile[1] = intensity[1]/(M_PI*radii[1]*radii[1]);
+
+        // Remaining areas are annuli
+        for (int i = 2; i < numIntensity; i++)
+        {
+            double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
+            profile[i] = (intensity[i] - intensity[i-1])/area;
+        }
+
+        // Print sky value
+        printf("# Sky background: %f\n", sky_intensity);
+        printf("# Sky stddev: %f\n", sky_std_dev);
+
+        // Estimate FWHM by linear interpolation between points
+        for (int i = 1; i < numIntensity; i++)
+            if (profile[i] < profile[0]/2)
+            {
+                double fwhm = 2*(radii[i - 1] + (radii[i] - radii[i-1])*(profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]));
+                printf("# Estimated FWHM: %f px (%f arcsec)\n", fwhm, fwhm*0.68083798727887213);
+                break;
+            }
+
+        // Estimate radius that encloses 85%, 90%, 95% intensity
+        for (int i = 0; i < numIntensity - 1; i++)
+            if (intensity[i + 1] > 0.85*intensity[numIntensity-1])
+            {
+                printf("# Estimated 85%%: %f\n", i + (0.85*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+                break;
+            }
+        for (int i = 0; i < numIntensity - 1; i++)
+            if (intensity[i + 1] > 0.90*intensity[numIntensity-1])
+            {
+                printf("# Estimated 90%%: %f\n", i + (0.90*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+                break;
+            }
+        for (int i = 0; i < numIntensity - 1; i++)
+            if (intensity[i + 1] > 0.95*intensity[numIntensity-1])
+            {
+                printf("# Estimated 95%%: %f\n", i + (0.95*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+                break;
+            }
+
+        // Estimate radius where signal reaches 5x,10x sky sigma
+        for (int i = 1; i < numIntensity; i++)
+            if (profile[i] < 5*sky_std_dev)
+            {
+                printf("# Estimated 5 sky sigma: %f\n", i - 1 + (5*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
+                break;
+            }
+        for (int i = 1; i < numIntensity; i++)
+            if (profile[i] < 10*sky_std_dev)
+            {
+                printf("# Estimated 10 sky sigma: %f\n", i - 1 + (10*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
+                break;
+            }
+
+        // Print profile values
+        for (int i = 0; i < numIntensity; i++)
+            printf("%f %f %f %f\n", radii[i], profile[i], intensity[i], intensity[i]/noise[i]);
     }
 
-    // Normalize integrated count by area to give an intensity profile
-    // r = 0 value is sampled from the central pixel directly
-    radii[0] = 0;
-    noise[0] = 0;
-    intensity[0] = 0;
-    profile[0] = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
-
-    // Central integrated value is a disk
-    profile[1] = intensity[1]/(M_PI*radii[1]*radii[1]);
-
-    // Remaining areas are annuli
-    for (int i = 2; i < numIntensity; i++)
-    {
-        double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
-        profile[i] = (intensity[i] - intensity[i-1])/area;
-    }
-
-    // Print sky value
-    printf("# Sky background: %f\n", sky_intensity);
-    printf("# Sky stddev: %f\n", sky_std_dev);
-
-    // Estimate FWHM by linear interpolation between points
-    for (int i = 1; i < numIntensity; i++)
-        if (profile[i] < profile[0]/2)
-        {
-            double fwhm = 2*(radii[i - 1] + (radii[i] - radii[i-1])*(profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]));
-            printf("# Estimated FWHM: %f px (%f arcsec)\n", fwhm, fwhm*0.68083798727887213);
-            break;
-        }
-
-    // Estimate radius that encloses 85%, 90%, 95% intensity
-    for (int i = 0; i < numIntensity - 1; i++)
-        if (intensity[i + 1] > 0.85*intensity[numIntensity-1])
-        {
-            printf("# Estimated 85%%: %f\n", i + (0.85*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
-            break;
-        }
-    for (int i = 0; i < numIntensity - 1; i++)
-        if (intensity[i + 1] > 0.90*intensity[numIntensity-1])
-        {
-            printf("# Estimated 90%%: %f\n", i + (0.90*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
-            break;
-        }
-    for (int i = 0; i < numIntensity - 1; i++)
-        if (intensity[i + 1] > 0.95*intensity[numIntensity-1])
-        {
-            printf("# Estimated 95%%: %f\n", i + (0.95*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
-            break;
-        }
-
-    // Estimate radius where signal reaches 5x,10x sky sigma
-    for (int i = 1; i < numIntensity; i++)
-        if (profile[i] < 5*sky_std_dev)
-        {
-            printf("# Estimated 5 sky sigma: %f\n", i - 1 + (5*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
-            break;
-        }
-    for (int i = 1; i < numIntensity; i++)
-        if (profile[i] < 10*sky_std_dev)
-        {
-            printf("# Estimated 10 sky sigma: %f\n", i - 1 + (10*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
-            break;
-        }
-
-    // Print profile values
-    for (int i = 0; i < numIntensity; i++)
-        printf("%f %f %f %f\n", radii[i], profile[i], intensity[i], intensity[i]/noise[i]);
-
+process_error:
     framedata_free(flat);
+flat_error:
     framedata_free(dark);
-
-    return 0;
+dark_error:
+    framedata_free(frame);
+setup_error:
+    datafile_free(data);
+    return ret;
 }
 
 
@@ -304,8 +327,6 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");
-
-    chdir(data->frame_dir);
 
     // No data
     if (data->num_obs <= 0)
@@ -569,41 +590,49 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
 int amplitude_spectrum(char *dataPath)
 {
+    int ret = 0;
+
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");
 
-    chdir(data->frame_dir);
-
     // No data
     if (data->num_obs <= 0)
     {
-        datafile_free(data);
-        return error("File specifies no observations");
+        ret = error("File specifies no observations");
+        goto data_error;
     }
 
     // Time Series data
     float *time = (float *)malloc(data->num_obs*sizeof(float));
     if (time == NULL)
-        return error("malloc failed");
-
-    float *raw = (float *)malloc(data->num_obs*data->num_targets*sizeof(float));
-    if (raw == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto data_error;
+    }
 
     float *ratio = (float *)malloc(data->num_obs*sizeof(float));
     if (ratio == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto ratio_malloc_error;
+    }
 
     float *polyfit = (float *)malloc(data->num_obs*sizeof(float));
     if (polyfit == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto polyfit_malloc_error;
+    }
 
     // Calculate polynomial fit to the ratio
     double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
     if (coeffs == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto coeffs_malloc_error;
+    }
 
     double ratio_mean = 0;
     for (int i = 0; i < data->num_obs; i++)
@@ -611,11 +640,7 @@ int amplitude_spectrum(char *dataPath)
         time[i] = data->obs[i].time;
         ratio[i] = data->obs[i].ratio;
         ratio_mean += ratio[i];
-
-        for (int j = 0; j < data->num_targets; j++)
-            raw[j*data->num_obs + i] = data->obs[i].star[j];
     }
-
     ratio_mean /= data->num_obs;
 
     // Calculate standard deviation
@@ -626,17 +651,16 @@ int amplitude_spectrum(char *dataPath)
 
     if (fit_polynomial(time, ratio, data->num_obs, coeffs, data->plot_fit_degree))
     {
-        free(coeffs);
-        free(ratio);
-        free(raw);
-        free(time);
-        datafile_free(data);
-        return error("Fit failed");
+        ret = error("Fit failed");
+        goto fit_failed_error;
     }
 
     float *mmi = (float *)malloc(data->num_obs*sizeof(float));
     if (mmi == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto mmi_malloc_error;
+    }
 
     double mmi_mean = 0;
     for (int i = 0; i < data->num_obs; i++)
@@ -679,27 +703,40 @@ int amplitude_spectrum(char *dataPath)
     // DFT data
     float *freq = (float *)malloc(data->plot_num_uhz*sizeof(float));
     if (freq == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto freq_malloc_error;
+    }
 
     float *ampl = (float *)malloc(data->plot_num_uhz*sizeof(float));
     if (ampl == NULL)
-        return error("malloc failed");
+    {
+        ret = error("malloc failed");
+        goto ampl_malloc_error;
+    }
 
     calculate_amplitude_spectrum_float(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, time, mmi, data->num_obs, freq, ampl, data->plot_num_uhz);
 
     for (int i = 0; i < data->plot_num_uhz; i++)
         printf("%f %f\n", freq[i], ampl[i]);
 
-    free(coeffs);
     free(ampl);
+ampl_malloc_error:
     free(freq);
+freq_malloc_error:
     free(mmi);
+mmi_malloc_error:
+fit_failed_error:
+    free(coeffs);
+coeffs_malloc_error:
+    free(polyfit);
+polyfit_malloc_error:
     free(ratio);
-    free(raw);
+ratio_malloc_error:
     free(time);
+data_error:
     datafile_free(data);
-
-    return 0;
+    return ret;
 }
 
 /*

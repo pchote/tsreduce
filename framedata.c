@@ -8,74 +8,87 @@
 #include "framedata.h"
 #include "helpers.h"
 
-framedata framedata_new(const char *filename, framedata_type dtype)
+static framedata *framedata_alloc()
 {
-    framedata this;
+    framedata *fp = malloc(sizeof(framedata));
+    if (!fp)
+        return NULL;
+
+    fp->rows = 0;
+    fp->cols = 0;
+    fp->data = NULL;
+    fp->regions.has_overscan = false;
+    return fp;
+}
+
+framedata *framedata_load(const char *filename)
+{
+    framedata *fp = framedata_alloc();
+    if (!fp)
+        goto frame_error;
+
 	int status = 0;
-    if (fits_open_image(&this._fptr, filename, READONLY, &status))
+    if (fits_open_image(&fp->fptr, filename, READONLY, &status))
     {
         char fitserr[128];
         while (fits_read_errmsg(fitserr))
-            fprintf(stderr, "%s\n", fitserr);
+            error("%s\n", fitserr);
 
-        die("fits_open_image failed with error %d; %s", status, filename);
+        error("fits_open_image failed with error %d; %s", status, filename);
+        goto frame_error;
     }
     // Query the image size
-    fits_read_key(this._fptr, TINT, "NAXIS1", &this.cols, NULL, &status);
-    fits_read_key(this._fptr, TINT, "NAXIS2", &this.rows, NULL, &status);
+    fits_read_key(fp->fptr, TINT, "NAXIS1", &fp->cols, NULL, &status);
+    fits_read_key(fp->fptr, TINT, "NAXIS2", &fp->rows, NULL, &status);
     if (status)
-        die("querying NAXIS failed");
-    
-    long fpixel[2] = {1,1}; // Read the entire image
-    
-    this.dtype = dtype;
-    if (dtype == FRAMEDATA_INT)
     {
-        this.dbl_data = NULL;
-        this.data = (int *)malloc(this.cols*this.rows*sizeof(int));
-        if (this.data == NULL)
-            die("malloc failed");
-        
-        if (fits_read_pix(this._fptr, TINT, fpixel, this.cols*this.rows, 0, this.data, NULL, &status))
-            die("fits_read_pix failed");
+        error("querying NAXIS failed");
+        goto frame_error;
     }
-    
-    else if (dtype == FRAMEDATA_DBL)
+
+
+    fp->data = (double *)malloc(fp->cols*fp->rows*sizeof(double));
+    if (fp->data == NULL)
     {
-        this.data = NULL;
-        this.dbl_data = (double *)malloc(this.cols*this.rows*sizeof(double));
-        if (this.dbl_data == NULL)
-            die("malloc failed");
-        
-        if (fits_read_pix(this._fptr, TDOUBLE, fpixel, this.cols*this.rows, 0, this.dbl_data, NULL, &status))
-            die("fits_read_pix failed");
+        error("malloc failed");
+        goto frame_error;
+    }
+
+    if (fits_read_pix(fp->fptr, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
+    {
+        error("fits_read_pix failed");
+        goto frame_error;
     }
 
     // Load image regions
     // TODO: have acquisition software save regions into a header key
-    this.regions.has_overscan = (this.cols != this.rows);
-    int *ir = this.regions.image_region;
-    int *br = this.regions.bias_region;
-    if (this.regions.has_overscan)
+    fp->regions.has_overscan = (fp->cols != fp->rows);
+    int *ir = fp->regions.image_region;
+    int *br = fp->regions.bias_region;
+    if (fp->regions.has_overscan)
     {
         ir[0] = 0; ir[1] = 512; ir[2] = 0; ir[3] = 512;
         br[0] = 525; br[1] = 535; br[2] = 5; br[3] = 508;
     }
     else
     {
-        ir[0] = 0; ir[1] = this.cols; ir[2] = 0; ir[3] = this.rows;
+        ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
         br[0] = br[1] = br[2] = br[3] = 0;
     }
 
-    this.regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
-    this.regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
-    return this;
+    fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
+    fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
+    return fp;
+
+frame_error:
+    framedata_free(fp);
+    return NULL;
 }
 
 int framedata_get_header_int(framedata *this, const char *key)
 {
     int ret, status = 0;
-    if (fits_read_key(this->_fptr, TINT, key, &ret, NULL, &status))
+    if (fits_read_key(this->fptr, TINT, key, &ret, NULL, &status))
         die("framedata_get_header_int failed");
     return ret;
 }
@@ -84,7 +97,7 @@ double framedata_get_header_dbl(framedata *this, const char *key)
 {
     double ret;
     int status = 0;
-    if (fits_read_key(this->_fptr, TDOUBLE, key, &ret, NULL, &status))
+    if (fits_read_key(this->fptr, TDOUBLE, key, &ret, NULL, &status))
         die("framedata_get_header_dbl failed");
     return ret;
 }
@@ -93,14 +106,14 @@ int framedata_has_header_string(framedata *this, const char *key)
 {
     int status = 0;
     char buf[128];
-    fits_read_key(this->_fptr, TSTRING, key, &buf, NULL, &status);
+    fits_read_key(this->fptr, TSTRING, key, &buf, NULL, &status);
     return status != KEY_NO_EXIST;
 }
 
 void framedata_get_header_string(framedata *this, const char *key, char *ret)
 {
     int status = 0;
-    if (fits_read_key(this->_fptr, TSTRING, key, ret, NULL, &status))
+    if (fits_read_key(this->fptr, TSTRING, key, ret, NULL, &status))
         die("framedata_get_header_string failed");
 }
 
@@ -108,76 +121,51 @@ void framedata_subtract(framedata *this, framedata *other)
 {
     if (this->cols != other->cols || this->rows != other->rows)
         die("Attempting to subtract frame with different size");
-    
-    if (this->dtype == FRAMEDATA_INT)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->data[i] -= other->data[i];
-    else if (this->dtype == FRAMEDATA_DBL)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->dbl_data[i] -= other->dbl_data[i];
-    else 
-        die("Unknown datatype");
+
+    for (int i = 0; i < this->cols*this->rows; i++)
+        this->data[i] -= other->data[i];
 }
 
 void framedata_add(framedata *this, framedata *other)
 {
     if (this->cols != other->cols || this->rows != other->rows)
         die("Attempting to add frame with different size");
-    
-    if (this->dtype == FRAMEDATA_INT)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->data[i] += other->data[i];
-    else if (this->dtype == FRAMEDATA_DBL)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->dbl_data[i] += other->dbl_data[i];
-    else 
-        die("Unknown datatype");
+
+    for (int i = 0; i < this->cols*this->rows; i++)
+        this->data[i] += other->data[i];
 }
 
 void framedata_multiply(framedata *this, int mul)
 {
-    if (this->dtype == FRAMEDATA_INT)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->data[i] *= mul;
-    else if (this->dtype == FRAMEDATA_DBL)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->dbl_data[i] *= mul;
-    else 
-        die("Unknown datatype");
+    for (int i = 0; i < this->cols*this->rows; i++)
+        this->data[i] *= mul;
 }
 
 void framedata_divide_const(framedata *this, int div)
 {
-    if (this->dtype == FRAMEDATA_INT)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->data[i] /= div;
-    else if (this->dtype == FRAMEDATA_DBL)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->dbl_data[i] /= div;
-    else 
-        die("Unknown datatype");
+    for (int i = 0; i < this->cols*this->rows; i++)
+        this->data[i] /= div;
 }
 
 void framedata_divide(framedata *this, framedata *div)
 {
-    if (this->dtype == FRAMEDATA_INT)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->data[i] /= div->data[i];
-    else if (this->dtype == FRAMEDATA_DBL)
-        for (int i = 0; i < this->cols*this->rows; i++)
-            this->dbl_data[i] /=  div->dbl_data[i];
-    else 
-        die("Unknown datatype");
+    for (int i = 0; i < this->cols*this->rows; i++)
+        this->data[i] /=  div->data[i];
 }
 
-void framedata_free(framedata this)
+void framedata_free(framedata *frame)
 {
+    if (!frame)
+        return;
+
     int status;
-    if (this.data)
-        free(this.data);
-    if (this.dbl_data)
-        free(this.dbl_data);
-    fits_close_file(this._fptr, &status);
+    if (frame->data)
+        free(frame->data);
+
+    if (frame->fptr)
+        fits_close_file(frame->fptr, &status);
+
+    free(frame);
 }
 
 // Convenience function for calculating the mean signal in a sub-region of a frame
@@ -188,7 +176,7 @@ double mean_in_region(framedata *frame, int rgn[4])
     double mean = 0;
     for (int j = rgn[2]; j < rgn[3]; j++)
         for (int i = rgn[0]; i < rgn[1]; i++)
-            mean += frame->dbl_data[j*frame->cols + i]/num_px;
+            mean += frame->data[j*frame->cols + i]/num_px;
     return mean;
 }
 
@@ -201,5 +189,5 @@ void subtract_bias(framedata *frame)
 
     double mean_bias = mean_in_region(frame, frame->regions.bias_region);
     for (int i = 0; i < frame->rows*frame->cols; i++)
-        frame->dbl_data[i] -= mean_bias;
+        frame->data[i] -= mean_bias;
 }

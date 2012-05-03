@@ -78,26 +78,26 @@ int ccd_readnoise(const char *framePattern)
         return error("No matching frames");
 
     // Load first frame to get frame info
-    framedata frame = framedata_new(frames[0], FRAMEDATA_DBL);
-    int *br = frame.regions.bias_region;
-    double *data = (double *)malloc(frame.regions.bias_px*num_frames*sizeof(double));
+    framedata *frame = framedata_load(frames[0]);
+    int *br = frame->regions.bias_region;
+    double *data = (double *)malloc(frame->regions.bias_px*num_frames*sizeof(double));
     framedata_free(frame);
     int p = 0;
 
     // Load overscan region into a data cube
     for (int k = 0; k < num_frames; k++)
     {
-        frame = framedata_new(frames[k], FRAMEDATA_DBL);
+        frame = framedata_load(frames[k]);
 
         // Copy overscan pixels
         for (int j = br[2]; j < br[3]; j++)
             for (int i = br[0]; i < br[1]; i++)
-                data[p++] = frame.dbl_data[j*frame.cols + i];
+                data[p++] = frame->data[j*frame->cols + i];
 
         framedata_free(frame);
     }
 
-    double readnoise = calculate_cube_stddev(data, num_frames, frame.regions.bias_px);
+    double readnoise = calculate_cube_stddev(data, num_frames, frame->regions.bias_px);
     printf("Read noise from %d frames: %f ADU\n", num_frames, readnoise);
 
     free(data);
@@ -124,7 +124,7 @@ double prepare_flat(framedata *flat, framedata *dark)
     // Subtract dark, normalized to the flat exposure time
     double exp_ratio = flatexp*1.0/darkexp;
     for (int i = 0; i < flat->rows*flat->cols; i++)
-        flat->dbl_data[i] -= exp_ratio*dark->dbl_data[i];
+        flat->data[i] -= exp_ratio*dark->data[i];
 
     // Calculate mean in image area only
     int *ir = flat->regions.image_region;
@@ -135,7 +135,7 @@ double prepare_flat(framedata *flat, framedata *dark)
     for (int j = ir[2]; j < ir[3]; j++)
         for (int i = ir[0]; i < ir[1]; i++)
         {
-            double temp = flat->dbl_data[flat->cols*j + i] - mean;
+            double temp = flat->data[flat->cols*j + i] - mean;
             std += temp*temp;
         }
     std = sqrt(std/flat->regions.image_px);
@@ -145,16 +145,16 @@ double prepare_flat(framedata *flat, framedata *dark)
     int count = 0;
     for (int j = ir[2]; j < ir[3]; j++)
         for (int i = ir[0]; i < ir[1]; i++)
-            if (fabs(flat->dbl_data[flat->cols*j + i] - mean) < 3*std)
+            if (fabs(flat->data[flat->cols*j + i] - mean) < 3*std)
             {
-                mean_new += flat->dbl_data[flat->cols*j + i];
+                mean_new += flat->data[flat->cols*j + i];
                 count++;
             }
     mean_new /= count;
 
     // Normalize flat so the image region mean is 1
     for (int i = 0; i < flat->rows*flat->cols; i++)
-        flat->dbl_data[i] /= mean_new;
+        flat->data[i] /= mean_new;
 
     // Return original mean level
     return mean_new;
@@ -183,11 +183,11 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
 
     // Load the master dark frame
     // Frame geometry for all subsequent frames is assumed to match the master-dark
-    framedata dark = framedata_new(masterdark, FRAMEDATA_DBL);
+    framedata *dark = framedata_load(masterdark);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
-    double *data_cube = (double *)malloc(num_frames*dark.cols*dark.rows*sizeof(double));
+    double *data_cube = (double *)malloc(num_frames*dark->cols*dark->rows*sizeof(double));
     if (data_cube == NULL)
     {
         return_status = error("malloc failed");
@@ -203,7 +203,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     }
 
     // We need to iterate over the individual frames multiple times to calculate gain
-    framedata *frames = (framedata *)malloc(num_frames*sizeof(framedata));
+    framedata **frames = (framedata **)malloc(num_frames*sizeof(framedata*));
     if (frames == NULL)
     {
         return_status = error("malloc failed");
@@ -215,54 +215,55 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     for(int i = 0; i < num_frames; i++)
     {
         printf("loading `%s`\n", frame_paths[i]);
-        frames[i] = framedata_new(frame_paths[i], FRAMEDATA_DBL);
+        frames[i] = framedata_load(frame_paths[i]);
 
-        if (frames[i].rows != dark.rows || frames[i].cols != dark.cols)
+        if (frames[i]->rows != dark->rows || frames[i]->cols != dark->cols)
         {
             // Cleanup the frames that we have allocated
             for (int j = 0; j <= i; j++)
                 framedata_free(frames[j]);
 
-            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)", frames[i], dark.rows, dark.cols, frames[i].rows, frames[i].cols);
+            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
+                frames[i], dark->rows, dark->cols, frames[i]->rows, frames[i]->cols);
             goto loadflat_failed;
         }
 
         // Dark-subtract and normalize the frame, recording the mean level for calculating the gain
-        mean_flat[i] = prepare_flat(&frames[i], &dark);
+        mean_flat[i] = prepare_flat(frames[i], dark);
 
         // Store normalized data in data cube
-        for (int j = 0; j < dark.rows*dark.cols; j++)
-            data_cube[num_frames*j+i] = frames[i].dbl_data[j];
+        for (int j = 0; j < dark->rows*dark->cols; j++)
+            data_cube[num_frames*j+i] = frames[i]->data[j];
     }
 
     // Calculate read noise from overscan region
     // Subtracting master-dark removed the mean level, so just add
     double readnoise = 0;
-    if (dark.regions.has_overscan)
+    if (dark->regions.has_overscan)
     {
-        int *br = dark.regions.bias_region;
+        int *br = dark->regions.bias_region;
         double var = 0;
         for (int j = br[2]; j < br[3]; j++)
             for (int i = br[0]; i < br[1]; i++)
                 for (int k = 0; k < num_frames; k++)
                 {
                     // Need to multiply by the mean level for the frame to give the variance in ADU
-                    double temp = mean_flat[k]*data_cube[num_frames*(dark.cols*j + i) + k];
+                    double temp = mean_flat[k]*data_cube[num_frames*(dark->cols*j + i) + k];
                     var += temp*temp;
                 }
-        readnoise = sqrt(var/(dark.regions.bias_px*num_frames));
+        readnoise = sqrt(var/(dark->regions.bias_px*num_frames));
     }
 
     // Calculate median image for the master-flat
     // Loop over the pixels, sorting the values from each image into increasing order
-    double *median_flat = (double *)malloc(dark.rows*dark.cols*sizeof(double));
+    double *median_flat = (double *)malloc(dark->rows*dark->cols*sizeof(double));
     if (median_flat == NULL)
     {
         return_status = error("malloc failed");
         goto median_failed;
     }
 
-    for (int j = 0; j < dark.rows*dark.cols; j++)
+    for (int j = 0; j < dark->rows*dark->cols; j++)
     {
         qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
 
@@ -281,11 +282,11 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         goto gain_failed;
     }
 
-    if (dark.regions.has_overscan)
+    if (dark->regions.has_overscan)
     {
         // Calculate mean dark level for gain calculation
-        int *ir = dark.regions.image_region;
-        double mean_dark = mean_in_region(&dark, ir);
+        int *ir = dark->regions.image_region;
+        double mean_dark = mean_in_region(dark, ir);
 
         for(int k = 0; k < num_frames; k++)
         {
@@ -295,10 +296,10 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
             for (int j = ir[2]; j < ir[3]; j++)
                 for (int i = ir[0]; i < ir[1]; i++)
                 {
-                    double temp = mean_flat[k]*(frames[k].dbl_data[dark.cols*j + i] - median_flat[dark.cols*j + i]);
+                    double temp = mean_flat[k]*(frames[k]->data[dark->cols*j + i] - median_flat[dark->cols*j + i]);
                     var += temp*temp;
                 }
-            var /= dark.regions.image_px;
+            var /= dark->regions.image_px;
             gain[k] = (mean_flat[k] + mean_dark) / (var - readnoise*readnoise);
             printf("%d var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
         }
@@ -315,13 +316,13 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     mean_gain /= num_frames;
 
     // Replace values outside the image region with 1, so overscan survives flatfielding
-    if (dark.regions.has_overscan)
+    if (dark->regions.has_overscan)
     {
-        int *br = dark.regions.image_region;
-        for (int k = 0; k < dark.rows*dark.cols; k++)
+        int *br = dark->regions.image_region;
+        for (int k = 0; k < dark->rows*dark->cols; k++)
         {
-            int x = k % dark.cols;
-            int y = k / dark.cols;
+            int x = k % dark->cols;
+            int y = k / dark->cols;
             bool in_image = x >= br[0] && x < br[1] && y >= br[2] && y < br[3];
             if (!in_image)
                 median_flat[k] = 1;
@@ -337,10 +338,10 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     free(outbuf);
 
     // Create the primary array image (16-bit short integer pixels
-    fits_create_img(out, DOUBLE_IMG, 2, (long []){dark.cols, dark.rows}, &status);
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){dark->cols, dark->rows}, &status);
 
     // Set header keys for readout noise and gain
-    if (dark.regions.has_overscan)
+    if (dark->regions.has_overscan)
     {
         fits_update_key(out, TDOUBLE, "CCD-READ", &readnoise, "Estimated read noise (ADU)", &status);
         fits_update_key(out, TDOUBLE, "CCD-GAIN", &median_gain, "Estimated gain (electrons/ADU)", &status);
@@ -350,7 +351,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     }
 
     // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, dark.rows*dark.cols, median_flat, &status))
+    if (fits_write_img(out, TDOUBLE, 1, dark->rows*dark->cols, median_flat, &status))
     {
         // Warn, but continue
         error("fits_write_img failed with status %d", status);
@@ -394,9 +395,9 @@ int create_dark(const char *pattern, int minmax, const char *outname)
         goto insufficient_frames;
     }
     
-    framedata base = framedata_new(frame_paths[0], FRAMEDATA_DBL);
-    int exptime = framedata_get_header_int(&base, "EXPTIME");
-    double *median_dark = (double *)malloc(base.rows*base.cols*sizeof(double));
+    framedata *base = framedata_load(frame_paths[0]);
+    int exptime = framedata_get_header_int(base, "EXPTIME");
+    double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
     if (median_dark == NULL)
     {
         return_status = error("malloc failed");
@@ -405,7 +406,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
-    double *data_cube = (double *)malloc(num_frames*base.cols*base.rows*sizeof(double));
+    double *data_cube = (double *)malloc(num_frames*base->cols*base->rows*sizeof(double));
     if (data_cube == NULL)
     {
         return_status = error("malloc failed");
@@ -415,24 +416,25 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     for( int i = 0; i < num_frames; i++)
     {
         printf("loading `%s`\n", frame_paths[i]);
-        framedata f = framedata_new(frame_paths[i], FRAMEDATA_DBL);
+        framedata *f = framedata_load(frame_paths[i]);
 
-        if (f.rows != base.rows || f.cols != base.cols)
+        if (f->rows != base->rows || f->cols != base->cols)
         {
             framedata_free(f);
-            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)", frame_paths[i], base.rows, base.cols, f.rows, f.cols);
+            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
+                frame_paths[i], base->rows, base->cols, f->rows, f->cols);
             goto loaddark_failed;
         }
 
-        subtract_bias(&f);
-        for (int j = 0; j < base.rows*base.cols; j++)
-            data_cube[num_frames*j+i] = f.dbl_data[j];
+        subtract_bias(f);
+        for (int j = 0; j < base->rows*base->cols; j++)
+            data_cube[num_frames*j+i] = f->data[j];
 
         framedata_free(f);
     }
     
     // Loop over the pixels, sorting the values from each image into increasing order
-    for (int j = 0; j < base.rows*base.cols; j++)
+    for (int j = 0; j < base->rows*base->cols; j++)
     {
         qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
 
@@ -453,11 +455,11 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     fits_create_file(&out, outbuf, &status);
     
     // Create the primary array image (16-bit short integer pixels
-    fits_create_img(out, DOUBLE_IMG, 2, (long []){base.cols, base.rows}, &status);
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
     fits_update_key(out, TINT, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
     
     // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, median_dark, &status))
+    if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, median_dark, &status))
     {
         // Warn, but continue
         error("fits_write_img failed with status %d", status);
@@ -481,77 +483,79 @@ insufficient_frames:
 // Save the resulting image as a (double) floating-point fits file `outname'
 int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath)
 {
-    framedata base = framedata_new(framePath, FRAMEDATA_DBL);
-    framedata dark = framedata_new(darkPath, FRAMEDATA_DBL);
-    framedata flat = framedata_new(flatPath, FRAMEDATA_DBL);
-    
-    // Subtract bias
-    subtract_bias(&base);
+    int ret = 0;
 
-    // Subtract dark counts
-    if (dark.dbl_data != NULL)
-        framedata_subtract(&base, &dark);
-    
-    // Flat field image
-    if (flat.dbl_data != NULL)
-        framedata_divide(&base, &flat);
-    
+    framedata *base = framedata_load(framePath);
+    if (!base)
+    {
+        ret = error("Error loading file %s", framePath);
+        goto load_error;
+    }
+
+    framedata *dark = framedata_load(darkPath);
+    if (!dark)
+    {
+        ret = error("Error loading file %s", darkPath);
+        goto load_error;
+    }
+
+    framedata *flat = framedata_load(flatPath);
+    if (!flat)
+    {
+        ret = error("Error loading file %s", flatPath);
+        goto load_error;
+    }
+
+    // Process frame
+    subtract_bias(base);
+    framedata_subtract(base, dark);
+    framedata_divide(base, flat);
+
     // Create a new fits file
     fitsfile *out;
     int status = 0;
     char outbuf[2048];
     sprintf(outbuf, "!%s", outPath);
     fits_create_file(&out, outbuf, &status);
-    
+
     // Create the primary array image
-    fits_create_img(out, DOUBLE_IMG, 2, (long []){base.cols, base.rows}, &status);
-    
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
+
     // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, base.rows*base.cols, base.dbl_data, &status))
+    if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, base->data, &status))
     {
-        fits_close_file(out, &status);
-        framedata_free(flat);
-        framedata_free(dark);
-        framedata_free(base);
-        return error("fits_write_img failed with status %d", status);
+        ret = error("fits_write_img failed with status %d", status);
+        goto write_error;
     }
-    
+
+write_error:
     fits_close_file(out, &status);
+
+load_error:
     framedata_free(flat);
     framedata_free(dark);
     framedata_free(base);
-    return 0;
+    return ret;
 }
 
 
 // Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {
-    // Processed dark and flat templates
-    framedata dark;
-    dark.data = NULL;
-    dark.dbl_data = NULL;
-    framedata flat;
-    flat.dbl_data = NULL;
-    
+    int ret = 0;
+
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");
-    
-    int start_obs = data->num_obs;
 
     if (data->version < 3)
-        return error("Invalid data file version `%d'. Requires version >= 3", data->version);
-    
+    {
+        ret = error("Invalid data file version `%d'. Requires version >= 3", data->version);
+        goto data_error;
+    }
     chdir(data->frame_dir);
-    
-    if (data->flat_template != NULL)
-        flat = framedata_new(data->flat_template, FRAMEDATA_DBL);
-    
-    if (data->dark_template != NULL)
-        dark = framedata_new(data->dark_template, FRAMEDATA_DBL);
-    
+
     // Compile the filepattern into a regex
     regex_t regex;
     int regerr = 0;
@@ -559,12 +563,26 @@ int update_reduction(char *dataPath)
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        regfree(&regex);
-        datafile_free(data);
-        return error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
+        ret = error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
+        goto regex_error;
     }
-    
+
+    framedata *flat = framedata_load(data->flat_template);
+    if (!flat)
+    {
+        ret = error("Error loading frame %s", data->flat_template);
+        goto frame_error;
+    }
+
+    framedata *dark = framedata_load(data->dark_template);
+    if (!dark)
+    {
+        ret = error("Error loading frame %s", data->flat_template);
+        goto frame_error;
+    }
+
     // Iterate through the files in the directory
+    int start_obs = data->num_obs;
     struct dirent **matched;
     char filename[NAME_MAX];
     int numMatched = scandir(".", &matched, 0, alphasort);
@@ -573,7 +591,7 @@ int update_reduction(char *dataPath)
         strncpy(filename, matched[i]->d_name, NAME_MAX);
         filename[NAME_MAX-1] = '\0';
         free(matched[i]);
-        
+
         // Ignore files that don't match the regex
         if (regexec(&regex, filename, 0, NULL, 0))
             continue;
@@ -592,28 +610,23 @@ int update_reduction(char *dataPath)
         
         printf("Reducing %s\n", filename);
 
-        framedata frame = framedata_new(filename, FRAMEDATA_DBL);
-        
-        int exptime = framedata_get_header_int(&frame, "EXPTIME");
-        
+        framedata *frame = framedata_load(filename);
+        if (!frame)
+        {
+            ret = error("Error loading frame %s", data->flat_template);
+            framedata_free(frame);
+            goto process_error;
+        }
+        int exptime = framedata_get_header_int(frame, "EXPTIME");
+
         // Calculate time at the start of the exposure relative to ReferenceTime
-        time_t frame_time = get_frame_time(&frame);
+        time_t frame_time = get_frame_time(frame);
         double starttime = difftime(frame_time, data->reference_time);
         
-        // Subtract bias
-        subtract_bias(&frame);
-
-        // Subtract dark counts
-        if (dark.dbl_data != NULL)
-            framedata_subtract(&frame, &dark);
-        
-        // Flat field image
-        if (flat.dbl_data != NULL)
-            framedata_divide(&frame, &flat);
-        
-        //
         // Process frame
-        //
+        subtract_bias(frame);
+        framedata_subtract(frame, dark);
+        framedata_divide(frame, flat);
         
         // Observation start time
         fprintf(data->file, "%.1f ", starttime);
@@ -630,9 +643,9 @@ int update_reduction(char *dataPath)
             if (data->num_obs > 0)
             {
                 double2 last = data->obs[data->num_obs-1].pos[i];
-                if (last.x > 0 && last.x < frame.cols)
+                if (last.x > 0 && last.x < frame->cols)
                     t.x = last.x;
-                if (last.y > 0 && last.y < frame.rows)
+                if (last.y > 0 && last.y < frame->rows)
                     t.y = last.y;
             }
             
@@ -640,14 +653,14 @@ int update_reduction(char *dataPath)
             double intensity = 0;
             double2 xy = {0,0};
 
-            if (!center_aperture(t, &frame, &xy))
+            if (!center_aperture(t, frame, &xy))
             {
-                if (calculate_background(t, &frame, &sky, NULL))
+                if (calculate_background(t, frame, &sky, NULL))
                     sky = 0;
 
                 // Integrate sky over the aperture and normalize per unit time
                 sky *= M_PI*t.r*t.r / exptime;
-                intensity = integrate_aperture(xy, t.r, &frame) / exptime - sky;
+                intensity = integrate_aperture(xy, t.r, frame) / exptime - sky;
             }
 
             fprintf(data->file, "%.2f ", intensity); // intensity (ADU/s)
@@ -674,17 +687,25 @@ int update_reduction(char *dataPath)
         fprintf(data->file, "%s\n", filename);
         strncpy(data->obs[data->num_obs].filename, filename, sizeof(filename));
         data->num_obs++;
-        
+
         framedata_free(frame);
     }
-    if (dark.data != NULL)
-        framedata_free(dark);
     
-    free(matched);
-    regfree(&regex);
-    datafile_free(data);
     printf("Reduced %d observations\n", data->num_obs - start_obs);
-    return 0;
+
+process_error:
+    free(matched);
+
+frame_error:
+    framedata_free(flat);
+    framedata_free(dark);
+
+regex_error:
+    regfree(&regex);
+
+data_error:
+    datafile_free(data);
+    return ret;
 }
 
 
@@ -724,44 +745,41 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     data->frame_pattern = strdup(framePattern);
     
     // Open the file to find the reference time
-    framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
-    /*
+    framedata *frame = framedata_load(filenamebuf);
     if (!frame)
     {
         ret = error("Unable to open frame %s", filenamebuf);
         goto frameload_error;
     }
-    */
-    subtract_bias(&frame);
-    data->reference_time = get_frame_time(&frame);
 
-    framedata dark = framedata_new(darkTemplate, FRAMEDATA_DBL);
-    /*
+    subtract_bias(frame);
+    data->reference_time = get_frame_time(frame);
+
+    framedata *dark = framedata_load(darkTemplate);
     if (!dark)
     {
         ret = error("Unable to open frame %s", darkTemplate);
         goto frameload_error;
     }
-    */
-    framedata_subtract(&frame, &dark);
+
+    framedata_subtract(frame, dark);
     framedata_free(dark);
     data->dark_template = strdup(darkTemplate);
 
-    framedata flat = framedata_new(flatTemplate, FRAMEDATA_DBL);
-    /*
+    framedata *flat = framedata_load(flatTemplate);
     if (!flat)
     {
         ret = error("Unable to open frame %s", flatTemplate);
         goto frameload_error;
     }
-    */
-    framedata_divide(&frame, &flat);
+
+    framedata_divide(frame, flat);
     framedata_free(flat);
     data->flat_template = strdup(flatTemplate);
 
     char command[128];
-    snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame.cols, frame.rows);
-    if (tell_ds9("tsreduce", command, frame.dbl_data, frame.rows*frame.cols*sizeof(double)))
+    snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+    if (tell_ds9("tsreduce", command, frame->data, frame->rows*frame->cols*sizeof(double)))
     {
         ret = error("ds9 command failed: %s", command);
         goto frameload_error;
@@ -823,7 +841,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
         
         double2 xy;
-        if (center_aperture(t, &frame, &xy))
+        if (center_aperture(t, frame, &xy))
         {
             ret = error("Aperture did not converge");
             goto aperture_converge_error;
@@ -832,7 +850,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         t.y = xy.y;
 
         double sky_intensity, sky_std_dev;
-        if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
+        if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
         {
             ret = error("Background calculation failed");
             goto aperture_converge_error;
@@ -840,11 +858,11 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 
         // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
         double lastIntensity = 0;
-        double lastProfile = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
+        double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
         int maxRadius = (int)t.s2 + 1;
         for (int radius = 1; radius <= maxRadius; radius++)
         {
-            double intensity = integrate_aperture(xy, radius, &frame) - sky_intensity*M_PI*radius*radius;
+            double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
             double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
             if (profile < 5*sky_std_dev)
             {
@@ -1032,20 +1050,40 @@ int create_mmi(char *dataPath)
 //
 int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures)
 {
+    int ret = 0;
     // Read file header
     datafile *data = datafile_load(dataPath);
-    if (data == NULL)
+    if (!data)
         return error("Error opening data file");
 
     if (data->version < 3)
-        return error("Invalid data file version `%d'. Requires version >= 3", data->version);
+    {
+        ret = error("Invalid data file version `%d'. Requires version >= 3", data->version);
+        goto data_error;
+    }
+    
+    if (chdir(data->frame_dir))
+    {
+        ret = error("Invalid frame path: %s", data->frame_dir);
+        goto data_error;
+    }
 
-    chdir(data->frame_dir);
+    framedata *dark = framedata_load(data->dark_template);
+    if (!dark)
+    {
+        ret = error("Error opening frame %s", data->dark_template);
+        goto frameload_error;
+    }
 
-    framedata flat = framedata_new(data->flat_template, FRAMEDATA_DBL);
-    framedata dark = framedata_new(data->dark_template, FRAMEDATA_DBL);
-    double readnoise = framedata_get_header_dbl(&flat, "CCD-READ");
-    double gain = framedata_get_header_dbl(&flat, "CCD-GAIN");
+    framedata *flat = framedata_load(data->flat_template);
+    if (!flat)
+    {
+        ret = error("Error opening frame %s", data->flat_template);
+        goto frameload_error;
+    }
+
+    double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
+    double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
 
     // Compile the filepattern into a regex
     regex_t regex;
@@ -1054,9 +1092,8 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        regfree(&regex);
-        datafile_free(data);
-        return error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
+        ret = error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
+        goto regex_error;
     }
 
     struct dirent **matched;
@@ -1082,11 +1119,16 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
             if (regexec(&regex, filename, 0, NULL, 0))
                 continue;
 
-            framedata frame = framedata_new(filename, FRAMEDATA_DBL);
-            int exptime = framedata_get_header_int(&frame, "EXPTIME");
+            framedata *frame = framedata_load(filename);
+            if (!frame)
+            {
+                ret = error("Error loading frame %s", filename);
+                goto process_error;
+            }
+            int exptime = framedata_get_header_int(frame, "EXPTIME");
 
             // Calculate time at the start of the exposure relative to ReferenceTime
-            double starttime = difftime(get_frame_time(&frame), data->reference_time);
+            double starttime = difftime(get_frame_time(frame), data->reference_time);
 
             bool skip = false;
             for (int i = 0; i < data->num_blocked_ranges; i++)
@@ -1100,9 +1142,9 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
             if (!skip)
             {
                 // Preprocess frame
-                subtract_bias(&frame);
-                framedata_subtract(&frame, &dark);
-                framedata_divide(&frame, &flat);
+                subtract_bias(frame);
+                framedata_subtract(frame, dark);
+                framedata_divide(frame, flat);
 
                 // Process frame
                 double comparisonIntensity = 0;
@@ -1117,9 +1159,9 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
                     if (j > 0)
                     {
                         double2 last = data->obs[j-1].pos[i];
-                        if (last.x > 0 && last.x < frame.cols)
+                        if (last.x > 0 && last.x < frame->cols)
                             t.x = last.x;
-                        if (last.y > 0 && last.y < frame.rows)
+                        if (last.y > 0 && last.y < frame->rows)
                             t.y = last.y;
                     }
 
@@ -1128,15 +1170,15 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
                     double noise = 0;
                     double2 xy = {0,0};
 
-                    if (!center_aperture(t, &frame, &xy))
+                    if (!center_aperture(t, frame, &xy))
                     {
-                        if (calculate_background(t, &frame, &sky, NULL))
+                        if (calculate_background(t, frame, &sky, NULL))
                             sky = 0;
 
                         // Integrate sky over the aperture and normalize per unit time
                         sky *= M_PI*t.r*t.r / exptime;
 
-                        integrate_aperture_and_noise(xy, t.r, &frame, &dark, readnoise, gain, &intensity, &noise);
+                        integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
                         intensity = intensity/exptime - sky;
                         noise /= exptime;
                     }
@@ -1170,17 +1212,24 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
 
     }
 
-    framedata_free(dark);
-    for (int i = 0; i < numMatched; i++)
-        free(matched[i]);
-    free(matched);
-    regfree(&regex);
-    datafile_free(data);
-
     printf("# Radius SNR\n");
     for (int i = 0; i < numApertures; i++)
         printf("%.2f %f\n", radii[i], snr[i]);
+
+process_error:
     free(radii);
     free(snr);
-    return 0;
+    free_2d_array(matched, numMatched);
+
+regex_error:
+    regfree(&regex);
+
+frameload_error:
+    framedata_free(dark);
+    framedata_free(flat);
+    
+data_error:
+    datafile_free(data);
+
+    return ret;
 }

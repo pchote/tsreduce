@@ -43,7 +43,7 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
             if ((i-r)*(i-r) + (j-r)*(j-r) > r*r)
                 continue;
 
-            double px = frame->dbl_data[frame->cols*(y+j-r) + (x+i-r)] - sky_intensity;
+            double px = frame->data[frame->cols*(y+j-r) + (x+i-r)] - sky_intensity;
             if (fabs(px) < 3*sky_std_dev)
                 continue;
 
@@ -153,7 +153,7 @@ int calculate_background(target r, framedata *frame, double *sky_mode, double *s
         {
             double d2 = (r.x-i)*(r.x-i) + (r.y-j)*(r.y-j);
             if (d2 > r.s1*r.s1 && d2 < r.s2*r.s2)
-                data[n++] = frame->dbl_data[frame->cols*j + i];
+                data[n++] = frame->data[frame->cols*j + i];
         }
 
     // Sort data into ascending order
@@ -388,7 +388,7 @@ double integrate_aperture(double2 xy, double r, framedata *frame)
     int bx = floor(xy.x), by = floor(xy.y), br = ceil(r) + 1;
     for (int i = bx-br; i < bx+br; i++)
         for (int j = by-br; j < by+br; j++)
-            total += pixel_aperture_intesection(xy.x-i, xy.y-j, r)*frame->dbl_data[i + frame->cols*j];
+            total += pixel_aperture_intesection(xy.x-i, xy.y-j, r)*frame->data[i + frame->cols*j];
 
     return total;
 }
@@ -403,8 +403,8 @@ void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framed
         for (int j = by-br; j < by+br; j++)
         {
             double area = pixel_aperture_intesection(xy.x-i, xy.y-j, r);
-            double flux = frame->dbl_data[i + frame->cols*j];
-            double darkflux = dark->dbl_data[i + frame->cols*j];
+            double flux = frame->data[i + frame->cols*j];
+            double darkflux = dark->data[i + frame->cols*j];
 
             *signal += area*flux;
             *noise += area*(readnoise*readnoise + (flux + darkflux)/gain);

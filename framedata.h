@@ -11,12 +11,6 @@
 #ifndef FRAMEDATA_H
 #define FRAMEDATA_H
 
-typedef enum
-{
-    FRAMEDATA_INT,
-    FRAMEDATA_DBL
-} framedata_type;
-
 typedef struct
 {
     bool has_overscan;
@@ -28,16 +22,16 @@ typedef struct
 
 typedef struct
 {
-    fitsfile *_fptr;
+    fitsfile *fptr;
     int rows;
     int cols;
-    framedata_type dtype;
-    int *data;
-    double *dbl_data;
+    double *data;
     frameregions regions;
 } framedata;
 
-framedata framedata_new(const char *filename, framedata_type dtype);
+framedata *framedata_load(const char *filename);
+void framedata_free(framedata *frame);
+
 int framedata_get_header_int(framedata *this, const char *key);
 double framedata_get_header_dbl(framedata *this, const char *key);
 int framedata_has_header_string(framedata *this, const char *key);
@@ -49,7 +43,6 @@ void framedata_subtract(framedata *this, framedata *other);
 void framedata_multiply(framedata *this, int div);
 void framedata_divide_const(framedata *this, int div);
 void framedata_divide(framedata *this, framedata *div);
-void framedata_free(framedata this);
 
 double mean_in_region(framedata *frame, int rgn[4]);
 void subtract_bias(framedata *frame);

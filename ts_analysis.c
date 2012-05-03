@@ -133,14 +133,14 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
         return error("No matching files found");
     }
 
-    framedata frame = framedata_new(filenamebuf, FRAMEDATA_DBL);
-    subtract_bias(&frame);
+    framedata *frame = framedata_load(filenamebuf);
+    subtract_bias(frame);
 
-    framedata dark = framedata_new(data->dark_template, FRAMEDATA_DBL);
-    framedata_subtract(&frame, &dark);
+    framedata *dark = framedata_load(data->dark_template);
+    framedata_subtract(frame, dark);
 
-    framedata flat = framedata_new(data->flat_template, FRAMEDATA_DBL);
-    framedata_divide(&frame, &flat);
+    framedata *flat = framedata_load(data->flat_template);
+    framedata_divide(frame, flat);
 
     if (targetIndex < 0 || targetIndex >= data->num_targets)
     {
@@ -150,7 +150,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     target t = data->targets[targetIndex];
     double2 xy;
-    if (center_aperture(t, &frame, &xy))
+    if (center_aperture(t, frame, &xy))
     {
         datafile_free(data);
         return error("Aperture centering failed");
@@ -158,7 +158,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     t.x = xy.x; t.y = xy.y;
 
     double sky_intensity, sky_std_dev;
-    if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
+    if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
     {
         datafile_free(data);
         return error("Background calculation failed");
@@ -170,8 +170,8 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     double radii[numIntensity];
     double profile[numIntensity];
 
-    double readnoise = framedata_get_header_dbl(&flat, "CCD-READ");
-    double gain = framedata_get_header_dbl(&flat, "CCD-GAIN");
+    double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
+    double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
 
     printf("# Read noise: %f\n", readnoise);
     printf("# Gain: %f\n", gain);
@@ -180,7 +180,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     for (int i = 1; i < numIntensity; i++)
     {
         radii[i] = i/5.0 + 1;
-        integrate_aperture_and_noise(xy, radii[i], &frame, &dark, readnoise, gain, &intensity[i], &noise[i]);
+        integrate_aperture_and_noise(xy, radii[i], frame, dark, readnoise, gain, &intensity[i], &noise[i]);
         intensity[i] -= sky_intensity*M_PI*radii[i]*radii[i];
     }
 
@@ -189,7 +189,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     radii[0] = 0;
     noise[0] = 0;
     intensity[0] = 0;
-    profile[0] = frame.dbl_data[frame.cols*((int)xy.y) + (int)xy.x];
+    profile[0] = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
 
     // Central integrated value is a disk
     profile[1] = intensity[1]/(M_PI*radii[1]*radii[1]);

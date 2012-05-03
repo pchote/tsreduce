@@ -560,7 +560,7 @@ int update_reduction(char *dataPath)
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
         regfree(&regex);
-        fclose(data.file);
+        datafile_free(&data);
         return error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
     }
     
@@ -682,7 +682,7 @@ int update_reduction(char *dataPath)
     
     free(matched);
     regfree(&regex);
-    fclose(data.file);
+    datafile_free(&data);
     printf("Reduced %d observations\n", data.num_obs - start_obs);
     return 0;
 }
@@ -935,7 +935,7 @@ int create_mmi(char *dataPath)
     // No data
     if (data.num_obs <= 0)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("File specifies no observations");
     }
 
@@ -983,7 +983,7 @@ int create_mmi(char *dataPath)
         free(coeffs);
         free(ratio);
         free(time);
-        fclose(data.file);
+        datafile_free(&data);
         return error("Fit failed");
     }
 
@@ -1043,7 +1043,7 @@ int create_mmi(char *dataPath)
     free(mmi);
     free(ratio);
     free(time);
-    fclose(data.file);
+    datafile_free(&data);
 
     return 0;
 }
@@ -1077,7 +1077,7 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
         regfree(&regex);
-        fclose(data.file);
+        datafile_free(&data);
         return error("Error compiling `%s` into a regular expression: %s", data.frame_pattern, errbuf);
     }
 
@@ -1197,7 +1197,7 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
         free(matched[i]);
     free(matched);
     regfree(&regex);
-    fclose(data.file);
+    datafile_free(&data);
 
     printf("# Radius SNR\n");
     for (int i = 0; i < numApertures; i++)

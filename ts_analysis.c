@@ -29,7 +29,7 @@ int display_targets(char *dataPath, int obsIndex)
 
     if (obsIndex >= data.num_obs)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("Requested observation is out of range: max is %d", data.num_obs-1);
     }
 
@@ -37,7 +37,7 @@ int display_targets(char *dataPath, int obsIndex)
 
     if (!init_ds9("tsreduce"))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("Unable to launch ds9");
     }
 
@@ -50,28 +50,28 @@ int display_targets(char *dataPath, int obsIndex)
         strncpy(filenamebuf, data.obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data.frame_pattern, filenamebuf, NAME_MAX))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("No matching files found");
     }
 
     snprintf(command, 128, "file %s/%s", data.frame_dir, filenamebuf);
     if (tell_ds9("tsreduce", command, NULL, 0))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("ds9 command failed: %s", command);
     }
 
     // Set scaling mode
     if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("ds9 command failed: scale mode 99.5");
     }
 
     // Flip X axis
     if (tell_ds9("tsreduce", "orient x", NULL, 0))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("ds9 command failed: orient x");
     }
 
@@ -103,7 +103,7 @@ int display_targets(char *dataPath, int obsIndex)
             fprintf(stderr, "ds9 command failed: %s\n", command);
     }
 
-    fclose(data.file);
+    datafile_free(&data);
     return 0;
 }
 
@@ -118,7 +118,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     if (obsIndex >= data.num_obs)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("Requested observation is out of range: max is %d", data.num_obs-1);
     }
 
@@ -129,7 +129,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
         strncpy(filenamebuf, data.obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data.frame_pattern, filenamebuf, NAME_MAX))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("No matching files found");
     }
 
@@ -144,7 +144,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
 
     if (targetIndex < 0 || targetIndex >= data.num_targets)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("Invalid target `%d' selected", targetIndex);
     }
 
@@ -152,7 +152,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     double2 xy;
     if (center_aperture(t, &frame, &xy))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("Aperture centering failed");
     }
     t.x = xy.x; t.y = xy.y;
@@ -160,7 +160,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     double sky_intensity, sky_std_dev;
     if (calculate_background(t, &frame, &sky_intensity, &sky_std_dev))
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("Background calculation failed");
     }
 
@@ -270,7 +270,7 @@ int detect_repeats(char *dataPath)
     // No data
     if (data.num_obs <= 0)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("File specifies no observations");
     }
 
@@ -291,7 +291,7 @@ int detect_repeats(char *dataPath)
         last_time = time;
     }
 
-    fclose(data.file);
+    datafile_free(&data);
     return 0;
 }
 
@@ -310,7 +310,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     // No data
     if (data.num_obs <= 0)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("File specifies no observations");
     }
 
@@ -386,7 +386,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
         free(raw);
         free(time);
         free(ratio_time);
-        fclose(data.file);
+        datafile_free(&data);
         return error("Fit failed");
     }
 
@@ -562,7 +562,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     free(raw);
     free(time);
     free(ratio_time);
-    fclose(data.file);
+    datafile_free(&data);
 
     return 0;
 }
@@ -579,7 +579,7 @@ int amplitude_spectrum(char *dataPath)
     // No data
     if (data.num_obs <= 0)
     {
-        fclose(data.file);
+        datafile_free(&data);
         return error("File specifies no observations");
     }
 
@@ -630,7 +630,7 @@ int amplitude_spectrum(char *dataPath)
         free(ratio);
         free(raw);
         free(time);
-        fclose(data.file);
+        datafile_free(&data);
         return error("Fit failed");
     }
 
@@ -697,7 +697,7 @@ int amplitude_spectrum(char *dataPath)
     free(ratio);
     free(raw);
     free(time);
-    fclose(data.file);
+    datafile_free(&data);
 
     return 0;
 }

@@ -22,10 +22,6 @@
 // Maximum number of ranges to block
 #define MAX_BLOCKED_RANGES 10
 
-// Maximum length of the header keys (except for the framedir path)
-// If you change this, you must change the sscanf lines to match
-#define HEADER_MAXLENGTH 128
-
 typedef struct
 {
     double star[MAX_TARGETS];
@@ -40,10 +36,10 @@ typedef struct
 {
     FILE *file;
     int version;
-    char frame_dir[PATH_MAX];
-    char frame_pattern[HEADER_MAXLENGTH];
-    char dark_template[HEADER_MAXLENGTH];
-    char flat_template[HEADER_MAXLENGTH];
+    char *frame_dir;
+    char *frame_pattern;
+    char *dark_template;
+    char *flat_template;
     target targets[MAX_TARGETS];
     int num_targets;
     time_t reference_time;
@@ -62,5 +58,6 @@ typedef struct
 } datafile;
 
 datafile load_reduced_data(char *dataFile);
+void datafile_free(datafile *data);
 
 #endif

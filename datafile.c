@@ -12,24 +12,30 @@
 
 #include "datafile.h"
 
+#define PLOT_FIT_DEGREE_DEFAULT 4
+#define PLOT_MAX_RAW_DEFAULT 5000
+#define PLOT_NUM_UHZ_DEFAULT 1000
+#define PLOT_MIN_UHZ_DEFAULT 0
+#define PLOT_MAX_UHZ_DEFAULT 10000
+
 // Read a reduced data file into a struct datafile
 datafile load_reduced_data(char *dataFile)
 {
     datafile h;
     h.file = NULL;
     h.version = 0;
-    h.frame_dir[0] = '\0';
-    h.frame_pattern[0] = '\0';
-    h.dark_template[0] = '\0';
-    h.flat_template[0] = '\0';
+    h.frame_dir = NULL;
+    h.frame_pattern = NULL;
+    h.dark_template = NULL;
+    h.flat_template = NULL;
     h.num_obs = 0;
     h.num_targets = 0;
     h.num_blocked_ranges = 0;
-    h.plot_fit_degree = 4;
-    h.plot_max_raw = 5000;
-    h.plot_num_uhz = 1000;
-    h.plot_min_uhz = 0;
-    h.plot_max_uhz = 10000;
+    h.plot_fit_degree = PLOT_FIT_DEGREE_DEFAULT;
+    h.plot_max_raw = PLOT_MAX_RAW_DEFAULT;
+    h.plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
+    h.plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
+    h.plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
 
     // Open the data file (created with `tsreduce init`)
     h.file = fopen(dataFile, "r+");
@@ -37,23 +43,32 @@ datafile load_reduced_data(char *dataFile)
         return h;
 
     char linebuf[1024];
+    char stringbuf[1024];
     while (fgets(linebuf, sizeof(linebuf)-1, h.file) != NULL)
     {
         //
         // Header
         //
         if (!strncmp(linebuf,"# FramePattern:", 15))
-            sscanf(linebuf, "# FramePattern: %128s\n", h.frame_pattern);
-
+        {
+            sscanf(linebuf, "# FramePattern: %1024s\n", stringbuf);
+            h.frame_pattern = strndup(stringbuf, 1024);
+        }
         else if (!strncmp(linebuf,"# FrameDir:", 11))
-            sscanf(linebuf, "# FrameDir: %1024s\n", h.frame_dir);
-
+        {
+            sscanf(linebuf, "# FrameDir: %1024s\n", stringbuf);
+            h.frame_dir = strndup(stringbuf, 1024);
+        }
         else if (!strncmp(linebuf,"# DarkTemplate:", 15))
-            sscanf(linebuf, "# DarkTemplate: %128s\n", h.dark_template);
-
+        {
+            sscanf(linebuf, "# DarkTemplate: %1024s\n", stringbuf);
+            h.dark_template = strndup(stringbuf, 1024);
+        }
         else if (!strncmp(linebuf,"# FlatTemplate:", 15))
-            sscanf(linebuf, "# FlatTemplate: %128s\n", h.flat_template);
-
+        {
+            sscanf(linebuf, "# FlatTemplate: %1024s\n", stringbuf);
+            h.flat_template = strndup(stringbuf, 1024);
+        }
         else if (!strncmp(linebuf,"# Target:", 9))
         {
             if (h.version == 3)
@@ -143,4 +158,18 @@ datafile load_reduced_data(char *dataFile)
 
     }
     return h;
+}
+
+void datafile_free(datafile *data)
+{
+    if (data->file)
+        fclose(data->file);
+    if (data->frame_dir)
+        free(data->frame_dir);
+    if (data->frame_pattern)
+        free(data->frame_pattern);
+    if (data->dark_template)
+        free(data->dark_template);
+    if (data->flat_template)
+        free(data->flat_template);
 }

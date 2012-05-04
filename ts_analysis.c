@@ -14,6 +14,7 @@
 #include <string.h>
 #include <cpgplot.h>
 
+#include "reduction.h"
 #include "datafile.h"
 #include "helpers.h"
 #include "fit.h"
@@ -318,6 +319,17 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
+/*
+ * Cast an array of doubles to an array of floats reusing the same memory
+ */
+float *cast_double_array_to_float(double *d_ptr, size_t count)
+{
+    float *f_ptr = (float *)d_ptr;
+    for (size_t i = 0; i < count; i++)
+        f_ptr[i] = d_ptr[i];
+    return f_ptr;
+}
+
 int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 {
     int plot_colors_max = 8;
@@ -328,133 +340,46 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     if (data == NULL)
         return error("Error opening data file");
 
-    // No data
-    if (data->num_obs <= 0)
-    {
-        datafile_free(data);
-        return error("File specifies no observations");
-    }
-
     // Start time in hours
     struct tm starttime;
     gmtime_r(&data->reference_time, &starttime);
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
 
-    // Time Series data
-    float *time = (float *)malloc(data->num_obs*sizeof(float));
-    if (time == NULL)
-        return error("malloc failed");
-
-    float *raw = (float *)malloc(data->num_obs*data->num_targets*sizeof(float));
-    if (raw == NULL)
-        return error("malloc failed");
-
-    float *ratio_time = (float *)malloc(data->num_obs*sizeof(float));
-    if (ratio_time == NULL)
-        return error("malloc failed");
-
-    float *ratio = (float *)malloc(data->num_obs*sizeof(float));
-    if (ratio == NULL)
-        return error("malloc failed");
-
-    float *polyfit = (float *)malloc(data->num_obs*sizeof(float));
-    if (polyfit == NULL)
-        return error("malloc failed");
-
-    // Calculate polynomial fit to the ratio
-    double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
-    if (coeffs == NULL)
-        return error("malloc failed");
-
-    double ratio_mean = 0;
-    int process_obs = 0;
-    for (int i = 0; i < data->num_obs; i++)
+    double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mmi_d, *freq_d, *ampl_d;
+    double ratio_mean, ratio_std, mmi_mean, mmi_std;
+    size_t num_raw, num_filtered, num_dft;
+    if (generate_photometry_dft_data(data,
+                                     &raw_time_d, &raw_d, &num_raw,
+                                     &time_d, &ratio_d, &polyfit_d, &mmi_d, &num_filtered,
+                                     &ratio_mean, &ratio_std, &mmi_mean, &mmi_std,
+                                     &freq_d, &ampl_d, &num_dft))
     {
-        time[i] = data->obs[i].time;
-
-        for (int j = 0; j < data->num_targets; j++)
-            raw[j*data->num_obs + i] = data->obs[i].star[j];
-
-        // Filter bad observations
-        for (int j = 0; j < data->num_blocked_ranges; j++)
-            if (time[i] >= data->blocked_ranges[j].x && time[i] <= data->blocked_ranges[j].y)
-                goto skipObs;
-
-        ratio_time[process_obs] = time[i];
-        ratio[process_obs] = data->obs[i].ratio;
-        ratio_mean += ratio[process_obs];
-        process_obs++;
-        continue;
-    skipObs:
-        printf("Skipping observation at %f\n", time[i]);
-    }
-    float max_time = min_time + time[data->num_obs-1]/3600;
-
-    ratio_mean /= process_obs;
-
-    // Calculate standard deviation
-    double ratio_std = 0;
-    for (int i = 0; i < process_obs; i++)
-        ratio_std += (ratio[i] - ratio_mean)*(ratio[i] - ratio_mean);
-    ratio_std = sqrt(ratio_std/process_obs);
-    float min_ratio = (ratio_mean - 5*ratio_std);
-    float max_ratio = (ratio_mean + 5*ratio_std);
-
-    if (fit_polynomial(ratio_time, ratio, process_obs, coeffs, data->plot_fit_degree))
-    {
-        free(coeffs);
-        free(ratio);
-        free(raw);
-        free(time);
-        free(ratio_time);
         datafile_free(data);
-        return error("Fit failed");
+        return error("Error generating data");
     }
 
-    float *mmi = (float *)malloc(process_obs*sizeof(float));
-    if (mmi == NULL)
-        return error("malloc failed");
+    float max_time = min_time + raw_time_d[num_raw-1]/3600;
 
-    double mmi_mean = 0;
-    for (int i = 0; i < process_obs; i++)
-    {
-        // Subtract polynomial fit and convert to mmi
-        polyfit[i] = 0;
-        double pow = 1;
-        for (int j = 0; j <= data->plot_fit_degree; j++)
-        {
-            polyfit[i] += pow*coeffs[j];
-            pow *= ratio_time[i];
-        }
-        mmi[i] = ratio[i] > 0 ? 1000*(ratio[i] - polyfit[i])/ratio[i] : 0;
-        mmi_mean += mmi[i];
-    }
-    mmi_mean /= data->num_obs;
+    // Cast the double arrays to float, does not allocate any new memory.
+    float *raw_time = cast_double_array_to_float(raw_time_d, num_raw);
+    float *raw = cast_double_array_to_float(raw_d, num_raw*data->num_targets);
+    float *time = cast_double_array_to_float(time_d, num_filtered);
+    float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
+    float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
+    float *mmi = cast_double_array_to_float(mmi_d, num_filtered);
+    float *freq = cast_double_array_to_float(freq_d, num_dft);
+    float *ampl = cast_double_array_to_float(ampl_d, num_dft);
 
-    // Calculate standard deviation
-    double mmi_std = 0;
-    for (int i = 0; i < process_obs; i++)
-        mmi_std += (mmi[i] - mmi_mean)*(mmi[i] - mmi_mean);
-    mmi_std = sqrt(mmi_std/process_obs);
+    float min_mmi = mmi_mean - 5*mmi_std;
+    float max_mmi = mmi_mean + 5*mmi_std;
+    float min_ratio = ratio_mean - 5*ratio_std;
+    float max_ratio = ratio_mean + 5*ratio_std;
 
-    double mmi_corrected_mean = 0;
-    int mmi_corrected_count = 0;
-
-    // Discard outliers and recalculate mean
-    for (int i = 0; i < process_obs; i++)
-    {
-        if (fabs(mmi[i] - mmi_mean) > 3*mmi_std)
-            mmi[i] = 0;
-        else
-        {
-            mmi_corrected_mean += mmi[i];
-            mmi_corrected_count++;
-        }
-    }
-    mmi_corrected_mean /= mmi_corrected_count;
-
-    float min_mmi = (mmi_corrected_mean - 5*mmi_std);
-    float max_mmi = (mmi_corrected_mean + 5*mmi_std);
+    // Determine max dft ampl
+    float max_dft_ampl = 0;
+    for (int i = 0; i < data->plot_num_uhz; i++)
+        max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
+    max_dft_ampl *= 1.1;
 
     if (cpgopen(tsDevice ? tsDevice : "5/xs") <= 0)
         return error("Unable to open PGPLOT window");
@@ -478,8 +403,8 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgswin(min_time, max_time, min_mmi, max_mmi);
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
-    cpgswin(0, time[data->num_obs-1], min_mmi, max_mmi);
-    cpgpt(process_obs, ratio_time, mmi, 20);
+    cpgswin(0, raw_time[num_raw-1], min_mmi, max_mmi);
+    cpgpt(num_filtered, time, mmi, 20);
 
     // Ratio
     cpgsvp(0.1, 0.9, 0.55, 0.75);
@@ -487,12 +412,12 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgswin(min_time, max_time, min_ratio, max_ratio);
     cpgbox("bcst", 1, 4, "bcstn", 0, 0);
 
-    cpgswin(0, time[data->num_obs-1], min_ratio, max_ratio);
-    cpgpt(data->num_obs, ratio_time, ratio, 20);
+    cpgswin(0, raw_time[num_raw-1], min_ratio, max_ratio);
+    cpgpt(num_filtered, time, ratio, 20);
 
     // Plot the polynomial fit
     cpgsci(2);
-    cpgline(process_obs, ratio_time, polyfit);
+    cpgline(num_filtered, time, polyfit);
     cpgsci(1);
 
     // Raw Data
@@ -504,28 +429,11 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     for (int j = 0; j < data->num_targets; j++)
     {
-        cpgswin(0,time[data->num_obs-1], 0, data->plot_max_raw/data->targets[j].plot_scale);
+        cpgswin(0, raw_time[num_raw-1], 0, data->plot_max_raw/data->targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
-        cpgpt(data->num_obs, time, &raw[j*data->num_obs], 20);
+        cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
     }
     cpgend();
-
-    // DFT data
-    float *freq = (float *)malloc(data->plot_num_uhz*sizeof(float));
-    if (freq == NULL)
-        return error("malloc failed");
-
-    float *ampl = (float *)malloc(data->plot_num_uhz*sizeof(float));
-    if (ampl == NULL)
-        return error("malloc failed");
-
-    calculate_amplitude_spectrum_float(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, ratio_time, mmi, process_obs, freq, ampl, data->plot_num_uhz);
-
-    // Determine max dft ampl
-    float max_dft_ampl = 0;
-    for (int i = 0; i < data->plot_num_uhz; i++)
-        max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
-    max_dft_ampl *= 1.1;
 
     if (cpgopen(dftDevice ? dftDevice : "6/xs") <= 0)
         return error("Unable to open PGPLOT window");
@@ -574,17 +482,17 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     cpgsch(1.25);
     cpgmtxt("t", 3.2, 0.5, 0.5, "Fourier Amplitude Spectrum");
+    cpgend();
 
-    free(coeffs);
-    free(ampl);
-    free(freq);
-    free(mmi);
-    free(ratio);
+    free(raw_time);
     free(raw);
     free(time);
-    free(ratio_time);
+    free(ratio);
+    free(polyfit);
+    free(mmi);
+    free(freq);
+    free(ampl);
     datafile_free(data);
-
     return 0;
 }
 

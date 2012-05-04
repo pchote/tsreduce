@@ -27,6 +27,7 @@ int generate_photometry_dft_data(datafile *data,
     double **raw_time, double **raw, size_t *num_raw,
     // Filtered data: polynomial fit, ratio, MMI
     double **time, double **ratio, double **polyfit, double **mmi, size_t *num_filtered,
+    double *ratio_mean_out, double *ratio_std_out, double *mmi_mean_out, double *mmi_std_out,
     // Fourier transform; set to NULL to skip calculation
     double **freq, double **ampl, size_t *num_dft)
 {
@@ -38,37 +39,37 @@ int generate_photometry_dft_data(datafile *data,
 
     // Time Series data
     *raw_time = (double *)malloc(data->num_obs*sizeof(double));
-    if (*time == NULL)
+    if (*raw_time == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("raw_time malloc failed");
         goto raw_time_alloc_error;
     }
 
     *raw = (double *)malloc(data->num_obs*data->num_targets*sizeof(double));
     if (raw == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("raw malloc failed");
         goto raw_alloc_error;
     }
 
     *time = (double *)malloc(data->num_obs*sizeof(double));
     if (*time == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("time malloc failed");
         goto time_alloc_error;
     }
 
     *ratio = (double *)malloc(data->num_obs*sizeof(double));
     if (*ratio == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("ratio malloc failed");
         goto ratio_alloc_error;
     }
 
     *polyfit = (double *)malloc(data->num_obs*sizeof(double));
     if (*polyfit == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("polyfit malloc failed");
         goto polyfit_alloc_error;
     }
 
@@ -76,7 +77,7 @@ int generate_photometry_dft_data(datafile *data,
     double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
     if (coeffs == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("coeffs malloc failed");
         goto coeffs_alloc_error;
     }
 
@@ -114,12 +115,16 @@ int generate_photometry_dft_data(datafile *data,
     }
 
     ratio_mean /= *num_filtered;
+    if (ratio_mean_out)
+        *ratio_mean_out = ratio_mean;
 
     // Calculate standard deviation
     double ratio_std = 0;
     for (int i = 0; i < *num_filtered; i++)
         ratio_std += ((*ratio)[i] - ratio_mean)*((*ratio)[i] - ratio_mean);
     ratio_std = sqrt(ratio_std/(*num_filtered));
+    if (ratio_std_out)
+        *ratio_std_out = ratio_std;
 
     if (fit_polynomial_d(*time, *ratio, *num_filtered, coeffs, data->plot_fit_degree))
     {
@@ -130,7 +135,7 @@ int generate_photometry_dft_data(datafile *data,
     *mmi = (double *)malloc(*num_filtered*sizeof(double));
     if (*mmi == NULL)
     {
-        ret = error("malloc failed");
+        ret = error("mmi malloc failed");
         goto mmi_alloc_error;
     }
 
@@ -174,6 +179,11 @@ int generate_photometry_dft_data(datafile *data,
         }
     }
     mmi_corrected_mean /= mmi_corrected_count;
+    if (mmi_mean_out)
+        *mmi_mean_out = mmi_corrected_mean;
+
+    if (mmi_std_out)
+        *mmi_std_out = mmi_std;
 
     // Calculate DFT
     if (freq && ampl && num_dft)
@@ -181,14 +191,14 @@ int generate_photometry_dft_data(datafile *data,
         *freq = (double *)malloc(data->plot_num_uhz*sizeof(double));
         if (*freq == NULL)
         {
-            ret = error("malloc failed");
+            ret = error("freq malloc failed");
             goto freq_alloc_error;
         }
 
         *ampl = (double *)malloc(data->plot_num_uhz*sizeof(double));
         if (*ampl == NULL)
         {
-            ret = error("malloc failed");
+            ret = error("ampl malloc failed");
             goto ampl_alloc_error;
         }
         *num_dft = data->plot_num_uhz;
@@ -1182,6 +1192,7 @@ int create_mmi(char *dataPath)
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
                                      &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                     NULL, NULL, NULL, NULL,
                                      NULL, NULL, NULL))
     {
         datafile_free(data);

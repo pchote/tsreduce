@@ -5,9 +5,16 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
+#include "datafile.h"
 
 #ifndef REDUCTION_H
 #define REDUCTION_H
+
+int generate_photometry_dft_data(datafile *data,
+                                 double **raw_time, double **raw, size_t *num_raw,
+                                 double **time, double **ratio, double **polyfit, double **mmi, size_t *num_filtered,
+                                 double *ratio_mean, double *ratio_std, double *mmi_mean, double *mmi_std,
+                                 double **freq, double **ampl, size_t *num_dft);
 
 int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname);
 int create_dark(const char *pattern, int minmax, const char *outname);

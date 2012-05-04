@@ -498,153 +498,35 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
 int amplitude_spectrum(char *dataPath)
 {
-    int ret = 0;
-
-    // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");
 
-    // No data
-    if (data->num_obs <= 0)
+    double *raw_time, *raw, *time, *ratio, *polyfit, *mmi, *freq, *ampl;
+    size_t num_raw, num_filtered, num_dft;
+    if (generate_photometry_dft_data(data,
+                                     &raw_time, &raw, &num_raw,
+                                     &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                     NULL, NULL, NULL, NULL,
+                                     &freq, &ampl, &num_dft))
     {
-        ret = error("File specifies no observations");
-        goto data_error;
+        datafile_free(data);
+        return error("Error generating data");
     }
 
-    // Time Series data
-    float *time = (float *)malloc(data->num_obs*sizeof(float));
-    if (time == NULL)
-    {
-        ret = error("malloc failed");
-        goto data_error;
-    }
-
-    float *ratio = (float *)malloc(data->num_obs*sizeof(float));
-    if (ratio == NULL)
-    {
-        ret = error("malloc failed");
-        goto ratio_malloc_error;
-    }
-
-    float *polyfit = (float *)malloc(data->num_obs*sizeof(float));
-    if (polyfit == NULL)
-    {
-        ret = error("malloc failed");
-        goto polyfit_malloc_error;
-    }
-
-    // Calculate polynomial fit to the ratio
-    double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
-    if (coeffs == NULL)
-    {
-        ret = error("malloc failed");
-        goto coeffs_malloc_error;
-    }
-
-    double ratio_mean = 0;
-    for (int i = 0; i < data->num_obs; i++)
-    {
-        time[i] = data->obs[i].time;
-        ratio[i] = data->obs[i].ratio;
-        ratio_mean += ratio[i];
-    }
-    ratio_mean /= data->num_obs;
-
-    // Calculate standard deviation
-    double ratio_std = 0;
-    for (int i = 0; i < data->num_obs; i++)
-        ratio_std += (ratio[i] - ratio_mean)*(ratio[i] - ratio_mean);
-    ratio_std = sqrt(ratio_std/data->num_obs);
-
-    if (fit_polynomial(time, ratio, data->num_obs, coeffs, data->plot_fit_degree))
-    {
-        ret = error("Fit failed");
-        goto fit_failed_error;
-    }
-
-    float *mmi = (float *)malloc(data->num_obs*sizeof(float));
-    if (mmi == NULL)
-    {
-        ret = error("malloc failed");
-        goto mmi_malloc_error;
-    }
-
-    double mmi_mean = 0;
-    for (int i = 0; i < data->num_obs; i++)
-    {
-        // Subtract polynomial fit and convert to mmi
-        polyfit[i] = 0;
-        double pow = 1;
-        for (int j = 0; j <= data->plot_fit_degree; j++)
-        {
-            polyfit[i] += pow*coeffs[j];
-            pow *= time[i];
-        }
-        mmi[i] = 1000*(ratio[i] - polyfit[i])/ratio[i];
-        mmi_mean += mmi[i];
-    }
-    mmi_mean /= data->num_obs;
-
-    // Calculate standard deviation
-    double mmi_std = 0;
-    for (int i = 0; i < data->num_obs; i++)
-        mmi_std += (mmi[i] - mmi_mean)*(mmi[i] - mmi_mean);
-    mmi_std = sqrt(mmi_std/data->num_obs);
-
-    double mmi_corrected_mean = 0;
-    int mmi_corrected_count = 0;
-
-    // Discard outliers and recalculate mean
-    for (int i = 0; i < data->num_obs; i++)
-    {
-        if (fabs(mmi[i] - mmi_mean) > 3*mmi_std)
-            mmi[i] = 0;
-        else
-        {
-            mmi_corrected_mean += mmi[i];
-            mmi_corrected_count++;
-        }
-    }
-    mmi_corrected_mean /= mmi_corrected_count;
-
-    // DFT data
-    float *freq = (float *)malloc(data->plot_num_uhz*sizeof(float));
-    if (freq == NULL)
-    {
-        ret = error("malloc failed");
-        goto freq_malloc_error;
-    }
-
-    float *ampl = (float *)malloc(data->plot_num_uhz*sizeof(float));
-    if (ampl == NULL)
-    {
-        ret = error("malloc failed");
-        goto ampl_malloc_error;
-    }
-
-    calculate_amplitude_spectrum_float(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, time, mmi, data->num_obs, freq, ampl, data->plot_num_uhz);
-
-    for (int i = 0; i < data->plot_num_uhz; i++)
+    for (int i = 0; i < num_dft; i++)
         printf("%f %f\n", freq[i], ampl[i]);
 
-    free(ampl);
-ampl_malloc_error:
-    free(freq);
-freq_malloc_error:
-    free(mmi);
-mmi_malloc_error:
-fit_failed_error:
-    free(coeffs);
-coeffs_malloc_error:
-    free(polyfit);
-polyfit_malloc_error:
-    free(ratio);
-ratio_malloc_error:
+    free(raw_time);
+    free(raw);
     free(time);
-data_error:
+    free(ratio);
+    free(polyfit);
+    free(mmi);
+    free(freq);
+    free(ampl);
     datafile_free(data);
-    return ret;
+    return 0;
 }
 
 /*

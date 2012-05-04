@@ -22,6 +22,214 @@
 #include "aperture.h"
 #include "fit.h"
 
+int generate_photometry_dft_data(datafile *data,
+    // Raw data, unfiltered by blocked ranges
+    double **raw_time, double **raw, size_t *num_raw,
+    // Filtered data: polynomial fit, ratio, MMI
+    double **time, double **ratio, double **polyfit, double **mmi, size_t *num_filtered,
+    // Fourier transform; set to NULL to skip calculation
+    double **freq, double **ampl, size_t *num_dft)
+{
+    int ret = 0;
+
+    // No data
+    if (data->num_obs <= 0)
+        return error("File specifies no observations");
+
+    // Time Series data
+    *raw_time = (double *)malloc(data->num_obs*sizeof(double));
+    if (*time == NULL)
+    {
+        ret = error("malloc failed");
+        goto raw_time_alloc_error;
+    }
+
+    *raw = (double *)malloc(data->num_obs*data->num_targets*sizeof(double));
+    if (raw == NULL)
+    {
+        ret = error("malloc failed");
+        goto raw_alloc_error;
+    }
+
+    *time = (double *)malloc(data->num_obs*sizeof(double));
+    if (*time == NULL)
+    {
+        ret = error("malloc failed");
+        goto time_alloc_error;
+    }
+
+    *ratio = (double *)malloc(data->num_obs*sizeof(double));
+    if (*ratio == NULL)
+    {
+        ret = error("malloc failed");
+        goto ratio_alloc_error;
+    }
+
+    *polyfit = (double *)malloc(data->num_obs*sizeof(double));
+    if (*polyfit == NULL)
+    {
+        ret = error("malloc failed");
+        goto polyfit_alloc_error;
+    }
+
+    // Calculate polynomial fit to the ratio
+    double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
+    if (coeffs == NULL)
+    {
+        ret = error("malloc failed");
+        goto coeffs_alloc_error;
+    }
+
+    double ratio_mean = 0;
+    *num_filtered = 0;
+    *num_raw = data->num_obs;
+    for (int i = 0; i < data->num_obs; i++)
+    {
+        (*raw_time)[i] = data->obs[i].time;
+
+        for (int j = 0; j < data->num_targets; j++)
+            (*raw)[j*data->num_obs + i] = data->obs[i].star[j];
+
+        // Filter bad observations
+        bool skip = false;
+        for (int j = 0; j < data->num_blocked_ranges; j++)
+            if ((*raw_time)[i] >= data->blocked_ranges[j].x && (*raw_time)[i] <= data->blocked_ranges[j].y)
+            {
+                skip = true;
+                break;
+            }
+
+        if (!skip)
+        {
+            double target = data->obs[i].star[0];
+            double comparison = 0;
+            for (int j = 1; j < data->num_targets; j++)
+                comparison += data->obs[i].star[j];
+
+            (*time)[*num_filtered] = data->obs[i].time;
+            (*ratio)[*num_filtered] = target/comparison;
+            ratio_mean += (*ratio)[*num_filtered];
+            (*num_filtered)++;
+        }
+    }
+
+    ratio_mean /= *num_filtered;
+
+    // Calculate standard deviation
+    double ratio_std = 0;
+    for (int i = 0; i < *num_filtered; i++)
+        ratio_std += ((*ratio)[i] - ratio_mean)*((*ratio)[i] - ratio_mean);
+    ratio_std = sqrt(ratio_std/(*num_filtered));
+
+    if (fit_polynomial_d(*time, *ratio, *num_filtered, coeffs, data->plot_fit_degree))
+    {
+        ret = error("Polynomial fit failed");
+        goto poly_fit_error;
+    }
+
+    *mmi = (double *)malloc(*num_filtered*sizeof(double));
+    if (*mmi == NULL)
+    {
+        ret = error("malloc failed");
+        goto mmi_alloc_error;
+    }
+
+    double mmi_mean = 0;
+    for (int i = 0; i < *num_filtered; i++)
+    {
+        // Subtract polynomial fit and convert to mmi
+        (*polyfit)[i] = 0;
+        double pow = 1;
+        for (int j = 0; j <= data->plot_fit_degree; j++)
+        {
+            (*polyfit)[i] += pow*coeffs[j];
+            pow *= (*time)[i];
+        }
+        (*mmi)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*ratio)[i];
+        mmi_mean += (*mmi)[i];
+    }
+    mmi_mean /= *num_filtered;
+
+    // Calculate standard deviation
+    double mmi_std = 0;
+    for (int i = 0; i < *num_filtered; i++)
+        mmi_std += ((*mmi)[i] - mmi_mean)*((*mmi)[i] - mmi_mean);
+    mmi_std = sqrt(mmi_std/(*num_filtered));
+
+    double mmi_corrected_mean = 0;
+    int mmi_corrected_count = 0;
+
+    // Discard outliers and recalculate mean
+    for (int i = 0; i < *num_filtered; i++)
+    {
+        if (fabs((*mmi)[i] - mmi_mean) > 3*mmi_std)
+        {
+            error("%f is an outlier, setting to 0", (*time)[i]);
+            (*mmi)[i] = 0;
+        }
+        else
+        {
+            mmi_corrected_mean += (*mmi)[i];
+            mmi_corrected_count++;
+        }
+    }
+    mmi_corrected_mean /= mmi_corrected_count;
+
+    // Calculate DFT
+    if (freq && ampl && num_dft)
+    {
+        *freq = (double *)malloc(data->plot_num_uhz*sizeof(double));
+        if (*freq == NULL)
+        {
+            ret = error("malloc failed");
+            goto freq_alloc_error;
+        }
+
+        *ampl = (double *)malloc(data->plot_num_uhz*sizeof(double));
+        if (*ampl == NULL)
+        {
+            ret = error("malloc failed");
+            goto ampl_alloc_error;
+        }
+        *num_dft = data->plot_num_uhz;
+        calculate_amplitude_spectrum(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6,
+                                           *time, *mmi, *num_filtered,
+                                           *freq, *ampl, *num_dft);
+    }
+
+    // Cleanup temporary memory
+    free(coeffs);
+    return 0;
+
+    // Free allocated memory on error
+ampl_alloc_error:
+    free(*freq);
+    *freq = NULL;
+freq_alloc_error:
+    free(*mmi);
+    *mmi = NULL;
+mmi_alloc_error:
+poly_fit_error:
+    free(coeffs);
+coeffs_alloc_error:
+    free(*polyfit);
+    *polyfit = NULL;
+polyfit_alloc_error:
+    free(*ratio);
+    *ratio = NULL;
+ratio_alloc_error:
+    free(*time);
+    *time = NULL;
+time_alloc_error:
+    free(*raw);
+    *raw = NULL;
+raw_alloc_error:
+    free(*raw_time);
+    *raw_time = NULL;
+raw_time_alloc_error:
+    return ret;
+}
+
 static time_t get_frame_time(framedata *frame)
 {
     char datebuf[128], timebuf[128], datetimebuf[257];

@@ -10,6 +10,8 @@
 #ifndef HELPERS_H
 #define HELPERS_H
 
+#define error_jump(label, ret, ...) do { ret = error(__VA_ARGS__); goto label; } while(0)
+
 void free_2d_array(char **array, int len);
 int get_matching_files(const char *pattern, char ***files);
 int get_first_matching_file(char *pattern, char *filenamebuf, int buflen);

@@ -113,71 +113,44 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
         return error("Error opening data file");
 
     if (obsIndex >= data->num_obs)
-    {
-        ret = error("Requested observation is out of range: max is %d", data->num_obs-1);
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "Requested observation is out of range: max is %d", data->num_obs-1);
 
     if (chdir(data->frame_dir))
-    {
-        ret = error("Invalid frame path: %s", data->frame_dir);
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
 
     char filenamebuf[NAME_MAX];
     if (obsIndex >= 0)
         strncpy(filenamebuf, data->obs[obsIndex].filename, NAME_MAX);
     else if (!get_first_matching_file(data->frame_pattern, filenamebuf, NAME_MAX))
-    {
-        ret = error("No matching files found");
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "No matching files found");
 
     framedata *frame = framedata_load(filenamebuf);
     if (!frame)
-    {
-        ret = error("Error loading frame %s", filenamebuf);
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "Error loading frame %s", filenamebuf);
     subtract_bias(frame);
 
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
-    {
-        ret = error("Error loading frame %s", data->dark_template);
-        goto dark_error;
-    }
+        error_jump(dark_error, ret, "Error loading frame %s", data->dark_template);
     framedata_subtract(frame, dark);
 
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
-    {
-        ret = error("Error loading frame %s", data->flat_template);
-        goto flat_error;
-    }
+        error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
     framedata_divide(frame, flat);
 
     if (targetIndex < 0 || targetIndex >= data->num_targets)
-    {
-        ret = error("Invalid target `%d' selected", targetIndex);
-        goto process_error;
-    }
+        error_jump(process_error, ret, "Invalid target `%d' selected", targetIndex);
 
     target t = data->targets[targetIndex];
     double2 xy;
     if (center_aperture(t, frame, &xy))
-    {
-        ret = error("Aperture centering failed");
-        goto process_error;
-    }
+        error_jump(process_error, ret, "Aperture centering failed");
     t.x = xy.x; t.y = xy.y;
 
     double sky_intensity, sky_std_dev;
     if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
-    {
-        ret = error("Background calculation failed");
-        goto process_error;
-    }
+        error_jump(process_error, ret, "Background calculation failed");
 
     // Calculation lives in its own scope to ensure jumping to the error handling is safe
     // TODO: this is a mess - either tidy this up or remove the function completely

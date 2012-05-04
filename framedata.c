@@ -25,7 +25,10 @@ framedata *framedata_load(const char *filename)
 {
     framedata *fp = framedata_alloc();
     if (!fp)
-        goto frame_error;
+    {
+        error("framedata_alloc failed");
+        return NULL;
+    }
 
 	int status = 0;
     if (fits_open_image(&fp->fptr, filename, READONLY, &status))
@@ -35,29 +38,33 @@ framedata *framedata_load(const char *filename)
             error("%s\n", fitserr);
 
         error("fits_open_image failed with error %d; %s", status, filename);
-        goto frame_error;
+        framedata_free(fp);
+        return NULL;
     }
+
     // Query the image size
     fits_read_key(fp->fptr, TINT, "NAXIS1", &fp->cols, NULL, &status);
     fits_read_key(fp->fptr, TINT, "NAXIS2", &fp->rows, NULL, &status);
     if (status)
     {
         error("querying NAXIS failed");
-        goto frame_error;
+        framedata_free(fp);
+        return NULL;
     }
-
 
     fp->data = (double *)malloc(fp->cols*fp->rows*sizeof(double));
     if (fp->data == NULL)
     {
         error("malloc failed");
-        goto frame_error;
+        framedata_free(fp);
+        return NULL;
     }
 
     if (fits_read_pix(fp->fptr, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
     {
         error("fits_read_pix failed");
-        goto frame_error;
+        framedata_free(fp);
+        return NULL;
     }
 
     // Load image regions
@@ -79,10 +86,6 @@ framedata *framedata_load(const char *filename)
     fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
     fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
     return fp;
-
-frame_error:
-    framedata_free(fp);
-    return NULL;
 }
 
 int framedata_get_header_int(framedata *this, const char *key)

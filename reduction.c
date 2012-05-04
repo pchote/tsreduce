@@ -40,46 +40,28 @@ int generate_photometry_dft_data(datafile *data,
     // Time Series data
     *raw_time = (double *)malloc(data->num_obs*sizeof(double));
     if (*raw_time == NULL)
-    {
-        ret = error("raw_time malloc failed");
-        goto raw_time_alloc_error;
-    }
+        error_jump(raw_time_alloc_error, ret, "raw_time malloc failed");
 
     *raw = (double *)malloc(data->num_obs*data->num_targets*sizeof(double));
     if (raw == NULL)
-    {
-        ret = error("raw malloc failed");
-        goto raw_alloc_error;
-    }
+        error_jump(raw_alloc_error, ret, "raw malloc failed");
 
     *time = (double *)malloc(data->num_obs*sizeof(double));
     if (*time == NULL)
-    {
-        ret = error("time malloc failed");
-        goto time_alloc_error;
-    }
+        error_jump(time_alloc_error, ret, "time malloc failed");
 
     *ratio = (double *)malloc(data->num_obs*sizeof(double));
     if (*ratio == NULL)
-    {
-        ret = error("ratio malloc failed");
-        goto ratio_alloc_error;
-    }
+        error_jump(ratio_alloc_error, ret, "ratio malloc failed");
 
     *polyfit = (double *)malloc(data->num_obs*sizeof(double));
     if (*polyfit == NULL)
-    {
-        ret = error("polyfit malloc failed");
-        goto polyfit_alloc_error;
-    }
+        error_jump(polyfit_alloc_error, ret, "polyfit malloc failed");
 
     // Calculate polynomial fit to the ratio
     double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
     if (coeffs == NULL)
-    {
-        ret = error("coeffs malloc failed");
-        goto coeffs_alloc_error;
-    }
+        error_jump(coeffs_alloc_error, ret, "coeffs malloc failed");
 
     double ratio_mean = 0;
     *num_filtered = 0;
@@ -127,17 +109,11 @@ int generate_photometry_dft_data(datafile *data,
         *ratio_std_out = ratio_std;
 
     if (fit_polynomial_d(*time, *ratio, *num_filtered, coeffs, data->plot_fit_degree))
-    {
-        ret = error("Polynomial fit failed");
-        goto poly_fit_error;
-    }
+        error_jump(poly_fit_error, ret, "Polynomial fit failed");
 
     *mmi = (double *)malloc(*num_filtered*sizeof(double));
     if (*mmi == NULL)
-    {
-        ret = error("mmi malloc failed");
-        goto mmi_alloc_error;
-    }
+        error_jump(mmi_alloc_error, ret, "mmi malloc failed");
 
     double mmi_mean = 0;
     for (int i = 0; i < *num_filtered; i++)
@@ -190,17 +166,11 @@ int generate_photometry_dft_data(datafile *data,
     {
         *freq = (double *)malloc(data->plot_num_uhz*sizeof(double));
         if (*freq == NULL)
-        {
-            ret = error("freq malloc failed");
-            goto freq_alloc_error;
-        }
+            error_jump(freq_alloc_error, ret, "freq malloc failed");
 
         *ampl = (double *)malloc(data->plot_num_uhz*sizeof(double));
         if (*ampl == NULL)
-        {
-            ret = error("ampl malloc failed");
-            goto ampl_alloc_error;
-        }
+            error_jump(ampl_alloc_error, ret, "ampl malloc failed");
         *num_dft = data->plot_num_uhz;
         calculate_amplitude_spectrum(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6,
                                            *time, *mmi, *num_filtered,
@@ -300,29 +270,20 @@ int ccd_readnoise(const char *framePattern)
     // Load first frame to get frame info
     framedata *frame = framedata_load(frames[0]);
     if (!frame)
-    {
-        ret = error("Error loading frame %s", frames[0]);
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "Error loading frame %s", frames[0]);
 
     int *br = frame->regions.bias_region;
     double *data = (double *)malloc(frame->regions.bias_px*num_frames*sizeof(double));
     framedata_free(frame);
     if (!data)
-    {
-        ret = error("malloc failed");
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "data malloc failed");
 
     // Load overscan region into a data cube
     for (int p = 0, k = 0; k < num_frames; k++)
     {
         frame = framedata_load(frames[k]);
         if (!frame)
-        {
-            ret = error("Error loading frame %s", frames[k]);
-            goto process_error;
-        }
+            error_jump(process_error, ret, "Error loading frame %s", frames[k]);
 
         // Copy overscan pixels
         for (int j = br[2]; j < br[3]; j++)
@@ -404,7 +365,7 @@ double prepare_flat(framedata *flat, framedata *dark)
 // Also calculates the readnoise and gain if overscan is available
 int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname)
 {
-    int return_status = 0;
+    int ret = 0;
 
     // Find the filenames that match the specified pattern
     char **frame_paths;
@@ -412,44 +373,30 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
 
     // Ensure there are enough frames to discard the requested number of pixels
     if (num_frames <= 2*minmax)
-    {
-        return_status = error("Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
-        goto insufficient_frames;
-    }
+        error_jump(insufficient_frames, ret,
+            "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
 
     // Load the master dark frame
     // Frame geometry for all subsequent frames is assumed to match the master-dark
     framedata *dark = framedata_load(masterdark);
     if (!dark)
-    {
-        return_status = error("Error loading frame %s", masterdark);
-        goto insufficient_frames;
-    }
+        error_jump(insufficient_frames, ret, "Error loading frame %s", masterdark);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
     double *data_cube = (double *)malloc(num_frames*dark->cols*dark->rows*sizeof(double));
     if (data_cube == NULL)
-    {
-        return_status = error("malloc failed");
-        goto datacube_failed;
-    }
+        error_jump(datacube_failed, ret, "data_cube alloc failed");
 
     // Mean intensity of each flat frame
     double *mean_flat = (double *)malloc(num_frames*sizeof(double));
     if (mean_flat == NULL)
-    {
-        return_status = error("malloc failed");
-        goto meanflat_failed;
-    }
+        error_jump(meanflat_failed, ret, "mean_flat alloc failed");
 
     // We need to iterate over the individual frames multiple times to calculate gain
     framedata **frames = (framedata **)malloc(num_frames*sizeof(framedata*));
     if (frames == NULL)
-    {
-        return_status = error("malloc failed");
-        goto frames_failed;
-    }
+        error_jump(frames_failed, ret, "frames alloc failed");
 
     // Load flat field frames into a data cube for the image data, and a cube for the bias data
     // data[0] = flat[0][0,0], data[1] = flat[1][0,0] ... data[num_frames] = flat[0][0,1] etc
@@ -462,8 +409,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
             // Cleanup the frames that we have allocated
             for (int j = 0; j < i; j++)
                 framedata_free(frames[j]);
-            return_status = error("Error loading frame %s", frame_paths[i]);
-            goto loadflat_failed;
+
+            error_jump(loadflat_failed, ret, "Error loading frame %s", frame_paths[i]);
         }
 
         if (frames[i]->rows != dark->rows || frames[i]->cols != dark->cols)
@@ -472,9 +419,9 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
             for (int j = 0; j <= i; j++)
                 framedata_free(frames[j]);
 
-            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
+            error_jump(loadflat_failed, ret,
+                "Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
                 frames[i], dark->rows, dark->cols, frames[i]->rows, frames[i]->cols);
-            goto loadflat_failed;
         }
 
         // Dark-subtract and normalize the frame, recording the mean level for calculating the gain
@@ -507,10 +454,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Loop over the pixels, sorting the values from each image into increasing order
     double *median_flat = (double *)malloc(dark->rows*dark->cols*sizeof(double));
     if (median_flat == NULL)
-    {
-        return_status = error("malloc failed");
-        goto median_failed;
-    }
+        error_jump(median_failed, ret, "median_flat alloc failed");
 
     for (int j = 0; j < dark->rows*dark->cols; j++)
     {
@@ -526,10 +470,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Calculate gain from each image
     double *gain = (double *)malloc(num_frames*sizeof(double));
     if (gain == NULL)
-    {
-        return_status = error("malloc failed");
-        goto gain_failed;
-    }
+        error_jump(gain_failed, ret, "gain alloc failed");
 
     if (dark->regions.has_overscan)
     {
@@ -626,7 +567,7 @@ datacube_failed:
 insufficient_frames:
     free_2d_array(frame_paths, num_frames);
 
-    return return_status;
+    return ret;
 }
 
 // Create a darkframe from the frames listed by the command `darkcmd',
@@ -634,56 +575,42 @@ insufficient_frames:
 // Save the resulting image to the file `outname'
 int create_dark(const char *pattern, int minmax, const char *outname)
 {
-    int return_status = 0;
+    int ret = 0;
 
     char **frame_paths;
     int num_frames = get_matching_files(pattern, &frame_paths);
     if (num_frames < 2*minmax)
-    {
-        return_status = error("Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
-        goto insufficient_frames;
-    }
-    
+        error_jump(insufficient_frames, ret,
+            "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
+
     framedata *base = framedata_load(frame_paths[0]);
     if (!base)
-    {
-        return_status = error("Error loading frame %s", frame_paths[0]);
-        goto insufficient_frames;
-    }
+        error_jump(insufficient_frames, ret, "Error loading frame %s", frame_paths[0]);
 
     int exptime = framedata_get_header_int(base, "EXPTIME");
     double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
     if (median_dark == NULL)
-    {
-        return_status = error("malloc failed");
-        goto dark_failed;
-    }
-    
+        error_jump(dark_failed, ret, "median_dark alloc failed");
+
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
     double *data_cube = (double *)malloc(num_frames*base->cols*base->rows*sizeof(double));
     if (data_cube == NULL)
-    {
-        return_status = error("malloc failed");
-        goto datacube_failed;
-    }
+        error_jump(datacube_failed, ret, "data_cube alloc failed");
 
     for( int i = 0; i < num_frames; i++)
     {
         printf("loading `%s`\n", frame_paths[i]);
         framedata *f = framedata_load(frame_paths[i]);
         if (!f)
-        {
-            return_status = error("Error loading frame %s", frame_paths[i]);
-            goto loaddark_failed;
-        }
+            error_jump(loaddark_failed, ret, "Error loading frame %s", frame_paths[i]);
 
         if (f->rows != base->rows || f->cols != base->cols)
         {
             framedata_free(f);
-            return_status = error("Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
+            error_jump(loaddark_failed, ret,
+                "Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
                 frame_paths[i], base->rows, base->cols, f->rows, f->cols);
-            goto loaddark_failed;
         }
 
         subtract_bias(f);
@@ -735,7 +662,7 @@ dark_failed:
 insufficient_frames:
     free_2d_array(frame_paths, num_frames);
 
-    return return_status;
+    return ret;
 }
 
 // Dark-subtract and flatfield the frame at `framePath' using the dark
@@ -747,24 +674,15 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
 
     framedata *base = framedata_load(framePath);
     if (!base)
-    {
-        ret = error("Error loading frame %s", framePath);
-        goto load_error;
-    }
+        error_jump(load_error, ret, "Error loading frame %s", framePath);
 
     framedata *dark = framedata_load(darkPath);
     if (!dark)
-    {
-        ret = error("Error loading frame %s", darkPath);
-        goto load_error;
-    }
+        error_jump(load_error, ret, "Error loading frame %s", darkPath);
 
     framedata *flat = framedata_load(flatPath);
     if (!flat)
-    {
-        ret = error("Error loading frame %s", flatPath);
-        goto load_error;
-    }
+        error_jump(load_error, ret, "Error loading frame %s", flatPath);
 
     // Process frame
     subtract_bias(base);
@@ -783,10 +701,7 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
 
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, base->data, &status))
-    {
-        ret = error("fits_write_img failed with status %d", status);
-        goto write_error;
-    }
+        error_jump(write_error, ret, "fits_write_img failed with status %d", status);
 
 write_error:
     fits_close_file(out, &status);
@@ -810,11 +725,10 @@ int update_reduction(char *dataPath)
         return error("Error opening data file");
 
     if (data->version < 3)
-    {
-        ret = error("Invalid data file version `%d'. Requires version >= 3", data->version);
-        goto data_error;
-    }
-    chdir(data->frame_dir);
+        error_jump(data_error, ret, "Invalid data file version `%d'. Requires version >= 3", data->version);
+
+    if (chdir(data->frame_dir))
+        error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
 
     // Compile the filepattern into a regex
     regex_t regex;
@@ -823,23 +737,17 @@ int update_reduction(char *dataPath)
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        ret = error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
-        goto regex_error;
+        error_jump(regex_error, ret,
+            "Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
     }
 
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
-    {
-        ret = error("Error loading frame %s", data->flat_template);
-        goto frame_error;
-    }
+        error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
 
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
-    {
-        ret = error("Error loading frame %s", data->flat_template);
-        goto frame_error;
-    }
+        error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
 
     // Iterate through the files in the directory
     int start_obs = data->num_obs;
@@ -873,9 +781,8 @@ int update_reduction(char *dataPath)
         framedata *frame = framedata_load(filename);
         if (!frame)
         {
-            ret = error("Error loading frame %s", data->flat_template);
             framedata_free(frame);
-            goto process_error;
+            error_jump(process_error, ret, "Error loading frame %s", data->flat_template);
         }
         int exptime = framedata_get_header_int(frame, "EXPTIME");
 
@@ -990,37 +897,25 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     datafile *data = datafile_alloc();
 
     if (chdir(pathBuf))
-    {
-        ret = error("Invalid frame path: %s", pathBuf);
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "Invalid frame path: %s", pathBuf);
     data->frame_dir = strdup(pathBuf);
     
     char filenamebuf[NAME_MAX];
     if (!get_first_matching_file(framePattern, filenamebuf, NAME_MAX))
-    {
-        ret = error("No matching files found");
-        goto setup_error;
-    }
+        error_jump(setup_error, ret, "No matching files found");
     data->frame_pattern = strdup(framePattern);
     
     // Open the file to find the reference time
     framedata *frame = framedata_load(filenamebuf);
     if (!frame)
-    {
-        ret = error("Error loading frame %s", filenamebuf);
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "Error loading frame %s", filenamebuf);
 
     subtract_bias(frame);
     data->reference_time = get_frame_time(frame);
 
     framedata *dark = framedata_load(darkTemplate);
     if (!dark)
-    {
-        ret = error("Error loading frame %s", darkTemplate);
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "Error loading frame %s", darkTemplate);
 
     framedata_subtract(frame, dark);
     framedata_free(dark);
@@ -1028,10 +923,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 
     framedata *flat = framedata_load(flatTemplate);
     if (!flat)
-    {
-        ret = error("Error loading frame %s", flatTemplate);
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "Error loading frame %s", flatTemplate);
 
     framedata_divide(frame, flat);
     framedata_free(flat);
@@ -1040,34 +932,22 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     char command[128];
     snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
     if (tell_ds9("tsreduce", command, frame->data, frame->rows*frame->cols*sizeof(double)))
-    {
-        ret = error("ds9 command failed: %s", command);
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "ds9 command failed: %s", command);
     
     // Set scaling mode
     if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
-    {
-        ret = error("ds9 command failed: scale mode 99.5");
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "ds9 command failed: scale mode 99.5");
     
     // Flip X axis
     if (tell_ds9("tsreduce", "orient x", NULL, 0))
-    {
-        ret = error("ds9 command failed: orient x");
-        goto frameload_error;
-    }
-    
+        error_jump(frameload_error, ret, "ds9 command failed: orient x");
+
     printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
     getchar();
     
     char *ds9buf;
     if (ask_ds9("tsreduce", "regions", &ds9buf) || ds9buf == NULL)
-    {
-        ret = error("ds9 request regions failed");
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "ds9 request regions failed");
     
     // Parse the region definitions
     char *cur = ds9buf;
@@ -1102,19 +982,13 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         
         double2 xy;
         if (center_aperture(t, frame, &xy))
-        {
-            ret = error("Aperture did not converge");
-            goto aperture_converge_error;
-        }
+            error_jump(aperture_converge_error, ret, "Aperture did not converge");
         t.x = xy.x;
         t.y = xy.y;
 
         double sky_intensity, sky_std_dev;
         if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
-        {
-            ret = error("Background calculation failed");
-            goto aperture_converge_error;
-        }
+            error_jump(aperture_converge_error, ret, "Background calculation failed");
 
         // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
         double lastIntensity = 0;
@@ -1231,30 +1105,19 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
         return error("Error opening data file");
 
     if (data->version < 3)
-    {
-        ret = error("Invalid data file version `%d'. Requires version >= 3", data->version);
-        goto data_error;
-    }
-    
+        error_jump(data_error, ret,
+            "Invalid data file version `%d'. Requires version >= 3", data->version);
+
     if (chdir(data->frame_dir))
-    {
-        ret = error("Invalid frame path: %s", data->frame_dir);
-        goto data_error;
-    }
+        error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
 
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
-    {
-        ret = error("Error loading frame %s", data->dark_template);
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "Error loading frame %s", data->dark_template);
 
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
-    {
-        ret = error("Error loading frame %s", data->flat_template);
-        goto frameload_error;
-    }
+        error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
 
     double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
     double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
@@ -1266,8 +1129,8 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        ret = error("Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
-        goto regex_error;
+        error_jump(regex_error, ret,
+            "Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
     }
 
     struct dirent **matched;
@@ -1295,10 +1158,8 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
 
             framedata *frame = framedata_load(filename);
             if (!frame)
-            {
-                ret = error("Error loading frame %s", filename);
-                goto process_error;
-            }
+                error_jump(process_error, ret, "Error loading frame %s", filename);
+
             int exptime = framedata_get_header_int(frame, "EXPTIME");
 
             // Calculate time at the start of the exposure relative to ReferenceTime

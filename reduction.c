@@ -27,6 +27,7 @@ int generate_photometry_dft_data(datafile *data,
     double **raw_time, double **raw, size_t *num_raw,
     // Filtered data: polynomial fit, ratio, MMI
     double **time, double **ratio, double **polyfit, double **mmi, size_t *num_filtered,
+    double **ratio_noise, double **mmi_noise,
     double *ratio_mean_out, double *ratio_std_out, double *mmi_mean_out, double *mmi_std_out,
     // Fourier transform; set to NULL to skip calculation
     double **freq, double **ampl, size_t *num_dft)
@@ -53,6 +54,25 @@ int generate_photometry_dft_data(datafile *data,
     *ratio = (double *)malloc(data->num_obs*sizeof(double));
     if (*ratio == NULL)
         error_jump(ratio_alloc_error, ret, "ratio malloc failed");
+
+    // photmetery error estimates are not available
+    if (data->version < 5)
+    {
+        if (ratio_noise)
+            *ratio_noise = NULL;
+        if (mmi_noise)
+            *mmi_noise = NULL;
+
+        ratio_noise = NULL;
+        mmi_noise = NULL;
+    }
+
+    if (ratio_noise)
+    {
+        *ratio_noise = (double *)malloc(data->num_obs*sizeof(double));
+        if (*ratio == NULL)
+            error_jump(ratio_noise_alloc_error, ret, "ratio malloc failed");
+    }
 
     *polyfit = (double *)malloc(data->num_obs*sizeof(double));
     if (*polyfit == NULL)
@@ -84,6 +104,7 @@ int generate_photometry_dft_data(datafile *data,
 
         if (!skip)
         {
+            // Calculate ratio from raw data, ignoring the value in the data file
             double target = data->obs[i].star[0];
             double comparison = 0;
             for (int j = 1; j < data->num_targets; j++)
@@ -91,6 +112,11 @@ int generate_photometry_dft_data(datafile *data,
 
             (*time)[*num_filtered] = data->obs[i].time;
             (*ratio)[*num_filtered] = target/comparison;
+
+            // Read noise from data file if available
+            if (ratio_noise)
+                (*ratio_noise)[*num_filtered] = data->obs[i].ratio_noise;
+
             ratio_mean += (*ratio)[*num_filtered];
             (*num_filtered)++;
         }
@@ -115,6 +141,13 @@ int generate_photometry_dft_data(datafile *data,
     if (*mmi == NULL)
         error_jump(mmi_alloc_error, ret, "mmi malloc failed");
 
+    if (mmi_noise)
+    {
+        *mmi_noise = (double *)malloc(*num_filtered*sizeof(double));
+        if (*mmi_noise == NULL)
+            error_jump(mmi_noise_alloc_error, ret, "ratio malloc failed");
+    }
+
     double mmi_mean = 0;
     for (int i = 0; i < *num_filtered; i++)
     {
@@ -127,6 +160,13 @@ int generate_photometry_dft_data(datafile *data,
             pow *= (*time)[i];
         }
         (*mmi)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*ratio)[i];
+
+        if (mmi_noise)
+        {
+            double numer_error = fabs((*ratio_noise)[i]/((*ratio)[i] - (*polyfit)[i]));
+            double denom_error = fabs((*ratio_noise)[i]/(*ratio)[i]);
+            (*mmi_noise)[i] = (numer_error + denom_error)*fabs((*mmi)[i]);
+        }
         mmi_mean += (*mmi)[i];
     }
     mmi_mean /= *num_filtered;
@@ -186,6 +226,12 @@ ampl_alloc_error:
     free(*freq);
     *freq = NULL;
 freq_alloc_error:
+    if (mmi_noise)
+    {
+        free(*mmi_noise);
+        *mmi_noise = NULL;
+    }
+mmi_noise_alloc_error:
     free(*mmi);
     *mmi = NULL;
 mmi_alloc_error:
@@ -195,6 +241,12 @@ coeffs_alloc_error:
     free(*polyfit);
     *polyfit = NULL;
 polyfit_alloc_error:
+    if (ratio_noise)
+    {
+        free(*ratio_noise);
+        *ratio_noise = NULL;
+    }
+ratio_noise_alloc_error:
     free(*ratio);
     *ratio = NULL;
 ratio_alloc_error:
@@ -745,6 +797,9 @@ int update_reduction(char *dataPath)
     if (!flat)
         error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
 
+    double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
+    double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
+
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
         error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
@@ -763,7 +818,7 @@ int update_reduction(char *dataPath)
         // Ignore files that don't match the regex
         if (regexec(&regex, filename, 0, NULL, 0))
             continue;
-        
+
         // Check whether the frame has been processed
         int processed = FALSE;
         for (int i = 0; i < data->num_obs; i++)
@@ -775,7 +830,7 @@ int update_reduction(char *dataPath)
 
         if (processed)
             continue;
-        
+
         printf("Reducing %s\n", filename);
 
         framedata *frame = framedata_load(filename);
@@ -789,19 +844,21 @@ int update_reduction(char *dataPath)
         // Calculate time at the start of the exposure relative to ReferenceTime
         time_t frame_time = get_frame_time(frame);
         double starttime = difftime(frame_time, data->reference_time);
-        
+
         // Process frame
         subtract_bias(frame);
         framedata_subtract(frame, dark);
         framedata_divide(frame, flat);
-        
+
         // Observation start time
         fprintf(data->file, "%.1f ", starttime);
         data->obs[data->num_obs].time = starttime;
-        
-        // Target stars
+
+        // Process frame
         double comparisonIntensity = 0;
         double targetIntensity = 0;
+        double comparisonNoise = 0;
+        double targetNoise = 0;
         for (int i = 0; i < data->num_targets; i++)
         {
             // Use the aperture position from the previous frame
@@ -815,9 +872,10 @@ int update_reduction(char *dataPath)
                 if (last.y > 0 && last.y < frame->rows)
                     t.y = last.y;
             }
-            
+
             double sky = 0;
             double intensity = 0;
+            double noise = 0;
             double2 xy = {0,0};
 
             if (!center_aperture(t, frame, &xy))
@@ -827,29 +885,42 @@ int update_reduction(char *dataPath)
 
                 // Integrate sky over the aperture and normalize per unit time
                 sky *= M_PI*t.r*t.r / exptime;
-                intensity = integrate_aperture(xy, t.r, frame) / exptime - sky;
+
+                integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
+                intensity = intensity/exptime - sky;
+                noise /= exptime;
             }
 
             fprintf(data->file, "%.2f ", intensity); // intensity (ADU/s)
             fprintf(data->file, "%.2f ", sky); // sky intensity (ADU/s)
             fprintf(data->file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
-            
+
             data->obs[data->num_obs].star[i] = intensity;
             data->obs[data->num_obs].sky[i] = sky;
-            data->obs[data->num_obs].pos[i].x = xy.x;
-            data->obs[data->num_obs].pos[i].y = xy.y;
-            
+            data->obs[data->num_obs].pos[i] = xy;
+
             if (i == 0)
+            {
                 targetIntensity = intensity;
+                targetNoise = noise;
+            }
             else
+            {
                 comparisonIntensity += intensity;
+                comparisonNoise += noise;
+            }
         }
-        
+
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
+        double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
+        fprintf(data->file, "%.3e ", ratio);
+        if (data->version >= 5)
+            fprintf(data->file, "%.3e ", ratioNoise);
+
         fprintf(data->file, "%.3e ", ratio);
         data->obs[data->num_obs].ratio = ratio;
-        
+
         // Filename
         fprintf(data->file, "%s\n", filename);
         strncpy(data->obs[data->num_obs].filename, filename, sizeof(filename));
@@ -1066,6 +1137,7 @@ int create_mmi(char *dataPath)
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
                                      &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                     NULL, NULL,
                                      NULL, NULL, NULL, NULL,
                                      NULL, NULL, NULL))
     {

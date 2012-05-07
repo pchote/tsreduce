@@ -29,6 +29,7 @@ typedef struct
     double2 pos[MAX_TARGETS];
     double time;
     double ratio;
+    double ratio_noise;
     char filename[64];
 } record;
 

@@ -26,7 +26,7 @@ datafile *datafile_alloc()
 {
     datafile *dp = malloc(sizeof(datafile));
     dp->file = NULL;
-    dp->version = 4;
+    dp->version = 5;
     dp->frame_dir = NULL;
     dp->frame_pattern = NULL;
     dp->dark_template = NULL;
@@ -159,6 +159,9 @@ datafile* datafile_load(char *filename)
 
         // Ratio
         dp->obs[dp->num_obs].ratio = atof(strtok_r(NULL, " ", &ctx));
+
+        if (dp->version >= 5)
+            dp->obs[dp->num_obs].ratio_noise = atof(strtok_r(NULL, " ", &ctx));
 
         // Filename
         strncpy(dp->obs[dp->num_obs].filename, strtok_r(NULL, " ", &ctx),

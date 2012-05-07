@@ -13,6 +13,7 @@
 int generate_photometry_dft_data(datafile *data,
                                  double **raw_time, double **raw, size_t *num_raw,
                                  double **time, double **ratio, double **polyfit, double **mmi, size_t *num_filtered,
+                                 double **ratio_noise, double **mmi_noise,
                                  double *ratio_mean, double *ratio_std, double *mmi_mean, double *mmi_std,
                                  double **freq, double **ampl, size_t *num_dft);
 

@@ -318,12 +318,13 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     gmtime_r(&data->reference_time, &starttime);
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
 
-    double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mmi_d, *freq_d, *ampl_d;
+    double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mmi_d, *ratio_noise_d, *mmi_noise_d, *freq_d, *ampl_d;
     double ratio_mean, ratio_std, mmi_mean, mmi_std;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
                                      &raw_time_d, &raw_d, &num_raw,
                                      &time_d, &ratio_d, &polyfit_d, &mmi_d, &num_filtered,
+                                     &ratio_noise_d, &mmi_noise_d,
                                      &ratio_mean, &ratio_std, &mmi_mean, &mmi_std,
                                      &freq_d, &ampl_d, &num_dft))
     {
@@ -332,6 +333,19 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     }
 
     float max_time = min_time + raw_time_d[num_raw-1]/3600;
+
+    double snr_ratio = 0;
+    if (ratio_noise_d)
+    {
+        double total_ratio = 0;
+        double total_ratio_noise = 0;
+        for (int i = 0; i < num_filtered; i++)
+        {
+            total_ratio += ratio_d[i];
+            total_ratio_noise += ratio_noise_d[i];
+        }
+        snr_ratio = total_ratio/total_ratio_noise;
+    }
 
     // Cast the double arrays to float, does not allocate any new memory.
     float *raw_time = cast_double_array_to_float(raw_time_d, num_raw);
@@ -343,6 +357,14 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     float *freq = cast_double_array_to_float(freq_d, num_dft);
     float *ampl = cast_double_array_to_float(ampl_d, num_dft);
 
+    float *ratio_noise = NULL;
+    if (ratio_noise_d)
+        ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
+
+    float *mmi_noise = NULL;
+    if (mmi_noise_d)
+        mmi_noise = cast_double_array_to_float(mmi_noise_d, num_filtered);
+
     float min_mmi = mmi_mean - 5*mmi_std;
     float max_mmi = mmi_mean + 5*mmi_std;
     float min_ratio = ratio_mean - 5*ratio_std;
@@ -350,7 +372,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     // Determine max dft ampl
     float max_dft_ampl = 0;
-    for (int i = 0; i < data->plot_num_uhz; i++)
+    for (int i = 0; i < num_dft; i++)
         max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
     max_dft_ampl *= 1.1;
 
@@ -377,16 +399,24 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
     cpgswin(0, raw_time[num_raw-1], min_mmi, max_mmi);
-    cpgpt(num_filtered, time, mmi, 20);
+
+    if (mmi_noise)
+        cpgerrb(6, num_filtered, time, mmi, mmi_noise, 0.0);
+    else
+        cpgpt(num_filtered, time, mmi, 20);
 
     // Ratio
     cpgsvp(0.1, 0.9, 0.55, 0.75);
     cpgmtxt("l", 2.5, 0.5, 0.5, "Ratio");
     cpgswin(min_time, max_time, min_ratio, max_ratio);
     cpgbox("bcst", 1, 4, "bcstn", 0, 0);
-
     cpgswin(0, raw_time[num_raw-1], min_ratio, max_ratio);
-    cpgpt(num_filtered, time, ratio, 20);
+
+    // Plot error bars if ratio_noise is available (data->version >= 5)
+    if (ratio_noise)
+        cpgerrb(6, num_filtered, time, ratio, ratio_noise, 0.0);
+    else
+        cpgpt(num_filtered, time, ratio, 20);
 
     // Plot the polynomial fit
     cpgsci(2);
@@ -406,6 +436,14 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
         cpgsci(plot_colors[j%plot_colors_max]);
         cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
     }
+
+    // SNR label
+    cpgswin(0, 1, 0, 1);
+    cpgsci(1);
+    char *snr_label;
+    asprintf(&snr_label, "Ratio SNR: %.2f", snr_ratio);
+    cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
+    free(snr_label);
     cpgend();
 
     if (cpgopen(dftDevice ? dftDevice : "6/xs") <= 0)
@@ -425,8 +463,8 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgswin(data->plot_min_uhz, data->plot_max_uhz, 0, 1);
     cpgbox("bstn", 0, 0, "bcnst", 5, 5);
 
-    cpgsci(1);
     // Plot period on top axis
+    cpgsci(1);
     cpgmove(data->plot_min_uhz, 1);
     cpgdraw(data->plot_max_uhz, 1);
     int default_periods[] = {100, 125, 150, 200, 300, 500, 2000};
@@ -446,7 +484,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     cpgswin(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, 0, max_dft_ampl);
     cpgsci(12);
-    cpgline(data->plot_num_uhz, freq, ampl);
+    cpgline(num_dft, freq, ampl);
     cpgsci(1);
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
@@ -480,6 +518,7 @@ int amplitude_spectrum(char *dataPath)
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
                                      &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                     NULL, NULL,
                                      NULL, NULL, NULL, NULL,
                                      &freq, &ampl, &num_dft))
     {

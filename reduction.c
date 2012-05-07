@@ -914,12 +914,11 @@ int update_reduction(char *dataPath)
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
         double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
+        data->obs[data->num_obs].ratio = ratio;
+
         fprintf(data->file, "%.3e ", ratio);
         if (data->version >= 5)
             fprintf(data->file, "%.3e ", ratioNoise);
-
-        fprintf(data->file, "%.3e ", ratio);
-        data->obs[data->num_obs].ratio = ratio;
 
         // Filename
         fprintf(data->file, "%s\n", filename);

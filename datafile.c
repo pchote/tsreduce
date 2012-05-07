@@ -18,6 +18,8 @@
 #define PLOT_NUM_UHZ_DEFAULT 1000
 #define PLOT_MIN_UHZ_DEFAULT 0
 #define PLOT_MAX_UHZ_DEFAULT 10000
+#define CCD_GAIN_DEFAULT 0
+#define CCD_READNOISE_DEFAULT 0
 
 /*
  * Allocate a datafile on the heap and set default values
@@ -36,8 +38,8 @@ datafile *datafile_alloc()
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
     dp->plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
-    dp->ccd_gain = 0;
-    dp->ccd_readnoise = 0;
+    dp->ccd_gain = PLOT_MAX_UHZ_DEFAULT;
+    dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->num_obs = 0;
     dp->num_targets = 0;
     dp->num_blocked_ranges = 0;
@@ -229,8 +231,11 @@ int datafile_save_header(datafile *data, char *filename)
         fprintf(out, "# PlotMinUhz: %f\n", data->plot_min_uhz);
     if (data->plot_max_uhz != PLOT_MAX_UHZ_DEFAULT)
         fprintf(out, "# PlotMaxUhz: %f\n", data->plot_max_uhz);
-    if (data->plot_num_uhz != PLOT_NUM_UHZ_DEFAULT)
-        fprintf(out, "# PlotMaxUhz: %d\n", data->plot_num_uhz);
+    if (data->plot_num_uhz != CCD_GAIN_DEFAULT)
+        fprintf(out, "# CCDGain: %f\n", data->ccd_gain);
+    if (data->ccd_readnoise != CCD_READNOISE_DEFAULT)
+        fprintf(out, "# CCDReadNoise: %f\n", data->ccd_readnoise);
+
     if (data->reference_time)
     {
         char datetimebuf[20];

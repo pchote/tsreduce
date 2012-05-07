@@ -372,8 +372,13 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     // Determine max dft ampl
     float max_dft_ampl = 0;
+    float mean_dft_ampl = 0;
     for (int i = 0; i < num_dft; i++)
+    {
         max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
+        mean_dft_ampl += ampl[i];
+    }
+    mean_dft_ampl /= num_dft;
     max_dft_ampl *= 1.1;
 
     if (cpgopen(tsDevice ? tsDevice : "5/xs") <= 0)
@@ -486,6 +491,12 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgsci(12);
     cpgline(num_dft, freq, ampl);
     cpgsci(1);
+
+    cpgswin(0, 1, 0, 1);
+    char *ampl_label;
+    asprintf(&ampl_label, "Mean amplitude: %.2f mmi", mean_dft_ampl);
+    cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
+    free(ampl_label);
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");

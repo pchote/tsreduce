@@ -114,8 +114,9 @@ static int rref(double *A, int m, int n)
 
 /*
  * Calculate a linear least-squares fit of numParams basis functions defined by evaluate_basis to (x,y)
+ * e (if non-NULL) specifies the estimated standard deviation in y, and is used to weight the fit
  */
-static int fit(double *x, double *y, int c, double *params, int numParams,
+static int fit(double *x, double *y, double *e, int c, double *params, int numParams,
                void (*evaluate_basis)(double x, double *basis, int n, void *user), void *user)
 {
     int n = numParams;
@@ -134,14 +135,17 @@ static int fit(double *x, double *y, int c, double *params, int numParams,
         // Evaluate basis functions at x[i]
         evaluate_basis(x[i], basis, n, user);
 
+        // Estimated variance in y
+        double var = e ? e[i]*e[i] : 1.0;
+
         for (int j = 0; j < n; j++)
         {
             // Calculate Ajk contribution from i
             for (int k = 0; k < n; k++)
-                A[j*m + k] += basis[j]*basis[k];
+                A[j*m + k] += basis[j]*basis[k]/var;
 
             // Calculate b_j contribution from i
-            A[j*m + n] += y[i]*basis[j];
+            A[j*m + n] += y[i]*basis[j]/var;
         }
     }
 
@@ -190,7 +194,7 @@ int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
         dy[i] = y[i];
     }
 
-    int ret = fit(dx, dy, c, coeffs, degree + 1, polynomial_fit, NULL);
+    int ret = fit(dx, dy, NULL, c, coeffs, degree + 1, polynomial_fit, NULL);
     free(dx);
     free(dy);
     return ret;
@@ -198,8 +202,14 @@ int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
 
 int fit_polynomial_d(double *x, double *y, int c, double *coeffs, int degree)
 {
-    return fit(x, y, c, coeffs, degree + 1, polynomial_fit, NULL);
+    return fit(x, y, NULL, c, coeffs, degree + 1, polynomial_fit, NULL);
 }
+
+int fit_polynomial_with_errors_d(double *x, double *y, double *e, int c, double *coeffs, int degree)
+{
+    return fit(x, y, e, c, coeffs, degree + 1, polynomial_fit, NULL);
+}
+
 
 
 /*
@@ -208,5 +218,5 @@ int fit_polynomial_d(double *x, double *y, int c, double *coeffs, int degree)
  */
 int fit_sinusoids(double *x, double *y, int c, double *freqs, int numFreqs, double *amplitudes)
 {
-    return fit(x, y, c, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
+    return fit(x, y, NULL, c, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
 }

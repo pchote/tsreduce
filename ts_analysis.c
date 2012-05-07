@@ -560,6 +560,11 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     if (data == NULL)
         return error("Error opening data file");
 
+    // Force at least version 5 to include noise calculation
+    if (data->version < 5)
+        data->version = 5;
+
+    char *dir = getcwd(NULL, 0);
     // Create and update a datafile for each aperture
     double radius = min;
     do
@@ -570,6 +575,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
         char *filename;
         asprintf(&filename, "%s-%0.2f.dat", prefix, radius);
 
+        chdir(dir);
         // Errors are non-fatal -> proceeed to the next file
         if (!datafile_save_header(data, filename))
             update_reduction(filename);
@@ -578,6 +584,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
         radius += step;
     } while (radius < max);
 
+    free(dir);
     datafile_free(data);
     return ret;
 }

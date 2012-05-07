@@ -42,15 +42,6 @@ int main( int argc, char *argv[] )
     else if (argc == 7 && strncmp(argv[1], "create", 6) == 0)
         return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
 
-    else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)
-        return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
-
-    else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)
-        return detect_repeats(argv[2]);
-
-    else if ((argc >= 3 && argc <= 5) && strncmp(argv[1], "plot", 4) == 0)
-        return plot_fits(argv[2], argc > 3 ? argv[3] : NULL, argc > 4 ? argv[4] : NULL);
-
     // `tsreduce model july2011_run2.ts dftfreq.dat 0.0678829 6.3125 0.0001 fit.dat [residuals.dat]`
     else if ((argc == 8 || argc == 9) && strncmp(argv[1], "model", 5) == 0)
         return model_fit(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], (argc == 9) ? argv[8] : NULL);
@@ -71,18 +62,35 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strncmp(argv[1], "optimizefreqs", 13) == 0)
         return nonlinear_fit(argv[2], argv[3]);
 
+    // `tsreduce mmi foo.dat`
+    else if (argc == 3 && strncmp(argv[1], "mmi", 3) == 0)
+        return create_mmi(argv[2]);
+
+    // `tsreduce reduce-range ec05221.dat 2 15 0.5 ec05221-range`
+    else if (argc == 7 && strncmp(argv[1], "reduce-range", 12) == 0)
+        return reduce_aperture_range(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), argv[6]);
+
+    // `tsreduce plot-range ec05221-range-[0-9]+.dat`
+    else if (argc == 3 && strncmp(argv[1], "plot-range", 10) == 0)
+        return plot_range(argv[2]);
+
+    // `tsreduce plot ec04207.dat [ts.ps/cps [dft.ps/cps]]
+    else if ((argc >= 3 && argc <= 5) && strncmp(argv[1], "plot", 4) == 0)
+        return plot_fits(argv[2], argc > 3 ? argv[3] : NULL, argc > 4 ? argv[4] : NULL);
+
+    // Misc one-off utility functions
     else if (argc == 3 && strncmp(argv[1], "fittime", 7) == 0)
         return fit_time(argv[2]);
-
     else if (argc == 4 && strncmp(argv[1], "offsettime", 10) == 0)
         return offset_time(argv[2], atof(argv[3]));
     else if (argc == 3 && strncmp(argv[1], "readnoise", 9) == 0)
         return ccd_readnoise(argv[2]);
-    else if (argc == 3 && strncmp(argv[1], "mmi", 3) == 0)
-        return create_mmi(argv[2]);
     else if (argc == 6 && strncmp(argv[1], "snr", 3) == 0)
         return evaluate_aperture_snr(argv[2], atof(argv[3]), atof(argv[4]), atoi(argv[5]));
-
+    else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)
+        return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
+    else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)
+        return detect_repeats(argv[2]);
     else
         error("Invalid args");
     return 0;

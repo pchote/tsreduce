@@ -15,4 +15,6 @@ int detect_repeats(char *dataPath);
 int plot_fits(char *dataPath, char *tsDevice, char *dftDevice);
 int amplitude_spectrum(char *dataPath);
 int offset_time(char *mmiFile, double offset);
+int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
+
 #endif

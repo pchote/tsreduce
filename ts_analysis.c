@@ -311,7 +311,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
-        return error("Error opening data file");
+        return error("Error opening data file %s", dataPath);
 
     // Start time in hours
     struct tm starttime;
@@ -538,6 +538,87 @@ int amplitude_spectrum(char *dataPath)
     free(freq);
     free(ampl);
     datafile_free(data);
+    return 0;
+}
+
+
+int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix)
+{
+    int ret = 0;
+    datafile *data = datafile_load(base_name);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    // Create and update a datafile for each aperture
+    double radius = min;
+    do
+    {
+        for (int i = 0; i < data->num_targets; i++)
+            data->targets[i].r = radius;
+
+        char *filename;
+        asprintf(&filename, "%s-%0.2f.dat", prefix, radius);
+
+        // Errors are non-fatal -> proceeed to the next file
+        if (!datafile_save_header(data, filename))
+            update_reduction(filename);
+
+        free(filename);
+        radius += step;
+    } while (radius < max);
+
+    datafile_free(data);
+    return ret;
+}
+
+int plot_range(char *datafile_pattern)
+{
+    char **datafile_names;
+    int num_files = get_matching_files(datafile_pattern, &datafile_names);
+    if (num_files == 0)
+        return error("No datafiles found matching pattern %s", datafile_pattern);
+
+    int i = 0;
+    float x,y;
+    char c;
+    while (true)
+    {
+        plot_fits(datafile_names[i], NULL, NULL);
+
+        if (cpgopen("9/xs") <= 0)
+        {
+            error("Unable to open PGPLOT window");
+            break;
+        }
+
+        cpgask(0);
+        cpgpap(3, 0.1);
+        cpgsch(20);
+        cpgswin(0, 1, 0, 1);
+        cpgsci(1);
+        cpgptxt(0.5, 0.7, 0, 0.5, datafile_names[i]);
+        cpgptxt(0.5, 0.0, 0, 0.5, "Next file: [n] Prev file: [p] Quit: [q]");
+
+        cpgcurs(&x,&y,&c);
+        cpgend();
+
+        switch (c)
+		{
+			case 'n':
+				if (i < num_files - 1) i++;
+				break;
+			case 'p':
+				if (i > 0) i--;
+				break;
+			case 'q':
+				goto endLoop;
+			default:
+				break;
+		}
+    }
+
+endLoop:
+    free_2d_array(datafile_names, num_files);
     return 0;
 }
 

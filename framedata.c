@@ -92,7 +92,7 @@ int framedata_get_header_int(framedata *this, const char *key)
 {
     int ret, status = 0;
     if (fits_read_key(this->fptr, TINT, key, &ret, NULL, &status))
-        die("framedata_get_header_int failed");
+        die("framedata_get_header_int failed for key %s", key);
     return ret;
 }
 
@@ -101,7 +101,7 @@ double framedata_get_header_dbl(framedata *this, const char *key)
     double ret;
     int status = 0;
     if (fits_read_key(this->fptr, TDOUBLE, key, &ret, NULL, &status))
-        die("framedata_get_header_dbl failed");
+        die("framedata_get_header_dbl failed for key %s", key);
     return ret;
 }
 
@@ -117,7 +117,7 @@ void framedata_get_header_string(framedata *this, const char *key, char *ret)
 {
     int status = 0;
     if (fits_read_key(this->fptr, TSTRING, key, ret, NULL, &status))
-        die("framedata_get_header_string failed");
+        die("framedata_get_header_string failed for key %s", key);
 }
 
 void framedata_subtract(framedata *this, framedata *other)

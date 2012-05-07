@@ -52,7 +52,10 @@ typedef struct
     int plot_num_uhz;
     double plot_min_uhz;
     double plot_max_uhz;
-    
+
+    double ccd_gain;
+    double ccd_readnoise;
+
     double2 blocked_ranges[MAX_BLOCKED_RANGES];
     int num_blocked_ranges;
 } datafile;

@@ -797,8 +797,8 @@ int update_reduction(char *dataPath)
     if (!flat)
         error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
 
-    double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
-    double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
+    double readnoise = data->ccd_readnoise > 0 ? data->ccd_readnoise : framedata_get_header_dbl(flat, "CCD-READ");
+    double gain = data->ccd_gain > 0 ? data->ccd_gain : framedata_get_header_dbl(flat, "CCD-GAIN");
 
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
@@ -1190,8 +1190,8 @@ int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture
     if (!flat)
         error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
 
-    double readnoise = framedata_get_header_dbl(flat, "CCD-READ");
-    double gain = framedata_get_header_dbl(flat, "CCD-GAIN");
+    double readnoise = data->ccd_readnoise > 0 ? data->ccd_readnoise : framedata_get_header_dbl(flat, "CCD-READ");
+    double gain = data->ccd_gain > 0 ? data->ccd_gain : framedata_get_header_dbl(flat, "CCD-GAIN");
 
     // Compile the filepattern into a regex
     regex_t regex;

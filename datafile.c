@@ -36,6 +36,8 @@ datafile *datafile_alloc()
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
     dp->plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
+    dp->ccd_gain = 0;
+    dp->ccd_readnoise = 0;
     dp->num_obs = 0;
     dp->num_targets = 0;
     dp->num_blocked_ranges = 0;
@@ -124,6 +126,10 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# PlotMaxUhz: %lf\n", &dp->plot_max_uhz);
         else if (!strncmp(linebuf,"# PlotNumUhz:", 13))
             sscanf(linebuf, "# PlotNumUhz: %d\n", &dp->plot_num_uhz);
+        else if (!strncmp(linebuf,"# CCDGain:", 10))
+            sscanf(linebuf, "# CCDGain: %lf\n", &dp->ccd_gain);
+        else if (!strncmp(linebuf,"# CCDReadNoise:", 15))
+            sscanf(linebuf, "# CCDReadNoise: %lf\n", &dp->ccd_readnoise);
         else if (!strncmp(linebuf,"# BlockRange:", 13))
         {
             sscanf(linebuf, "# BlockRange: (%lf, %lf)\n",

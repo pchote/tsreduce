@@ -280,7 +280,16 @@ int detect_repeats(char *dataPath)
             last_bad = 1;
 
         if (last_bad)
-            printf("%s @ %.1f\n", data->obs[i].filename, time);
+        {
+            printf("%s @ %.1f", data->obs[i].filename, time);
+            for (int j = 0; j < data->num_blocked_ranges; j++)
+                if (time >= data->blocked_ranges[j].x && time <= data->blocked_ranges[j].y)
+                {
+                    printf(" blocked");
+                    break;
+                }
+            printf("\n");
+        }
 
         if (last_bad && time - last_time >= 0.1f)
             last_bad = 0;

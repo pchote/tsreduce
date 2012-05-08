@@ -56,6 +56,12 @@
       <FileRef
          location = "group:aperture.c">
       </FileRef>
+      <FileRef
+         location = "group:astro_convert.c">
+      </FileRef>
+      <FileRef
+         location = "group:astro_convert.h">
+      </FileRef>
    </Group>
    <FileRef
       location = "group:tsreduce.c">

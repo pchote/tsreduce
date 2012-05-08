@@ -1131,12 +1131,12 @@ int create_mmi(char *dataPath)
     if (data == NULL)
         return error("Error opening data file");
 
-    double *raw_time, *raw, *time, *ratio, *polyfit, *mmi;
+    double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mmi, *mmi_noise;
     size_t num_raw, num_filtered;
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
                                      &time, &ratio, &polyfit, &mmi, &num_filtered,
-                                     NULL, NULL,
+                                     &ratio_noise, &mmi_noise,
                                      NULL, NULL, NULL, NULL,
                                      NULL, NULL, NULL))
     {
@@ -1149,17 +1149,19 @@ int create_mmi(char *dataPath)
     char buf[25];
     strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data->reference_time));
     printf("%s", buf);
-    printf("#\n");
+    printf("# Time MMI error\n");
 
-        printf("%f %f\n", time[i]/3600.0, mmi[i]);
     for (int i = 0; i < num_filtered; i++)
+        printf("%f %f %f\n", time[i]/3600.0, mmi[i], mmi_noise[i]);
 
     free(raw_time);
     free(raw);
     free(time);
     free(ratio);
+    free(ratio_noise);
     free(polyfit);
     free(mmi);
+    free(mmi_noise);
     datafile_free(data);
     return 0;
 }

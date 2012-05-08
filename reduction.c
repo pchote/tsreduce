@@ -1144,15 +1144,15 @@ int create_mmi(char *dataPath)
         return error("Error generating MMI data");
     }
 
-    printf("# points = %d; dt = %f\n", data->num_obs, (time[data->num_obs-1] - time[0])/3600.0);
+    printf("# points = %d; dt = %f\n", (unsigned int)num_filtered, (time[num_filtered-1] - time[0])/3600.0);
     printf("# tgt = %s\n", data->frame_pattern);
     char buf[25];
     strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data->reference_time));
     printf("%s", buf);
     printf("#\n");
 
-    for (int i = 0; i < data->num_obs; i++)
         printf("%f %f\n", time[i]/3600.0, mmi[i]);
+    for (int i = 0; i < num_filtered; i++)
 
     free(raw_time);
     free(raw);

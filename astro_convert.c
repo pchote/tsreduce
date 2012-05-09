@@ -1,4 +1,5 @@
 #include <math.h>
+#include "astro_convert.h"
 
 #define dmod(a1,a2) ((a1)-(a2)*floor((a1)/(a2)))
 
@@ -418,69 +419,76 @@ static void barcor(double *dcorh, double *dcorb)
     }
 }
 
-#define DEGdRAD (360.0/6.2831853071796)
-#define HOURdRAD (24.0/6.2831853071796)
-#define SECperAU 499.012
 /*
- * Calculate the bjd, barycentric and heliocentric offsets at jd for an observation in the direction (rar, decr)
- * Returns via *bjd, *baryc, *helioc
+ * Calculate the barycentric julian day for a specified julian day,
+ * in the direction (ra,dec in radians) of coords
  */
-void getbary(double ra, double dec, double jd, double *bjd, double *baryc, double *helioc)
+double jdtobjd(double jd, double2 d)
 {
     double  er;
     double  dvelh[3],dvelb[3],dcorh[3],dcorb[3];
-
     barvel1(jd, 0, dvelh, dvelb, &er);
     barcor(dcorh, dcorb);
 
-    double adt = cos(dec)*cos(ra);
-    double bdt = tan(er)*sin(dec)+cos(dec)*sin(ra);
-    double bc  = SECperAU*(adt*dcorb[0] + bdt*dcorb[1]);
-    double bh  = SECperAU*(adt*dcorh[0] + bdt*dcorh[1]);
+    double adt = cos(d.y)*cos(d.x);
+    double bdt = tan(er)*sin(d.y)+cos(d.y)*sin(d.x);
 
-    *bjd = jd + bc/86400.0;
-    *baryc  = bc;
-    *helioc = bh;
+    // Barycentric offset in seconds
+    double bc  = 499.012*(adt*dcorb[0] + bdt*dcorb[1]);
+
+    // Heliocentric offset (unused)
+    //double bh  = 499.012*(adt*dcorh[0] + bdt*dcorh[1]);
+
+    return jd + bc/86400.0;
 }
 
-
 /*
- * Precess coordinates ra0 and dec0 specified at t0 to the new epoc t1
- * Returns new values via *ra and *dec
+ * Precess coordinates (ra,dec in radians) specified at t0 to a new epoc t1
  */
-void precess(double ra0, double dec0, double *ra, double *dec, double t0, double t1)
+double2 precess(double2 coords, double t0, double t1)
 {
-	double twopi,t,alpham,deltam,mdeg,ndeg,m,n;
-    
-    twopi=2.0*3.141592654;
-    t = -(t1-t0)/100.0;
-    mdeg = 1.2812323*t + 0.0003879*t*t + 0.0000101*t*t*t;
-    ndeg = 0.5567530*t - 0.0001185*t*t - 0.0000116*t*t*t;
-    m = mdeg*twopi/360.0;
-    n = ndeg*twopi/360.0;
-    alpham = ra0-1.0/2.0*(m+n*sin(ra0)*tan(dec0));
-    deltam = dec0-1.0/2.0*n*cos(alpham);
-    *ra  = ra0-m-n*sin(alpham)*tan(deltam);
-    *dec = dec0-n*cos(alpham);
+    double t = -(t1-t0)/100;
+    double m = (1.2812323*t + 0.0003879*t*t + 0.0000101*t*t*t)*M_PI/180;
+    double n = (0.5567530*t - 0.0001185*t*t - 0.0000116*t*t*t)*M_PI/180;
+
+    double alpham = coords.x - 1.0/2.0*(m + n*sin(coords.x)*tan(coords.y));
+    double deltam = coords.y - 1.0/2.0*n*cos(alpham);
+
+    double ra = coords.x - m - n*sin(alpham)*tan(deltam);
+    double dec = coords.y - n*cos(alpham);
+    return (double2) {ra, dec};
 }
 
+/*
+ * Calculate the Julian day for a given UT struct tm
+ */
+double sumday[12]= {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+double tmtojd(struct tm *t)
+{
+    double days = sumday[t->tm_mon] + t->tm_mday;
+    double dayfrac = t->tm_hour/24.0 + t->tm_min/1440.0 + t->tm_sec/86400.0;
+    int year = t->tm_year + 1900;
 
-double sumday[12]=
-{0.0,31.0,59.0,90.0,120.0,151.0,181.0,212.0,243.0,273.0,304.0,334.0};
+    // Leap year (tm_mon = 1 for feb)
+    int nleap = (t->tm_year - 1)/4;
+    if (t->tm_mon > 1 && (year - 4*(year/4)) == 0)
+        days += 1;
+
+    return 2415019.5 + 365*t->tm_year + nleap + days + dayfrac;
+}
 
 /*
- * Calculate the Julian day for a given UT date
+ * Calculate the (fractional) year for a given UT struct tm
  */
-double jd(double day, double month, double year, double ut)
+double tmtoyear(struct tm *t)
 {
-    double days,xjd;
-    int    iy,ny,nleap;
-    
-    days=sumday[(int)month-1]+day;
-    iy=(int)year;
-    if(month > 2 && (iy-4*(iy/4))==0) days=days+1.0;
-    ny=(int)(year-1900.0);
-    nleap=(ny-1)/4;
-    xjd=365.0*(double)ny+(double)nleap+days+ut/24.0;
-    return xjd + 2415019.5;
+    double days = sumday[t->tm_mon] + t->tm_mday;
+    double year = t->tm_year + 1900;
+
+    // Leap year (tm_mon = 1 for feb)
+    if (t->tm_mon > 1 && (year - 4*(year/4)) == 0)
+        days += 1;
+
+    double dayfrac = t->tm_hour/24.0 + t->tm_min/1440.0 + t->tm_sec/86400.0;
+    return year + (days + dayfrac)/365.0;
 }

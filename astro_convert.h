@@ -5,11 +5,15 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
+#include <time.h>
+#include "aperture.h"
+
 #ifndef ASTRO_CONVERT_H
 #define ASTRO_CONVERT_H
 
-void getbary(double rar, double decr, double djd, double *bjd, double *baryc, double *helioc);
-void precess(double ra0, double dec0, double *ra, double *dec, double t0, double t1);
-double jd(double day, double month, double year, double ut);
+double jdtobjd(double jd, double2 coords);
+double2 precess(double2 coords, double t0, double t1);
+double tmtojd(struct tm *t);
+double tmtoyear(struct tm *t);
 
 #endif

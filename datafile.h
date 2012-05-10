@@ -56,6 +56,10 @@ typedef struct
     double ccd_gain;
     double ccd_readnoise;
 
+    char *coord_ra;
+    char *coord_dec;
+    double coord_epoch;
+
     double2 blocked_ranges[MAX_BLOCKED_RANGES];
     int num_blocked_ranges;
 } datafile;

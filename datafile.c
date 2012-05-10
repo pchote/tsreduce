@@ -40,6 +40,9 @@ datafile *datafile_alloc()
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
     dp->ccd_gain = PLOT_MAX_UHZ_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
+    dp->coord_ra = NULL;
+    dp->coord_dec = NULL;
+    dp->coord_epoch = 0;
     dp->num_obs = 0;
     dp->num_targets = 0;
     dp->num_blocked_ranges = 0;
@@ -132,6 +135,18 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# CCDGain: %lf\n", &dp->ccd_gain);
         else if (!strncmp(linebuf,"# CCDReadNoise:", 15))
             sscanf(linebuf, "# CCDReadNoise: %lf\n", &dp->ccd_readnoise);
+        else if (!strncmp(linebuf,"# RA:", 5))
+        {
+            sscanf(linebuf, "# RA: %1024s\n", stringbuf);
+            dp->coord_ra = strndup(stringbuf, 1024);
+        }
+        else if (!strncmp(linebuf,"# DEC:", 6))
+        {
+            sscanf(linebuf, "# DEC: %1024s\n", stringbuf);
+            dp->coord_dec = strndup(stringbuf, 1024);
+        }
+        else if (!strncmp(linebuf,"# Epoch:", 8))
+            sscanf(linebuf, "# Epoch: %lf\n", &dp->coord_epoch);
         else if (!strncmp(linebuf,"# BlockRange:", 13))
         {
             sscanf(linebuf, "# BlockRange: (%lf, %lf)\n",
@@ -196,6 +211,10 @@ void datafile_free(datafile *data)
         free(data->dark_template);
     if (data->flat_template)
         free(data->flat_template);
+    if (data->coord_ra)
+        free(data->coord_ra);
+    if (data->coord_dec)
+        free(data->coord_dec);
 
     free(data);
 }

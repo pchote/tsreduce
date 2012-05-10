@@ -78,6 +78,10 @@ int main( int argc, char *argv[] )
     else if ((argc >= 3 && argc <= 5) && strncmp(argv[1], "plot", 4) == 0)
         return plot_fits(argv[2], argc > 3 ? argv[3] : NULL, argc > 4 ? argv[4] : NULL);
 
+    // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`
+    else if (argc >= 3 && strncmp(argv[1], "create-ts", 9) == 0)
+        return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1]);
+
     // Misc one-off utility functions
     else if (argc == 3 && strncmp(argv[1], "fittime", 7) == 0)
         return fit_time(argv[2]);

@@ -1372,3 +1372,129 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
     return 0;
 }
 
+/*
+ * Create a timeseries file from a list of datafiles.
+ * Times are converted to BJD after the specified reference
+ */
+int create_ts(char *reference_date, char *reference_time, char **filenames, int num_datafiles, char *ts_filename)
+{
+    int ret = 0;
+    if (num_datafiles < 1)
+        return error("No datafiles specified");
+
+    datafile **datafiles = (datafile **)malloc(num_datafiles*sizeof(datafile *));
+    if (!datafiles)
+        error_jump(datafile_error, ret, "Error allocating datafiles");
+
+    for (int i = 0; i < num_datafiles; i++)
+    {
+        datafiles[i] = datafile_load(filenames[i]);
+        if (!datafiles[i])
+        {
+            for (int j = 0; j < i; j++)
+                datafile_free(datafiles[j]);
+            free(datafiles);
+            error_jump(datafile_error, ret, "Error loading datafile %s", filenames[i]);
+        }
+    }
+    printf("Loaded %d datafiles\n", num_datafiles);
+
+    if (!datafiles[0]->coord_ra || !datafiles[0]->coord_dec || datafiles[0]->coord_epoch == 0)
+        error_jump(coord_error, ret, "Datafile %s doesn't specify star coordinates", filenames[0]);
+
+    // Convert ra from HH:MM:SS to radians
+    double a,b,c;
+    sscanf(datafiles[0]->coord_ra, "%lf:%lf:%lf", &a, &b, &c);
+    double ra = (a + b/60 + c/3600)*M_PI/12;
+
+    // Convert dec from DD:'':"" to radians
+    sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
+    double dec = (a + b/60 + c/3600)*M_PI/180;
+    double2 coords = {ra, dec};
+    double epoch = datafiles[0]->coord_epoch;
+
+    // Generate a struct tm for our reference time
+    struct tm t;
+    char *reference_datetime;
+    asprintf(&reference_datetime, "%s %s", reference_date, reference_time);
+    strptime(reference_datetime, "%F %T", &t);
+
+    // Convert from UT to TT
+    t.tm_sec += utcttoffset(&t);
+
+    // Calculate BJD
+    double2 reference_coords = precess(coords, epoch, tmtoyear(&t));
+    double reference_bjd = jdtobjd(tmtojd(&t), reference_coords);
+
+    printf("Reference BJD: %f\n", reference_bjd);
+
+    FILE *out = fopen(ts_filename, "w+");
+    if (!out)
+        error_jump(output_error, ret, "Error opening file %s", ts_filename);
+
+    // Print file header
+    fprintf(out, "# tsreduce create-ts output file\n");
+    fprintf(out, "# Reference time: %s UTC; %f BJD\n", reference_datetime, reference_bjd);
+    fprintf(out, "# Files:\n");
+    for (int i = 0; i < num_datafiles; i++)
+        fprintf(out, "#   %s\n", filenames[i]);
+
+    free(reference_datetime);
+
+    // Convert data to BJD relative to the reference time
+    int num_saved = 0;
+    for (int i = 0; i < num_datafiles; i++)
+    {
+        // Calculate time offset relative to the reference
+        struct tm st;
+        gmtime_r(&datafiles[i]->reference_time, &st);
+
+        // Convert from UT to TT
+        st.tm_sec += utcttoffset(&t);
+        double start_jd = tmtojd(&st);
+
+        // Calculate precessed RA and DEC at the start of each night
+        // This is already far more accurate than we need
+        double2 start_coords = precess(coords, epoch, tmtoyear(&st));
+        printf("%s start BJD: %f\n", filenames[i], jdtobjd(start_jd, start_coords));
+
+        double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mmi, *mmi_noise;
+        size_t num_raw, num_filtered;
+        if (generate_photometry_dft_data(datafiles[i],
+                                         &raw_time, &raw, &num_raw,
+                                         &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                         &ratio_noise, &mmi_noise,
+                                         NULL, NULL, NULL, NULL,
+                                         NULL, NULL, NULL))
+        {
+            error_jump(processing_error, ret, "Error generating MMI data for data %s", filenames[i]);
+        }
+
+        for (int j = 0; j < num_filtered; j++)
+        {
+            double bjd = jdtobjd(start_jd + time[j]/86400, start_coords);
+            fprintf(out,"%f %f %f\n", bjd - reference_bjd, mmi[j], mmi_noise[j]);
+            num_saved++;
+        }
+
+        free(raw_time);
+        free(raw);
+        free(time);
+        free(ratio);
+        free(ratio_noise);
+        free(polyfit);
+        free(mmi);
+        free(mmi_noise);
+    }
+    printf("Converted %d observations\n", num_saved);
+
+processing_error:
+    fclose(out);
+output_error:
+coord_error:
+    for (int i = 0; i < num_datafiles; i++)
+        datafile_free(datafiles[i]);
+    free(datafiles);
+datafile_error:
+    return ret;
+}

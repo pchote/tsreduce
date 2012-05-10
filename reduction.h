@@ -28,4 +28,6 @@ int create_mmi(char *dataPath);
 int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures);
 
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch);
+int create_ts(char *reference_date, char *reference_time, char **filenames, int num_datafiles, char *ts_filename);
+
 #endif

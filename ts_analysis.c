@@ -550,7 +550,6 @@ int amplitude_spectrum(char *dataPath)
     return 0;
 }
 
-
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix)
 {
     int ret = 0;
@@ -635,31 +634,5 @@ int plot_range(char *datafile_pattern)
 
 endLoop:
     free_2d_array(datafile_names, num_files);
-    return 0;
-}
-
-/*
- * Apply a constant time offset to an mmi file
- */
-int offset_time(char *mmiFile, double offset)
-{
-    char linebuf[1024];
-    FILE *file = fopen(mmiFile, "r+");
-    if (file == NULL)
-        return error("Unable to open file: %s", mmiFile);
-
-    double time, mmi;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
-    {
-        // Skip comment / empty lines
-        if (linebuf[0] == '#' || linebuf[0] == '\n')
-        {
-            printf("%s", linebuf);
-            continue;
-        }
-
-        sscanf(linebuf, "%lf %lf\n", &time, &mmi);
-        printf("%14.6f %14.2f\n", time+offset, mmi);
-    }
     return 0;
 }

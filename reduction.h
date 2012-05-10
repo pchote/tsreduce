@@ -20,12 +20,10 @@ int generate_photometry_dft_data(datafile *data,
 int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname);
 int create_dark(const char *pattern, int minmax, const char *outname);
 
-int ccd_readnoise(const char *framePattern);
 int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath);
 int update_reduction(char *dataPath);
 int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filePath);
 int create_mmi(char *dataPath);
-int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures);
 
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch);
 int create_ts(char *reference_date, char *reference_time, char **filenames, int num_datafiles, char *ts_filename);

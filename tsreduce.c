@@ -83,14 +83,6 @@ int main( int argc, char *argv[] )
         return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1]);
 
     // Misc one-off utility functions
-    else if (argc == 3 && strncmp(argv[1], "fittime", 7) == 0)
-        return fit_time(argv[2]);
-    else if (argc == 4 && strncmp(argv[1], "offsettime", 10) == 0)
-        return offset_time(argv[2], atof(argv[3]));
-    else if (argc == 3 && strncmp(argv[1], "readnoise", 9) == 0)
-        return ccd_readnoise(argv[2]);
-    else if (argc == 6 && strncmp(argv[1], "snr", 3) == 0)
-        return evaluate_aperture_snr(argv[2], atof(argv[3]), atof(argv[4]), atoi(argv[5]));
     else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)
         return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
     else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)

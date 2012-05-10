@@ -91,6 +91,8 @@ int main( int argc, char *argv[] )
         return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
     else if (argc == 3 && strncmp(argv[1], "repeats", 7) == 0)
         return detect_repeats(argv[2]);
+    else if (argc == 7 && strncmp(argv[1], "bjd", 3) == 0)
+        return calculate_bjd(argv[2], argv[3], argv[4], argv[5], atoi(argv[6]));
     else
         error("Invalid args");
     return 0;

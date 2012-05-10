@@ -21,6 +21,7 @@
 #include "helpers.h"
 #include "aperture.h"
 #include "fit.h"
+#include "astro_convert.h"
 
 int generate_photometry_dft_data(datafile *data,
     // Raw data, unfiltered by blocked ranges
@@ -1341,3 +1342,33 @@ data_error:
 
     return ret;
 }
+
+int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch)
+{
+    // Convert ra from HH:MM:SS to radians
+    double a,b,c;
+    sscanf(ra_string, "%lf:%lf:%lf", &a, &b, &c);
+    double ra = (a + b/60 + c/3600)*M_PI/12;
+
+    // Convert dec from DD:'':"" to radians
+    sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
+    double dec = (a + b/60 + c/3600)*M_PI/180;
+
+    // Generate a struct tm for our reference time
+    struct tm t;
+    char *reference_datetime;
+    asprintf(&reference_datetime, "%s %s", date, time);
+    strptime(reference_datetime, "%F %T", &t);
+    free(reference_datetime);
+
+    // Convert from UT to TT
+    t.tm_sec += utcttoffset(&t);
+
+    // Calculate BJD
+    double2 reference_coords = precess((double2){ra, dec}, epoch, tmtoyear(&t));
+    double reference_bjd = jdtobjd(tmtojd(&t), reference_coords);
+    printf("%f\n", reference_bjd);
+
+    return 0;
+}
+

@@ -27,4 +27,5 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 int create_mmi(char *dataPath);
 int evaluate_aperture_snr(char *dataPath, double minAperture, double maxAperture, int numApertures);
 
+int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch);
 #endif

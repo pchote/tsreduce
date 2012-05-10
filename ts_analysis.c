@@ -301,17 +301,6 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-/*
- * Cast an array of doubles to an array of floats reusing the same memory
- */
-float *cast_double_array_to_float(double *d_ptr, size_t count)
-{
-    float *f_ptr = (float *)d_ptr;
-    for (size_t i = 0; i < count; i++)
-        f_ptr[i] = d_ptr[i];
-    return f_ptr;
-}
-
 int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 {
     int plot_colors_max = 8;

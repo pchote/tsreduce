@@ -13,6 +13,7 @@
 #define error_jump(label, ret, ...) do { ret = error(__VA_ARGS__); goto label; } while(0)
 
 void free_2d_array(char **array, int len);
+float *cast_double_array_to_float(double *d_ptr, size_t count);
 int get_matching_files(const char *pattern, char ***files);
 int get_first_matching_file(char *pattern, char *filenamebuf, int buflen);
 int compare_double(const void *a, const void *b);

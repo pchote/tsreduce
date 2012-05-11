@@ -210,13 +210,11 @@ int fit_polynomial_with_errors_d(double *x, double *y, double *e, int c, double 
     return fit(x, y, e, c, coeffs, degree + 1, polynomial_fit, NULL);
 }
 
-
-
 /*
  * Takes a list of frequencies 0..N-1
  * Returns a list of amplitudes 0..2*N-1; alternating between cos and sin for each freq in freqs
  */
-int fit_sinusoids(double *x, double *y, int c, double *freqs, int numFreqs, double *amplitudes)
+int fit_sinusoids(double *x, double *y, double *e, int c, double *freqs, int numFreqs, double *amplitudes)
 {
-    return fit(x, y, NULL, c, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
+    return fit(x, y, e, c, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
 }

@@ -212,7 +212,7 @@ static int load_and_fit_freqs(char *tsFile, char *freqFile,
         if (!(*freq_amplitudes))
             error_jump(freq_amplitude_alloc_failed, ret, "Error allocating freq_amplitude array");
 
-        if (fit_sinusoids(*time, *mmi, *num_obs, *freqs, *num_freqs, *freq_amplitudes))
+        if (fit_sinusoids(*time, *mmi, *err, *num_obs, *freqs, *num_freqs, *freq_amplitudes))
             error_jump(fit_failed_error, ret, "Sinusoid fit failed");
 
         print_freq_table(*freq_labels, *freqs, *freq_amplitudes, *num_freqs);
@@ -573,7 +573,7 @@ static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
     {
         fit_freqs[vary_freq] = centerFreq + j*stepSize;
 
-        if (fit_sinusoids(time, mmi, num_obs, fit_freqs, num_freqs, fit_amplitudes))
+        if (fit_sinusoids(time, mmi, err, num_obs, fit_freqs, num_freqs, fit_amplitudes))
             continue;
 
         double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, time, mmi, err, num_obs);

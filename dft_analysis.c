@@ -143,9 +143,10 @@ labels_alloc_error:
     return ret;
 }
 
-static void print_freq_table(double *freqs, double *amplitudes, size_t numFreqs)
+static void print_freq_table(char **labels, double *freqs, double *amplitudes, size_t numFreqs)
 {
-    printf("Freq (uHz) Period (s) Amp (mma) Phase (deg)\n");
+    printf("ID     Freq    Period    Amp    Phase \n");
+    printf("       (uHz)     (s)    (mma)   (deg)\n");
     for (size_t i = 0; i < numFreqs; i++)
     {
         double a = amplitudes[2*i+1];
@@ -154,7 +155,7 @@ static void print_freq_table(double *freqs, double *amplitudes, size_t numFreqs)
         double phase = atan2(b, a)*180/M_PI;
         while (phase > 360) phase -= 360;
         while (phase < 0) phase += 360;
-        printf("%10.2f %10.2f %9.2f %11.2f\n", 1e6*freqs[i], 1/freqs[i], amp, phase);
+        printf("%-5s %7.2f %7.2f %7.2f %7.2f\n", labels[i], 1e6*freqs[i], 1/freqs[i], amp, phase);
     }
 }
 
@@ -214,7 +215,7 @@ static int load_and_fit_freqs(char *tsFile, char *freqFile,
         if (fit_sinusoids(*time, *mmi, *num_obs, *freqs, *num_freqs, *freq_amplitudes))
             error_jump(fit_failed_error, ret, "Sinusoid fit failed");
 
-        print_freq_table(*freqs, *freq_amplitudes, *num_freqs);
+        print_freq_table(*freq_labels, *freqs, *freq_amplitudes, *num_freqs);
         double chi2 = calculate_chi2(*freqs, *freq_amplitudes, *num_freqs, *time, *mmi, *err, *num_obs);
         int dof = *num_obs - 3*(*num_freqs);
         printf("Chi^2: %f / DOF: %d = %f\n", chi2, dof, chi2/dof);

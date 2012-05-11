@@ -158,7 +158,8 @@ static void print_freq_table(double *freqs, double *amplitudes, size_t numFreqs)
     }
 }
 
-static double calculate_chi2(double *freqs, double *amplitudes, size_t numFreqs, double *mmi, double *time, size_t numObs)
+static double calculate_chi2(double *freqs, double *amplitudes, size_t numFreqs,
+                             double *time, double *mmi, double *err, size_t numObs)
 {
     double chi2 = 0;
     for (size_t i = 0; i < numObs; i++)
@@ -170,7 +171,8 @@ static double calculate_chi2(double *freqs, double *amplitudes, size_t numFreqs,
             model += amplitudes[2*j]*cos(phase);
             model += amplitudes[2*j+1]*sin(phase);
         }
-        chi2 += (mmi[i] - model)*(mmi[i]-model);
+        double t = (mmi[i] - model)/err[i];
+        chi2 += t*t;
     }
     return chi2;
 }
@@ -213,8 +215,9 @@ static int load_and_fit_freqs(char *tsFile, char *freqFile,
             error_jump(fit_failed_error, ret, "Sinusoid fit failed");
 
         print_freq_table(*freqs, *freq_amplitudes, *num_freqs);
-        double chi2 = calculate_chi2(*freqs, *freq_amplitudes, *num_freqs, *mmi, *time, *num_obs);
-        printf("Chi^2: %f\n", chi2);
+        double chi2 = calculate_chi2(*freqs, *freq_amplitudes, *num_freqs, *time, *mmi, *err, *num_obs);
+        int dof = *num_obs - 3*(*num_freqs);
+        printf("Chi^2: %f / DOF: %d = %f\n", chi2, dof, chi2/dof);
     }
     else
     {
@@ -561,7 +564,7 @@ load_failed_error:
 }
 
 static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
-                     double *mmi, double *time, int num_obs,
+                     double *time, double *mmi, double *err, int num_obs,
                      int vary_freq, double centerFreq, double stepSize, int numSteps,
                      double *best_freq, double *best_chi2)
 {
@@ -572,7 +575,7 @@ static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
         if (fit_sinusoids(time, mmi, num_obs, fit_freqs, num_freqs, fit_amplitudes))
             continue;
 
-        double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+        double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, time, mmi, err, num_obs);
         if (chi2 < *best_chi2)
         {
             *best_chi2 = chi2;
@@ -611,7 +614,7 @@ int nonlinear_fit(char *tsFile, char *freqFile)
     double fine_step = 0.01e-6;
     int fine_step_count = 10;
 
-    double chi2 = calculate_chi2(init_freqs, fit_amplitudes, num_freqs, mmi, time, num_obs);
+    double chi2 = calculate_chi2(init_freqs, fit_amplitudes, num_freqs, time, mmi, err, num_obs);
     double initialchi2 = chi2;
     double lastouterchi2 = chi2;
     double lastchi2 = chi2;
@@ -637,7 +640,7 @@ int nonlinear_fit(char *tsFile, char *freqFile)
             {
                 double last_best_freq = best_freq;
                 if (step_freq(fit_freqs, fit_amplitudes, num_freqs,
-                              mmi, time, num_obs,
+                              time, mmi, err, num_obs,
                               i, best_freq, step, num_steps,
                               &best_freq, &best_chi2))
                 {

@@ -183,29 +183,7 @@ static void sinusoidal_fit(double t, double *basis, int n, void *freqs)
 }
 
 // Calculate a polynomial fit to the given x,y data
-int fit_polynomial(float *x, float *y, int c, double *coeffs, int degree)
-{
-    // Convert float to double for fitting
-    double *dx = (double *)malloc(c*sizeof(double));
-    double *dy = (double *)malloc(c*sizeof(double));
-    for (int i = 0; i < c; i++)
-    {
-        dx[i] = x[i];
-        dy[i] = y[i];
-    }
-
-    int ret = fit(dx, dy, NULL, c, coeffs, degree + 1, polynomial_fit, NULL);
-    free(dx);
-    free(dy);
-    return ret;
-}
-
-int fit_polynomial_d(double *x, double *y, int c, double *coeffs, int degree)
-{
-    return fit(x, y, NULL, c, coeffs, degree + 1, polynomial_fit, NULL);
-}
-
-int fit_polynomial_with_errors_d(double *x, double *y, double *e, int c, double *coeffs, int degree)
+int fit_polynomial(double *x, double *y, double *e, int c, double *coeffs, int degree)
 {
     return fit(x, y, e, c, coeffs, degree + 1, polynomial_fit, NULL);
 }

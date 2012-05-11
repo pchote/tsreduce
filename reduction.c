@@ -135,7 +135,7 @@ int generate_photometry_dft_data(datafile *data,
     if (ratio_std_out)
         *ratio_std_out = ratio_std;
 
-    if (fit_polynomial_with_errors_d(*time, *ratio, *ratio_noise, *num_filtered, coeffs, data->plot_fit_degree))
+    if (fit_polynomial(*time, *ratio, *ratio_noise, *num_filtered, coeffs, data->plot_fit_degree))
         error_jump(poly_fit_error, ret, "Polynomial fit failed");
 
     *mmi = (double *)malloc(*num_filtered*sizeof(double));

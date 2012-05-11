@@ -62,6 +62,12 @@
       <FileRef
          location = "group:astro_convert.h">
       </FileRef>
+      <FileRef
+         location = "group:random.c">
+      </FileRef>
+      <FileRef
+         location = "group:random.h">
+      </FileRef>
    </Group>
    <FileRef
       location = "group:tsreduce.c">

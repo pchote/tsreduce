@@ -332,21 +332,23 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
 {
     int ret = 0;
 
-    double *time, *mmi, *err, *freqs, *freq_amplitudes;
-    char **freq_labels;
-    int *freq_modes;
-    size_t num_obs, num_freqs;
+    double *time, *mmi, *err;
+    size_t num_obs;
 
-    if (load_and_fit_freqs(tsFile, freqFile,
+    // Prewhiten if a frequency file is given
+    if (freqFile)
+    {
+        double *freqs, *freq_amplitudes;
+        char **freq_labels;
+        int *freq_modes;
+        size_t num_freqs;
+        if (load_and_fit_freqs(tsFile, freqFile,
                            &time, &mmi, &err, &num_obs,
                            &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
-    {
-        error_jump(load_failed_error, ret, "Error processing data");
-    }
+        {
+            error_jump(load_failed_error, ret, "Error processing data");
+        }
 
-    if (freqs)
-    {
-        // Prewhiten
         for (size_t i = 0; i < num_obs; i++)
             for (size_t j = 0; j < num_freqs; j++)
             {
@@ -354,7 +356,14 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
                 mmi[i] -= freq_amplitudes[2*j]*cos(phase);
                 mmi[i] -= freq_amplitudes[2*j+1]*sin(phase);
             }
+
+        free(freq_labels);
+        free(freqs);
+        free(freq_amplitudes);
+        free(freq_modes);
     }
+    else if (load_tsfile(tsFile, &time, &mmi, &err, &num_obs))
+        error_jump(load_failed_error, ret, "Error processing data");
 
     // Calculate DFT
     int num_uhz = (int)((maxUHz - minUHz)/dUHz);
@@ -382,13 +391,6 @@ outfile_open_error:
 dftampl_alloc_error:
     free(dftfreq);
 dftfreq_alloc_error:
-    if (freqs)
-    {
-        free(freq_labels);
-        free(freqs);
-        free(freq_amplitudes);
-        free(freq_modes);
-    }
     free(time);
     free(mmi);
     free(err);
@@ -405,19 +407,10 @@ int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, do
     int ret = 0;
 
     double *time, *mmi, *err;
-    size_t num_obs, num_freqs;
+    size_t num_obs;
 
-    // Never allocated, but required for interface
-    double *freqs, *freq_amplitudes;
-    char **freq_labels;
-    int *freq_modes;
-
-    if (load_and_fit_freqs(tsFile, NULL,
-                           &time, &mmi, &err, &num_obs,
-                           &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
-    {
-        error_jump(load_failed_error, ret, "Error processing data");
-    }
+    if (load_tsfile(tsFile, &time, &mmi, &err, &num_obs))
+        error_jump(load_failed_error, ret, "Error loading data");
 
     // Generate sinusoid
     for (size_t i = 0; i < num_obs; i++)

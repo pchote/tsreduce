@@ -64,3 +64,29 @@ uint32_t random_uint32(random_generator *g)
 
     return y;
 }
+
+// Get a uniformly distributed random number between [0,n)
+uint32_t random_uint32_max(random_generator *g, uint32_t n)
+{
+    // Avoid modulo bias by taking only the range that maps equally into [0,n)
+    uint32_t max = UINT32_MAX - UINT32_MAX % n;
+    uint32_t r;
+    do
+    {
+        r = random_uint32(g);
+    } while (r >= max);
+
+    return (uint32_t)(r % n);
+}
+
+// Shuffle an array of doubles in place using the Fisher–Yates algorithm
+void shuffle_double_array(double *a, size_t n, random_generator *g)
+{
+    for (size_t i = n - 1; i > 0; i--)
+    {
+        size_t j = random_uint32_max(g, i + 1);
+        double t = a[j];
+        a[j] = a[i];
+        a[i] = t;
+    }
+}

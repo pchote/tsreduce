@@ -13,6 +13,7 @@
 
 #include "helpers.h"
 #include "fit.h"
+#include "random.h"
 
 /*
  * Allocates memory and loads timeseries data, returning pointers via the passed args
@@ -678,6 +679,100 @@ fit_freqs_alloc_error:
     free(time);
     free(mmi);
     free(err);
+load_failed_error:
+    return ret;
+}
+
+int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats)
+{
+    int ret = 0;
+
+    double *time, *mmi, *err, *freqs, *freq_amplitudes;
+    size_t num_obs, num_freqs;
+    char **freq_labels;
+    int *freq_modes;
+
+    if (load_and_fit_freqs(tsFile, freqFile,
+                           &time, &mmi, &err, &num_obs,
+                           &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
+    {
+        error_jump(load_failed_error, ret, "Error processing data");
+    }
+
+    // Prewhiten
+    for (size_t i = 0; i < num_obs; i++)
+        for (size_t j = 0; j < num_freqs; j++)
+        {
+            double phase = 2*M_PI*freqs[j]*time[i];
+            mmi[i] -= freq_amplitudes[2*j]*cos(phase);
+            mmi[i] -= freq_amplitudes[2*j+1]*sin(phase);
+        }
+
+    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
+    double *dftfreq = (double *)malloc(num_uhz*sizeof(double));
+    if (!dftfreq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dftfreq");
+
+    double *dftampl = (double *)malloc(num_uhz*sizeof(double));
+    if (!dftampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
+
+    // TODO: Seed correctly
+    uint32_t seed = 19937;
+    random_generator *rand = random_create(seed);
+    if (!rand)
+        error_jump(rand_alloc_error, ret, "Error allocating random generator");
+
+    FILE *file = fopen(outFile, "w");
+    if (!file)
+        error_jump(outfile_open_error, ret, "Error opening output file %s", outFile);
+
+    // File header
+    fprintf(file, "# Prewhitened and shuffled max DFT amplitudes\n");
+    fprintf(file, "# Data: %s\n", tsFile);
+    fprintf(file, "# Freqs: %s\n", freqFile);
+    fprintf(file, "# Seed: %u\n", seed);
+    fprintf(file, "# Freq, Max Ampl, Mean Ampl\n");
+
+    // Calculate output
+    for (size_t i = 0; i < repeats; i++)
+    {
+        printf("%zu of %zu\n", i + 1, repeats);
+        shuffle_double_array(time, num_obs, rand);
+        calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mmi, num_obs, dftfreq, dftampl, num_uhz);
+
+        // Find mean and max intensity
+        double maxfreq = 0;
+        double meanampl  = 0;
+        double maxampl = 0;
+        for (size_t j = 0; j < num_uhz; j++)
+        {
+            meanampl += dftampl[j];
+            if (dftampl[j] > maxampl)
+            {
+                maxampl = dftampl[j];
+                maxfreq = dftfreq[j];
+            }
+        }
+        meanampl /= num_uhz;
+        fprintf(file, "%f %f %f\n", maxfreq, maxampl, meanampl);
+    }
+    fclose(file);
+
+outfile_open_error:
+    random_free(rand);
+rand_alloc_error:
+    free(dftampl);
+dftampl_alloc_error:
+    free(dftfreq);
+dftfreq_alloc_error:
+    free(time);
+    free(mmi);
+    free(err);
+    free(freq_labels);
+    free(freqs);
+    free(freq_amplitudes);
+    free(freq_modes);
 load_failed_error:
     return ret;
 }

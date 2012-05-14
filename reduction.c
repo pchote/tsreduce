@@ -891,6 +891,9 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     realpath(framePath, pathBuf);
     datafile *data = datafile_alloc();
 
+    // Store the current directory so we can return before saving the data file
+    char *datadir = getcwd(NULL, 0);
+
     if (chdir(pathBuf))
         error_jump(setup_error, ret, "Invalid frame path: %s", pathBuf);
     data->frame_dir = strdup(pathBuf);
@@ -1039,6 +1042,9 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     }
 
     // Save to disk
+    if (chdir(datadir))
+        error_jump(aperture_converge_error, ret, "Invalid data path: %s", datadir);
+
     datafile_save_header(data, filename);
 aperture_converge_error:
     free(ds9buf);

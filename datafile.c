@@ -38,7 +38,7 @@ datafile *datafile_alloc()
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
     dp->plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
-    dp->ccd_gain = PLOT_MAX_UHZ_DEFAULT;
+    dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->coord_ra = NULL;
     dp->coord_dec = NULL;
@@ -250,7 +250,7 @@ int datafile_save_header(datafile *data, char *filename)
         fprintf(out, "# PlotMinUhz: %f\n", data->plot_min_uhz);
     if (data->plot_max_uhz != PLOT_MAX_UHZ_DEFAULT)
         fprintf(out, "# PlotMaxUhz: %f\n", data->plot_max_uhz);
-    if (data->plot_num_uhz != CCD_GAIN_DEFAULT)
+    if (data->ccd_gain != CCD_GAIN_DEFAULT)
         fprintf(out, "# CCDGain: %f\n", data->ccd_gain);
     if (data->ccd_readnoise != CCD_READNOISE_DEFAULT)
         fprintf(out, "# CCDReadNoise: %f\n", data->ccd_readnoise);

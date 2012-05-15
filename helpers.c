@@ -115,7 +115,7 @@ int tsreduce_versionsort(const void *a, const void *b)
 
 // Find files that match the given regex.
 // outList is set to point to an array (which must be later freed by the caller) of filenames
-// Returns the number of files matched.
+// Returns the number of files matched or negative on error
 int get_matching_files(const char *pattern, char ***outList)
 {
     // Compile the pattern into a regex
@@ -125,7 +125,7 @@ int get_matching_files(const char *pattern, char ***outList)
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        return error("Error compiling `%s` into a regular expression: %s", pattern, errbuf);
+        return -error("Error compiling `%s` into a regular expression: %s", pattern, errbuf);
     }
 
     // Find the matching files
@@ -134,7 +134,11 @@ int get_matching_files(const char *pattern, char ***outList)
     
     char **ret = (char **)malloc(numFiles*sizeof(char*));
     if (ret == NULL)
-        die("Memory allocation for %d filenames failed.", numFiles);
+    {
+        regfree(&regex);
+        free(files);
+        return -error("Memory allocation for %d filenames failed.", numFiles);
+    }
 
     int numMatched = 0;
     for (int i = 0; i < numFiles; i++)
@@ -143,8 +147,13 @@ int get_matching_files(const char *pattern, char ***outList)
         {
             ret[numMatched] = strdup(files[i]->d_name);
             if (ret[numMatched] == NULL)
-                die("Memory allocation failed.");
-
+            {
+                regfree(&regex);
+                for (int j = i; j < numFiles; j++)
+                    free(files[j]);
+                free(files);
+                return -error("Memory allocation failed.");
+            }
             numMatched++;
         }
         free(files[i]);

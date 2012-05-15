@@ -347,6 +347,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Find the filenames that match the specified pattern
     char **frame_paths;
     int num_frames = get_matching_files(pattern, &frame_paths);
+    if (num_frames < 0)
+        error_jump(match_error, ret, "Error matching files");
 
     // Ensure there are enough frames to discard the requested number of pixels
     if (num_frames <= 2*minmax)
@@ -543,7 +545,7 @@ datacube_failed:
     framedata_free(dark);
 insufficient_frames:
     free_2d_array(frame_paths, num_frames);
-
+match_error:
     return ret;
 }
 
@@ -556,6 +558,9 @@ int create_dark(const char *pattern, int minmax, const char *outname)
 
     char **frame_paths;
     int num_frames = get_matching_files(pattern, &frame_paths);
+    if (num_frames < 0)
+        error_jump(match_error, ret, "Error matching files");
+
     if (num_frames < 2*minmax)
         error_jump(insufficient_frames, ret,
             "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
@@ -635,10 +640,9 @@ datacube_failed:
     free(median_dark);
 dark_failed:
     framedata_free(base);
-
 insufficient_frames:
     free_2d_array(frame_paths, num_frames);
-
+match_error:
     return ret;
 }
 

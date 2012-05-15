@@ -590,9 +590,14 @@ int plot_range(char *datafile_pattern)
 {
     char **datafile_names;
     int num_files = get_matching_files(datafile_pattern, &datafile_names);
-    if (num_files == 0)
-        return error("No datafiles found matching pattern %s", datafile_pattern);
+    if (num_files < 0)
+        return error("Error matching pattern %s", datafile_pattern);
 
+    if (num_files == 0)
+    {
+        free(datafile_names);
+        return error("No datafiles found matching pattern %s", datafile_pattern);
+    }
     int i = 0;
     float x,y;
     char c;

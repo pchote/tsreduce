@@ -766,7 +766,7 @@ int update_reduction(char *dataPath)
         if (!frame)
         {
             framedata_free(frame);
-            error_jump(process_error, ret, "Error loading frame %s", data->flat_template);
+            error_jump(process_error, ret, "Error loading frame %s", filename);
         }
         int exptime = framedata_get_header_int(frame, "EXPTIME");
 

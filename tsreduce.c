@@ -82,7 +82,7 @@ int main( int argc, char *argv[] )
     else if (argc >= 3 && strncmp(argv[1], "create-ts", 9) == 0)
         return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1]);
 
-    // `tsreduce randomize-dft july2011_run2_rereduce.ts july2011_run2_rereduce_paperfreqs.dat 100 10000 1 rereduce.ran 1000`
+    // `tsreduce shuffle-dft july2011_run2_rereduce.ts july2011_run2_rereduce_paperfreqs.dat 100 10000 1 rereduce.ran 1000`
     else if (argc == 9 && strncmp(argv[1], "shuffle-dft", 11) == 0)
         return shuffle_dft(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], atoi(argv[8]));
 

@@ -96,8 +96,15 @@ int generate_photometry_dft_data(datafile *data,
             for (int j = 1; j < data->num_targets; j++)
                 comparison += data->obs[i].star[j];
 
+            // Skip invalid observations
+            if (target == 0 || comparison == 0)
+            {
+                error("Ignoring bad observation at %f", data->obs[i].time);
+                continue;
+            }
+
             (*time)[*num_filtered] = data->obs[i].time;
-            (*ratio)[*num_filtered] = target/comparison;
+            (*ratio)[*num_filtered] = comparison > 0 ? target/comparison : 0;
 
             // Read noise from data file if available
             (*ratio_noise)[*num_filtered] = (data->version >= 5) ? data->obs[i].ratio_noise : 1;

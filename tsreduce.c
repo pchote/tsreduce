@@ -38,10 +38,6 @@ int main( int argc, char *argv[] )
         return display_targets(argv[2], obs);
     }
 
-    // `tsreduce create ~/data/20110307 ec04207-[0-9]+.fits.gz master-dark.fits master-skyflat-20110305.fits 20110307.dat`
-    else if (argc == 7 && strncmp(argv[1], "create", 6) == 0)
-        return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
-
     // `tsreduce model july2011_run2.ts dftfreq.dat 0.0678829 6.3125 0.0001 fit.dat [residuals.dat]`
     else if ((argc == 8 || argc == 9) && strncmp(argv[1], "model", 5) == 0)
         return model_fit(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], (argc == 9) ? argv[8] : NULL);
@@ -85,6 +81,10 @@ int main( int argc, char *argv[] )
     // `tsreduce shuffle-dft july2011_run2_rereduce.ts july2011_run2_rereduce_paperfreqs.dat 100 10000 1 rereduce.ran 1000`
     else if (argc == 9 && strncmp(argv[1], "shuffle-dft", 11) == 0)
         return shuffle_dft(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], atoi(argv[8]));
+
+    // `tsreduce create ~/data/20110307 ec04207-[0-9]+.fits.gz master-dark.fits master-skyflat-20110305.fits 20110307.dat`
+    else if (argc == 7 && strncmp(argv[1], "create", 6) == 0)
+        return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
 
     // Misc one-off utility functions
     else if (argc == 5 && strncmp(argv[1], "profile", 7) == 0)

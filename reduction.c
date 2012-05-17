@@ -819,7 +819,7 @@ int update_reduction(char *dataPath)
 
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-        double ratioNoise = ratio ? (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio : 0;
+        double ratioNoise = ratio ? (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio : 1;
         data->obs[data->num_obs].ratio = ratio;
 
         fprintf(data->file, "%.3e ", ratio);

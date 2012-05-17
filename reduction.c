@@ -56,24 +56,9 @@ int generate_photometry_dft_data(datafile *data,
     if (*ratio == NULL)
         error_jump(ratio_alloc_error, ret, "ratio malloc failed");
 
-    // photmetery error estimates are not available
-    if (data->version < 5)
-    {
-        if (ratio_noise)
-            *ratio_noise = NULL;
-        if (mmi_noise)
-            *mmi_noise = NULL;
-
-        ratio_noise = NULL;
-        mmi_noise = NULL;
-    }
-
-    if (ratio_noise)
-    {
-        *ratio_noise = (double *)malloc(data->num_obs*sizeof(double));
-        if (*ratio == NULL)
-            error_jump(ratio_noise_alloc_error, ret, "ratio malloc failed");
-    }
+    *ratio_noise = (double *)malloc(data->num_obs*sizeof(double));
+    if (*ratio == NULL)
+        error_jump(ratio_noise_alloc_error, ret, "ratio malloc failed");
 
     *polyfit = (double *)malloc(data->num_obs*sizeof(double));
     if (*polyfit == NULL)
@@ -115,8 +100,7 @@ int generate_photometry_dft_data(datafile *data,
             (*ratio)[*num_filtered] = target/comparison;
 
             // Read noise from data file if available
-            if (ratio_noise)
-                (*ratio_noise)[*num_filtered] = data->obs[i].ratio_noise;
+            (*ratio_noise)[*num_filtered] = (data->version >= 5) ? data->obs[i].ratio_noise : 1;
 
             ratio_mean += (*ratio)[*num_filtered];
             (*num_filtered)++;
@@ -142,12 +126,9 @@ int generate_photometry_dft_data(datafile *data,
     if (*mmi == NULL)
         error_jump(mmi_alloc_error, ret, "mmi malloc failed");
 
-    if (mmi_noise)
-    {
-        *mmi_noise = (double *)malloc(*num_filtered*sizeof(double));
-        if (*mmi_noise == NULL)
-            error_jump(mmi_noise_alloc_error, ret, "ratio malloc failed");
-    }
+    *mmi_noise = (double *)malloc(*num_filtered*sizeof(double));
+    if (*mmi_noise == NULL)
+        error_jump(mmi_noise_alloc_error, ret, "ratio malloc failed");
 
     double mmi_mean = 0;
     for (int i = 0; i < *num_filtered; i++)
@@ -162,12 +143,15 @@ int generate_photometry_dft_data(datafile *data,
         }
         (*mmi)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*ratio)[i];
 
-        if (mmi_noise)
+        if (data->version >= 5)
         {
             double numer_error = fabs((*ratio_noise)[i]/((*ratio)[i] - (*polyfit)[i]));
             double denom_error = fabs((*ratio_noise)[i]/(*ratio)[i]);
             (*mmi_noise)[i] = (numer_error + denom_error)*fabs((*mmi)[i]);
         }
+        else
+            (*mmi_noise)[i] = 1;
+
         mmi_mean += (*mmi)[i];
     }
     mmi_mean /= *num_filtered;
@@ -227,11 +211,8 @@ ampl_alloc_error:
     free(*freq);
     *freq = NULL;
 freq_alloc_error:
-    if (mmi_noise)
-    {
-        free(*mmi_noise);
-        *mmi_noise = NULL;
-    }
+    free(*mmi_noise);
+    *mmi_noise = NULL;
 mmi_noise_alloc_error:
     free(*mmi);
     *mmi = NULL;
@@ -242,11 +223,7 @@ coeffs_alloc_error:
     free(*polyfit);
     *polyfit = NULL;
 polyfit_alloc_error:
-    if (ratio_noise)
-    {
-        free(*ratio_noise);
-        *ratio_noise = NULL;
-    }
+    free(*ratio_noise);
 ratio_noise_alloc_error:
     free(*ratio);
     *ratio = NULL;

@@ -333,7 +333,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     float max_time = min_time + raw_time_d[num_raw-1]/3600;
 
     double snr_ratio = 0;
-    if (ratio_noise_d)
+    if (data->version >= 5)
     {
         double total_ratio = 0;
         double total_ratio_noise = 0;
@@ -350,18 +350,12 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     float *raw = cast_double_array_to_float(raw_d, num_raw*data->num_targets);
     float *time = cast_double_array_to_float(time_d, num_filtered);
     float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
+    float *ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
     float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
     float *mmi = cast_double_array_to_float(mmi_d, num_filtered);
+    float *mmi_noise = cast_double_array_to_float(mmi_noise_d, num_filtered);
     float *freq = cast_double_array_to_float(freq_d, num_dft);
     float *ampl = cast_double_array_to_float(ampl_d, num_dft);
-
-    float *ratio_noise = NULL;
-    if (ratio_noise_d)
-        ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
-
-    float *mmi_noise = NULL;
-    if (mmi_noise_d)
-        mmi_noise = cast_double_array_to_float(mmi_noise_d, num_filtered);
 
     float min_mmi = mmi_mean - 5*mmi_std;
     float max_mmi = mmi_mean + 5*mmi_std;
@@ -403,7 +397,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     cpgswin(0, raw_time[num_raw-1], min_mmi, max_mmi);
 
-    if (mmi_noise)
+    if (data->version >= 5)
         cpgerrb(6, num_filtered, time, mmi, mmi_noise, 0.0);
     else
         cpgpt(num_filtered, time, mmi, 20);
@@ -416,7 +410,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgswin(0, raw_time[num_raw-1], min_ratio, max_ratio);
 
     // Plot error bars if ratio_noise is available (data->version >= 5)
-    if (ratio_noise)
+    if (data->version >= 5)
         cpgerrb(6, num_filtered, time, ratio, ratio_noise, 0.0);
     else
         cpgpt(num_filtered, time, ratio, 20);

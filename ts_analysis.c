@@ -458,7 +458,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     // DFT
     cpgsvp(0.1, 0.9, 0.075, 0.87);
     cpgswin(data->plot_min_uhz, data->plot_max_uhz, 0, 1);
-    cpgbox("bstn", 0, 0, "bcnst", 5, 5);
+    cpgbox("bstn", 0, 0, "0", 0, 0);
 
     // Plot period on top axis
     cpgsci(1);
@@ -480,6 +480,8 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     }
 
     cpgswin(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, 0, max_dft_ampl);
+    cpgbox("0", 0, 0, "bcnst", 5, 5);
+
     cpgsci(12);
     cpgline(num_dft, freq, ampl);
     cpgsci(1);

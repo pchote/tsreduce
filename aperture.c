@@ -108,8 +108,12 @@ int center_aperture(target r, framedata *frame, double2 *center)
         // Set initial position from the previous iteration
         pos[n] = pos[n-1];
 
-        if (pos[n].x - r.r < 0 || pos[n].x + r.r >= frame->cols ||
-            pos[n].y - r.r < 0 || pos[n].y + r.r >= frame->rows)
+        // Check that the position is valid
+        int tx = floor(pos[n].x);
+        int ty = floor(pos[n].y);
+        int tr = ceil(r.r) + 1;
+        if (tx - tr < 0 || tx + tr >= frame->cols ||
+            ty - tr < 0 || ty + tr >= frame->rows)
             return error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y);
 
         // Calculate new background

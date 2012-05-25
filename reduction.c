@@ -148,7 +148,7 @@ int generate_photometry_dft_data(datafile *data,
             (*polyfit)[i] += pow*coeffs[j];
             pow *= (*time)[i];
         }
-        (*mmi)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*ratio)[i];
+        (*mmi)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*polyfit)[i];
 
         if (data->version >= 5)
         {

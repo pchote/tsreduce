@@ -779,7 +779,6 @@ load_failed_error:
     return ret;
 }
 
-
 int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width)
 {
     int ret = 0;
@@ -860,6 +859,175 @@ int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_coun
         printf("\n");
     }
 fit_failed_error:
+load_failed_error:
+    return ret;
+}
+
+int animated_window(char *tsfile)
+{
+    double display_freq_min = 500;
+    double display_freq_max = 4000;
+    double display_freq_step = 5;
+    size_t display_freq_count = (size_t)((display_freq_max - display_freq_min)/display_freq_step);
+
+    double peak_freq_min = 860;
+    double peak_freq_max = 930;
+    double peak_freq_step = 0.5;
+    size_t peak_freq_count = (size_t)((peak_freq_max - peak_freq_min)/peak_freq_step);
+
+    size_t window_length = 3600*3/30; // data points -> 3h
+
+    int ret = 0;
+    double *time, *mmi, *err;
+    size_t num_obs;
+
+    if (load_tsfile(tsfile, &time, &mmi, &err, &num_obs))
+        error_jump(load_failed_error, ret, "Error processing data");
+
+    // Number of time steps to slide the window through
+    size_t num_steps = num_obs - window_length - 1;
+
+    double *display_dftfreq = (double *)malloc(display_freq_count*sizeof(double));
+    if (!display_dftfreq)
+        error_jump(display_dftfreq_alloc_error, ret, "Error allocating display_dftfreq");
+
+    double *display_dftampl = (double *)malloc(display_freq_count*sizeof(double));
+    if (!display_dftampl)
+        error_jump(display_dftampl_alloc_error, ret, "Error allocating display_dftampl");
+
+    double *peak_dftfreq = (double *)malloc(peak_freq_count*sizeof(double));
+    if (!peak_dftfreq)
+        error_jump(peak_dftfreq_alloc_error, ret, "Error allocating peak_dftfreq");
+
+    double *peak_dftampl = (double *)malloc(peak_freq_count*sizeof(double));
+    if (!peak_dftampl)
+        error_jump(peak_dftampl_alloc_error, ret, "Error allocating peak_dftampl");
+
+    float *peak_time = (float *)malloc(num_steps*sizeof(float));
+    if (!peak_time)
+        error_jump(peak_time_alloc_error, ret, "Error allocating peak_time");
+
+    float *peak_freq = (float *)malloc(num_steps*sizeof(float));
+    if (!peak_freq)
+        error_jump(peak_freq_alloc_error, ret, "Error allocating peak_freq");
+
+    double *mmi_windowed = (double *)malloc(window_length*sizeof(double));
+    if (!mmi_windowed)
+        error_jump(mmi_windowed_alloc_error, ret, "Error allocating mmi_windowed");
+
+    if (cpgopen("6/xs") <= 0)
+        error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
+
+    // 800 x 480
+    cpgpap(9.41, 0.6);
+    cpgask(0);
+    cpgslw(3);
+    cpgsfs(2);
+    cpgscf(2);
+
+    // DFT
+    cpgsvp(0.1, 0.9, 0.075, 0.9);
+    cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
+    cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
+    cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
+    cpgsch(1.25);
+    cpgmtxt("t", 1.5, 0.5, 0.5, "Amplitude Spectrum");
+    cpgsci(12);
+
+    for (size_t i = 0; i < num_steps; i++)
+    {
+        // Copy amplitudes into mmi_window
+        for (size_t j = 0; j < window_length; j++)
+            mmi_windowed[j] = mmi[i+j];
+
+        // Taper start and end
+        size_t taper_count = window_length/2;
+        for (size_t j = 0; j < taper_count; j++)
+        {
+            mmi_windowed[j] *= (j*1.0/taper_count);
+            mmi_windowed[window_length - j - 1] *= (j*1.0/taper_count);
+        }
+
+        cpgbbuf();
+        cpgsvp(0.1, 0.9, 0.5, 0.9);
+        cpgswin(display_freq_min, display_freq_max, 0, 60);
+
+		cpgsfs(1);
+		cpgsci(0); // Black
+		cpgrect(display_freq_min, display_freq_max, 0, 60); // Erase display
+        cpgsfs(2);
+
+        calculate_amplitude_spectrum(&time[i], mmi_windowed, window_length,
+                                     display_freq_min*1e-6, display_freq_max*1e-6,
+                                     display_dftfreq, display_dftampl, display_freq_count);
+        cpgsci(1);
+
+        float *pgfreq = cast_double_array_to_float(display_dftfreq, display_freq_count);
+        float *pgampl = cast_double_array_to_float(display_dftampl, display_freq_count);
+
+        cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
+        cpgline(display_freq_count, pgfreq, pgampl);
+
+        // Find max intensity
+        calculate_amplitude_spectrum(&time[i], mmi_windowed, window_length,
+                                     peak_freq_min*1e-6, peak_freq_max*1e-6,
+                                     peak_dftfreq, peak_dftampl, peak_freq_count);
+
+        double maxfreq = 0;
+        double maxampl = 0;
+        for (size_t j = 0; j < peak_freq_count; j++)
+        {
+            if (peak_dftampl[j] > maxampl)
+            {
+                maxampl = peak_dftampl[j];
+                maxfreq = peak_dftfreq[j];
+            }
+        }
+
+        peak_time[i] = time[i+window_length/2]/3600;
+        peak_freq[i] = maxfreq*1e6;
+
+        cpgsci(2);
+        cpgmove(maxfreq, 60);
+        cpgdraw(maxfreq, 0);
+        cpgsci(1);
+        cpgswin(display_freq_min, display_freq_max, 0, 60);
+        cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
+        cpgebuf();
+
+        cpgbbuf();
+        cpgsvp(0.1, 0.9, 0.075, 0.45);
+        cpgswin(0, 11, peak_freq_min, peak_freq_max);
+        cpgsfs(1);
+		cpgsci(0); // Black
+		cpgrect(0, 11, peak_freq_min, peak_freq_max); // Erase display
+        cpgsfs(2);
+
+        cpgsci(1);
+        cpgline(i, peak_time, peak_freq);
+        cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
+        cpgebuf();
+    }
+    cpgend();
+
+pgplot_open_error:
+    free(mmi_windowed);
+mmi_windowed_alloc_error:
+    free(peak_freq);
+peak_freq_alloc_error:
+    free(peak_time);
+peak_time_alloc_error:
+    free(peak_dftampl);
+peak_dftampl_alloc_error:
+    free(peak_dftfreq);
+peak_dftfreq_alloc_error:
+    free(display_dftampl);
+display_dftampl_alloc_error:
+    free(display_dftfreq);
+display_dftfreq_alloc_error:
+    free(time);
+    free(mmi);
+    free(err);
 load_failed_error:
     return ret;
 }

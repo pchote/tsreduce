@@ -93,6 +93,8 @@ int main( int argc, char *argv[] )
         return detect_repeats(argv[2]);
     else if (argc == 7 && strncmp(argv[1], "bjd", 3) == 0)
         return calculate_bjd(argv[2], argv[3], argv[4], argv[5], atoi(argv[6]));
+    else if (argc == 3 && strncmp(argv[1], "report", 5) == 0)
+        return report_time(argv[2]);
     else
         error("Invalid args");
     return 0;

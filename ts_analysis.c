@@ -637,3 +637,42 @@ endLoop:
     free_2d_array(datafile_names, num_files);
     return 0;
 }
+
+/*
+ * Report the start time, data length, and number of observations in a data file
+ */
+int report_time(char *dataPath)
+{
+    // Read file header
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file %s", dataPath);
+
+    double *raw_time, *raw, *time, *ratio, *polyfit, *mmi, *ratio_noise, *mmi_noise;
+    double ratio_mean, ratio_std, mmi_mean, mmi_std;
+    size_t num_raw, num_filtered;
+    if (generate_photometry_dft_data(data,
+                                     &raw_time, &raw, &num_raw,
+                                     &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                     &ratio_noise, &mmi_noise,
+                                     &ratio_mean, &ratio_std, &mmi_mean, &mmi_std,
+                                     NULL, NULL, NULL))
+    {
+        datafile_free(data);
+        return error("Error generating data");
+    }
+
+    char datetimebuf[20];
+    strftime(datetimebuf, 20, "%F %H:%M:%S", gmtime(&data->reference_time));
+    printf("%s %.2f %zu\n", datetimebuf, (time[num_filtered-1] - time[0])/3600, num_filtered);
+
+    free(raw_time);
+    free(raw);
+    free(time);
+    free(ratio);
+    free(polyfit);
+    free(mmi);
+    datafile_free(data);
+    return 0;
+}
+

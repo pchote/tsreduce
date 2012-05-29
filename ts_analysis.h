@@ -17,5 +17,6 @@ int amplitude_spectrum(char *dataPath);
 
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
 int plot_range(char *datafile_pattern);
+int report_time(char *dataPath);
 
 #endif

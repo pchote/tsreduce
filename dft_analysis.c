@@ -539,6 +539,8 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     cpgsch(1.25);
     cpgmtxt("t", 1.5, 0.5, 0.5, "Amplitude Spectrum");
 
+    cpgend();
+
 pgplot_open_error:
     free(dftampl);
 dftampl_alloc_error:

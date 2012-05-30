@@ -818,11 +818,20 @@ int animated_window(char *ts_path)
             mmi_windowed[j] = data->mma[window_increment*i+j];
 
         // Taper start and end
-        size_t taper_count = window_length/2;
-        for (size_t j = 0; j < taper_count; j++)
+        for (size_t j = 0; j < window_length; j++)
         {
-            mmi_windowed[j] *= (j*1.0/taper_count);
-            mmi_windowed[window_length - j - 1] *= (j*1.0/taper_count);
+            // Normalize to [-0.5,0.5];
+            double t = j*1.0/(window_length-1) - 0.5;
+
+            // Square window
+            //double d = 1;
+
+            // Triangular window
+            //double d = 1 - 2*fabs(t);
+
+            // Cosine window
+            double d = 0.5 + 0.5*cos(2*M_PI*t);
+            mmi_windowed[j] *= d;
         }
 
         cpgbbuf();

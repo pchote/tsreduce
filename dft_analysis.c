@@ -1016,6 +1016,7 @@ int animated_window(char *tsfile)
 
         // Calculate peak frequencies
         peak_time[i] = time[window_increment*i + window_length/2]/3600;
+        printf("%f", time[window_increment*i + window_length/2]/86400);
         for (size_t j = 0; j < peak_freq_count; j++)
         {
             cpgsci(peak_freqs[j].color);
@@ -1038,6 +1039,7 @@ int animated_window(char *tsfile)
             }
 
             peak_freq[j*num_steps + i] = maxfreq*1e6;
+            printf(" %.1f", peak_freq[j*num_steps + i]);
 
             cpgsvp(0.1, 0.9, 0.5, 0.9);
             cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
@@ -1049,6 +1051,7 @@ int animated_window(char *tsfile)
             cpgline(i, peak_time, &peak_freq[j*num_steps]);
         }
         cpgebuf();
+        printf("\n");
     }
     cpgend();
 
@@ -1070,6 +1073,163 @@ display_dftfreq_alloc_error:
     free(time);
     free(mmi);
     free(err);
+load_failed_error:
+    return ret;
+}
+
+/*
+ * Calculate the DFT of the peak freq vs time output from animated_window
+ */
+int dft_slidewindow(char *path, double freq_min, double freq_max, double freq_step, int column)
+{
+    int ret = 0;
+    size_t fit_degree = 2;
+
+    char linebuf[1024];
+    FILE *file = fopen(path, "r+");
+    if (!file)
+        error_jump(load_failed_error, ret, "Unable to open file: %s", path);
+
+    // Count the number of entries to allocate
+    int total_obs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total_obs++;
+    rewind(file);
+
+    double *time = (double *)malloc(total_obs*sizeof(double));
+    if (!time)
+        error_jump(time_alloc_error, ret, "Error allocating time array");
+
+    double *freq = (double *)malloc(total_obs*sizeof(double));
+    if (!freq)
+        error_jump(freq_alloc_error, ret, "Error allocating freq array");
+
+    double *err = (double *)malloc(total_obs*sizeof(double));
+    if (err == NULL)
+        error_jump(err_alloc_error, ret, "err malloc failed");
+
+    double *polyfit = (double *)malloc(total_obs*sizeof(double));
+    if (polyfit == NULL)
+        error_jump(polyfit_alloc_error, ret, "polyfit malloc failed");
+
+    double *fitted = (double *)malloc(total_obs*sizeof(double));
+    if (fitted == NULL)
+        error_jump(fitted_alloc_error, ret, "fitted malloc failed");
+
+    double *coeffs = (double *)malloc((fit_degree+1)*sizeof(double));
+    if (coeffs == NULL)
+        error_jump(coeffs_alloc_error, ret, "coeffs malloc failed");
+
+    size_t num_obs = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        double f[3];
+        sscanf(linebuf, "%lf %lf %lf %lf\n", &time[num_obs], &f[0], &f[1], &f[2]);
+
+        freq[num_obs] = f[column];
+        // Convert to seconds
+        time[num_obs] *= 86400;
+        err[num_obs] = 1;
+        num_obs++;
+    }
+
+    if (fit_polynomial(time, freq, err, num_obs, coeffs, fit_degree))
+        error_jump(poly_fit_error, ret, "Polynomial fit failed");
+
+    for (int i = 0; i < num_obs; i++)
+    {
+        // Subtract polynomial fit and convert to mmi
+        polyfit[i] = 0;
+        double pow = 1;
+        for (int j = 0; j <= fit_degree; j++)
+        {
+            polyfit[i] += pow*coeffs[j];
+            pow *= time[i];
+        }
+        fitted[i] = freq[i] - polyfit[i];
+    }
+
+    // Calculate DFT
+    size_t freq_count = (size_t)((freq_max - freq_min)/freq_step);
+    double *dftfreq = (double *)malloc(freq_count*sizeof(double));
+    if (!dftfreq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dftfreq");
+
+    double *dftampl = (double *)malloc(freq_count*sizeof(double));
+    if (!dftampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
+
+    calculate_amplitude_spectrum(time, fitted, num_obs,
+                                 freq_min*1e-6, freq_max*1e-6,
+                                 dftfreq, dftampl, freq_count);
+
+    if (cpgopen("5/xs") <= 0)
+        return error("Unable to open PGPLOT window");
+
+    cpgask(0);
+    cpgslw(3);
+    cpgsfs(2);
+    cpgscf(2);
+
+    float *time_f = cast_double_array_to_float(time, num_obs);
+    float *freq_f = cast_double_array_to_float(freq, num_obs);
+    float *polyfit_f = cast_double_array_to_float(polyfit, num_obs);
+    float *fitted_f = cast_double_array_to_float(fitted, num_obs);
+
+    // Raw data
+    cpgsvp(0.1, 0.9, 0.75, 0.9);
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Raw");
+    cpgswin(time_f[0], time_f[num_obs-1], 850, 950);
+    cpgbox("bcst", 0, 0, "bcstn", 0, 0);
+
+    cpgpt(num_obs, time_f, freq_f, 20);
+
+    // Plot the polynomial fit
+    cpgsci(2);
+    cpgline(num_obs, time_f, polyfit_f);
+    cpgsci(1);
+
+    // Subtracted data
+    cpgsvp(0.1, 0.9, 0.55, 0.75);
+    cpgswin(time_f[0], time_f[num_obs-1], -20, 20);
+    cpgbox("bcst", 0, 0, "bcstn", 0, 0);
+    cpgpt(num_obs, time_f, fitted_f, 20);
+
+    // DFT
+    cpgsvp(0.1, 0.9, 0.075, 0.55);
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Amplitude");
+    cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency");
+    cpgswin(freq_min*1e-6, freq_max*1e-6, 0, 10);
+    cpgbox("bcstn", 0, 0, "bcstn", 0, 0);
+
+    float *dftfreq_f = cast_double_array_to_float(dftfreq, freq_count);
+    float *dftampl_f = cast_double_array_to_float(dftampl, freq_count);
+    cpgline(freq_count, dftfreq_f, dftampl_f);
+
+    cpgend();
+    free(dftampl);
+dftampl_alloc_error:
+    free(dftfreq);
+dftfreq_alloc_error:
+    free(coeffs);
+poly_fit_error:
+coeffs_alloc_error:
+    free(fitted);
+fitted_alloc_error:
+    free(polyfit);
+polyfit_alloc_error:
+    free(err);
+err_alloc_error:
+    free(freq);
+freq_alloc_error:
+    free(time);
+time_alloc_error:
+    fclose(file);
 load_failed_error:
     return ret;
 }

@@ -159,6 +159,8 @@ int main( int argc, char *argv[] )
         return monitor_phase_amplitude(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]));
     else if (argc == 3 && strncmp(argv[1], "slide", 5) == 0)
         return animated_window(argv[2]);
+    else if (argc == 7 && strcmp(argv[1], "dft-slide") == 0)
+        return dft_slidewindow(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), atoi(argv[6]));
     else
         error("Invalid args");
     return 0;

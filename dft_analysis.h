@@ -17,5 +17,6 @@ int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, doub
 
 int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width);
 int animated_window(char *tsfile);
+int dft_slidewindow(char *path, double freq_min, double freq_max, double freq_step, int column);
 
 #endif

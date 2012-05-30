@@ -863,21 +863,41 @@ load_failed_error:
     return ret;
 }
 
+typedef struct
+{
+    double min;
+    double max;
+    double step;
+    uint8_t color;
+} animated_window_search_region;
+
 int animated_window(char *tsfile)
 {
+    int ret = 0;
+
     double display_freq_min = 500;
     double display_freq_max = 4000;
     double display_freq_step = 5;
+    size_t window_length = 3600*3/30; // data points -> 3h
+    size_t window_increment = 2; // Number of data points to advance the window each increment
+
     size_t display_freq_count = (size_t)((display_freq_max - display_freq_min)/display_freq_step);
 
-    double peak_freq_min = 860;
-    double peak_freq_max = 930;
-    double peak_freq_step = 0.5;
-    size_t peak_freq_count = (size_t)((peak_freq_max - peak_freq_min)/peak_freq_step);
+    animated_window_search_region peak_freqs[] =
+    {
+        {850, 950, 0.5, 2},
+        {850*2, 950*2, 1, 3},
+        {850*3, 950*3, 1, 4}
+    };
+    size_t peak_freq_count = 3;
 
-    size_t window_length = 3600*3/30; // data points -> 3h
+    // Determine the maximum number of frequency steps so we can preallocate
+    // a single block of memory for all calculations
+    size_t peak_freq_working_size = 0;
+    for (size_t i = 0; i < peak_freq_count; i++)
+        peak_freq_working_size = fmax(peak_freq_working_size,
+                (size_t)((peak_freqs[i].max - peak_freqs[i].min)/peak_freqs[i].step));
 
-    int ret = 0;
     double *time, *mmi, *err;
     size_t num_obs;
 
@@ -885,7 +905,7 @@ int animated_window(char *tsfile)
         error_jump(load_failed_error, ret, "Error processing data");
 
     // Number of time steps to slide the window through
-    size_t num_steps = num_obs - window_length - 1;
+    size_t num_steps = (num_obs - window_length - 1)/window_increment;
 
     double *display_dftfreq = (double *)malloc(display_freq_count*sizeof(double));
     if (!display_dftfreq)
@@ -895,11 +915,11 @@ int animated_window(char *tsfile)
     if (!display_dftampl)
         error_jump(display_dftampl_alloc_error, ret, "Error allocating display_dftampl");
 
-    double *peak_dftfreq = (double *)malloc(peak_freq_count*sizeof(double));
+    double *peak_dftfreq = (double *)malloc(peak_freq_working_size*sizeof(double));
     if (!peak_dftfreq)
         error_jump(peak_dftfreq_alloc_error, ret, "Error allocating peak_dftfreq");
 
-    double *peak_dftampl = (double *)malloc(peak_freq_count*sizeof(double));
+    double *peak_dftampl = (double *)malloc(peak_freq_working_size*sizeof(double));
     if (!peak_dftampl)
         error_jump(peak_dftampl_alloc_error, ret, "Error allocating peak_dftampl");
 
@@ -907,7 +927,7 @@ int animated_window(char *tsfile)
     if (!peak_time)
         error_jump(peak_time_alloc_error, ret, "Error allocating peak_time");
 
-    float *peak_freq = (float *)malloc(num_steps*sizeof(float));
+    float *peak_freq = (float *)malloc(peak_freq_count*num_steps*sizeof(float));
     if (!peak_freq)
         error_jump(peak_freq_alloc_error, ret, "Error allocating peak_freq");
 
@@ -925,20 +945,20 @@ int animated_window(char *tsfile)
     cpgsfs(2);
     cpgscf(2);
 
-    // DFT
-    cpgsvp(0.1, 0.9, 0.075, 0.9);
-    cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
-    cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
+    // Draw Labels
+    cpgsvp(0.1, 0.9, 0.55, 0.9);
+    cpgmtxt("t", 2, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
-    cpgsch(1.25);
-    cpgmtxt("t", 1.5, 0.5, 0.5, "Amplitude Spectrum");
-    cpgsci(12);
+
+    cpgsvp(0.1, 0.9, 0.075, 0.5);
+    cpgmtxt("l", 2, 0.5, 0.5, "Frequency (\\gmHz)");
+    cpgmtxt("b", 2, 0.5, 0.5, "Time (Hours)");
 
     for (size_t i = 0; i < num_steps; i++)
     {
         // Copy amplitudes into mmi_window
         for (size_t j = 0; j < window_length; j++)
-            mmi_windowed[j] = mmi[i+j];
+            mmi_windowed[j] = mmi[window_increment*i+j];
 
         // Taper start and end
         size_t taper_count = window_length/2;
@@ -949,15 +969,31 @@ int animated_window(char *tsfile)
         }
 
         cpgbbuf();
-        cpgsvp(0.1, 0.9, 0.5, 0.9);
-        cpgswin(display_freq_min, display_freq_max, 0, 60);
 
+        // Erase top and bottom displays
 		cpgsfs(1);
-		cpgsci(0); // Black
-		cpgrect(display_freq_min, display_freq_max, 0, 60); // Erase display
+		cpgsci(0);
+        cpgsvp(0.1, 0.9, 0.5, 0.9);
+        cpgswin(0, 1, 0, 1);
+		cpgrect(0, 1, 0, 1);
+
+        cpgsvp(0.1, 0.9, 0.075, 0.5);
+        cpgswin(0, 1, 0, 1);
+		cpgrect(0, 1, 0, 1);
         cpgsfs(2);
 
-        calculate_amplitude_spectrum(&time[i], mmi_windowed, window_length,
+        // Draw borders
+        cpgsci(1);
+        cpgsvp(0.1, 0.9, 0.5, 0.9);
+        cpgswin(display_freq_min, display_freq_max, 0, 60);
+        cpgbox("bcstm", 0, 0, "bcnst", 0, 0);
+
+        cpgsvp(0.1, 0.9, 0.075, 0.5);
+        cpgswin(0, 11, peak_freqs[0].min, peak_freqs[0].max);
+        cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
+
+        // Calculate and draw display region
+        calculate_amplitude_spectrum(&time[window_increment*i], mmi_windowed, window_length,
                                      display_freq_min*1e-6, display_freq_max*1e-6,
                                      display_dftfreq, display_dftampl, display_freq_count);
         cpgsci(1);
@@ -965,47 +1001,44 @@ int animated_window(char *tsfile)
         float *pgfreq = cast_double_array_to_float(display_dftfreq, display_freq_count);
         float *pgampl = cast_double_array_to_float(display_dftampl, display_freq_count);
 
+        cpgsvp(0.1, 0.9, 0.5, 0.9);
         cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
         cpgline(display_freq_count, pgfreq, pgampl);
 
-        // Find max intensity
-        calculate_amplitude_spectrum(&time[i], mmi_windowed, window_length,
-                                     peak_freq_min*1e-6, peak_freq_max*1e-6,
-                                     peak_dftfreq, peak_dftampl, peak_freq_count);
-
-        double maxfreq = 0;
-        double maxampl = 0;
+        // Calculate peak frequencies
+        peak_time[i] = time[window_increment*i + window_length/2]/3600;
         for (size_t j = 0; j < peak_freq_count; j++)
         {
-            if (peak_dftampl[j] > maxampl)
+            cpgsci(peak_freqs[j].color);
+
+            size_t count = (size_t)((peak_freqs[j].max - peak_freqs[j].min)/peak_freqs[j].step);
+            // Find max intensity
+            calculate_amplitude_spectrum(&time[window_increment*i], mmi_windowed, window_length,
+                                         peak_freqs[j].min*1e-6, peak_freqs[j].max*1e-6,
+                                         peak_dftfreq, peak_dftampl, count);
+
+            double maxfreq = 0;
+            double maxampl = 0;
+            for (size_t k = 0; k < count; k++)
             {
-                maxampl = peak_dftampl[j];
-                maxfreq = peak_dftfreq[j];
+                if (peak_dftampl[k] > maxampl)
+                {
+                    maxampl = peak_dftampl[k];
+                    maxfreq = peak_dftfreq[k];
+                }
             }
+
+            peak_freq[j*num_steps + i] = maxfreq*1e6;
+
+            cpgsvp(0.1, 0.9, 0.5, 0.9);
+            cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
+            cpgmove(maxfreq, 60);
+            cpgdraw(maxfreq, 0);
+
+            cpgsvp(0.1, 0.9, 0.075, 0.5);
+            cpgswin(0, 11, peak_freqs[j].min, peak_freqs[j].max);
+            cpgline(i, peak_time, &peak_freq[j*num_steps]);
         }
-
-        peak_time[i] = time[i+window_length/2]/3600;
-        peak_freq[i] = maxfreq*1e6;
-
-        cpgsci(2);
-        cpgmove(maxfreq, 60);
-        cpgdraw(maxfreq, 0);
-        cpgsci(1);
-        cpgswin(display_freq_min, display_freq_max, 0, 60);
-        cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
-        cpgebuf();
-
-        cpgbbuf();
-        cpgsvp(0.1, 0.9, 0.075, 0.45);
-        cpgswin(0, 11, peak_freq_min, peak_freq_max);
-        cpgsfs(1);
-		cpgsci(0); // Black
-		cpgrect(0, 11, peak_freq_min, peak_freq_max); // Erase display
-        cpgsfs(2);
-
-        cpgsci(1);
-        cpgline(i, peak_time, peak_freq);
-        cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
         cpgebuf();
     }
     cpgend();

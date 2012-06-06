@@ -10,6 +10,7 @@
 #include <math.h>
 #include <string.h>
 #include <cpgplot.h>
+#include <stdbool.h>
 
 #include "helpers.h"
 #include "fit.h"
@@ -737,8 +738,8 @@ int animated_window(char *ts_path)
     double display_freq_min = 500;
     double display_freq_max = 4000;
     double display_freq_step = 5;
-    size_t window_length = 3600*3/30; // data points -> 3h
-    size_t window_increment = 2; // Number of data points to advance the window each increment
+    double window_length = 4.0*3600; // 4h
+    size_t window_increment = 2; // Number of data points to step through each iteration
 
     size_t display_freq_count = (size_t)((display_freq_max - display_freq_min)/display_freq_step);
 
@@ -761,9 +762,6 @@ int animated_window(char *ts_path)
     if (!data)
         return 1;
 
-    // Number of time steps to slide the window through
-    size_t num_steps = (data->obs_count - window_length - 1)/window_increment;
-
     double *display_dftfreq = (double *)malloc(display_freq_count*sizeof(double));
     if (!display_dftfreq)
         error_jump(display_dftfreq_alloc_error, ret, "Error allocating display_dftfreq");
@@ -780,19 +778,20 @@ int animated_window(char *ts_path)
     if (!peak_dftampl)
         error_jump(peak_dftampl_alloc_error, ret, "Error allocating peak_dftampl");
 
-    float *peak_time = (float *)malloc(num_steps*sizeof(float));
+    float *peak_time = (float *)malloc(data->obs_count*sizeof(float));
     if (!peak_time)
         error_jump(peak_time_alloc_error, ret, "Error allocating peak_time");
 
-    float *peak_freq = (float *)malloc(peak_freq_count*num_steps*sizeof(float));
+    float *peak_freq = (float *)malloc(peak_freq_count*data->obs_count*sizeof(float));
     if (!peak_freq)
         error_jump(peak_freq_alloc_error, ret, "Error allocating peak_freq");
 
-    double *mmi_windowed = (double *)malloc(window_length*sizeof(double));
+    double *mmi_windowed = (double *)malloc(data->obs_count*sizeof(double));
     if (!mmi_windowed)
         error_jump(mmi_windowed_alloc_error, ret, "Error allocating mmi_windowed");
 
-    if (cpgopen("6/xs") <= 0)
+    bool save_ps = false;
+    if (cpgopen(save_ps ? "test.ps/cps" : "6/xs") <= 0)
         error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
 
     // 800 x 480
@@ -811,17 +810,30 @@ int animated_window(char *ts_path)
     cpgmtxt("l", 2, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("b", 2, 0.5, 0.5, "Time (Hours)");
 
-    for (size_t i = 0; i < num_steps; i++)
+    for (size_t i = 0, window_start = 0; window_start < data->obs_count; i++, window_start += window_increment)
     {
+        // Calculate window_end
+        bool end = false;
+        size_t window_end = window_start;
+        while (data->time[window_end + 1] < (data->time[window_start] + window_length))
+        {
+            window_end++;
+            if (window_end + 1 == data->obs_count)
+            {
+                end = true;
+                break;
+            }
+        }
+
         // Copy amplitudes into mmi_window
-        for (size_t j = 0; j < window_length; j++)
-            mmi_windowed[j] = data->mma[window_increment*i+j];
+        for (size_t j = 0; j < window_end - window_start; j++)
+            mmi_windowed[j] = data->mma[window_start+j];
 
         // Taper start and end
-        for (size_t j = 0; j < window_length; j++)
+        for (size_t j = 0; j < window_end - window_start; j++)
         {
             // Normalize to [-0.5,0.5];
-            double t = j*1.0/(window_length-1) - 0.5;
+            double t = j*1.0/(window_end - window_start-1) - 0.5;
 
             // Square window
             //double d = 1;
@@ -834,32 +846,35 @@ int animated_window(char *ts_path)
             mmi_windowed[j] *= d;
         }
 
-        cpgbbuf();
+        if (!save_ps || end)
+        {
+            cpgbbuf();
 
-        // Erase top and bottom displays
-		cpgsfs(1);
-		cpgsci(0);
-        cpgsvp(0.1, 0.9, 0.5, 0.9);
-        cpgswin(0, 1, 0, 1);
-		cpgrect(0, 1, 0, 1);
+            // Erase top and bottom displays
+            cpgsfs(1);
+            cpgsci(0);
+            cpgsvp(0.1, 0.9, 0.5, 0.9);
+            cpgswin(0, 1, 0, 1);
+            cpgrect(0, 1, 0, 1);
 
-        cpgsvp(0.1, 0.9, 0.075, 0.5);
-        cpgswin(0, 1, 0, 1);
-		cpgrect(0, 1, 0, 1);
-        cpgsfs(2);
+            cpgsvp(0.1, 0.9, 0.075, 0.5);
+            cpgswin(0, 1, 0, 1);
+            cpgrect(0, 1, 0, 1);
+            cpgsfs(2);
 
-        // Draw borders
-        cpgsci(1);
-        cpgsvp(0.1, 0.9, 0.5, 0.9);
-        cpgswin(display_freq_min, display_freq_max, 0, 60);
-        cpgbox("bcstm", 0, 0, "bcnst", 0, 0);
+            // Draw borders
+            cpgsci(1);
+            cpgsvp(0.1, 0.9, 0.5, 0.9);
+            cpgswin(display_freq_min, display_freq_max, 0, 60);
+            cpgbox("bcstm", 0, 0, "bcnst", 0, 0);
 
-        cpgsvp(0.1, 0.9, 0.075, 0.5);
-        cpgswin(0, 11, peak_freqs[0].min, peak_freqs[0].max);
-        cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
+            cpgsvp(0.1, 0.9, 0.075, 0.5);
+            cpgswin(0, 11, peak_freqs[0].min, peak_freqs[0].max);
+            cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
+        }
 
         // Calculate and draw display region
-        calculate_amplitude_spectrum(&data->time[window_increment*i], mmi_windowed, window_length,
+        calculate_amplitude_spectrum(&data->time[window_start], mmi_windowed, window_end - window_start,
                                      display_freq_min*1e-6, display_freq_max*1e-6,
                                      display_dftfreq, display_dftampl, display_freq_count);
         cpgsci(1);
@@ -867,21 +882,23 @@ int animated_window(char *ts_path)
         float *pgfreq = cast_double_array_to_float(display_dftfreq, display_freq_count);
         float *pgampl = cast_double_array_to_float(display_dftampl, display_freq_count);
 
-        cpgsvp(0.1, 0.9, 0.5, 0.9);
-        cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
-        cpgline(display_freq_count, pgfreq, pgampl);
+        if (!save_ps || end)
+        {
+            cpgsvp(0.1, 0.9, 0.5, 0.9);
+            cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
+            cpgline(display_freq_count, pgfreq, pgampl);
+        }
 
         // Calculate peak frequencies
-        peak_time[i] = data->time[window_increment*i + window_length/2]/3600;
-        printf("%f", data->time[window_increment*i + window_length/2]/86400);
-
+        peak_time[i] = (data->time[window_start] + data->time[window_end])/2/3600;
+        printf("%f", peak_time[i]/24);
         for (size_t j = 0; j < peak_freq_count; j++)
         {
             cpgsci(peak_freqs[j].color);
 
             size_t count = (size_t)((peak_freqs[j].max - peak_freqs[j].min)/peak_freqs[j].step);
             // Find max intensity
-            calculate_amplitude_spectrum(&data->time[window_increment*i], mmi_windowed, window_length,
+            calculate_amplitude_spectrum(&data->time[window_start], mmi_windowed, window_end-window_start,
                                          peak_freqs[j].min*1e-6, peak_freqs[j].max*1e-6,
                                          peak_dftfreq, peak_dftampl, count);
 
@@ -896,20 +913,28 @@ int animated_window(char *ts_path)
                 }
             }
 
-            peak_freq[j*num_steps + i] = maxfreq*1e6;
-            printf(" %.1f", peak_freq[j*num_steps + i]);
+            peak_freq[j*data->obs_count + i] = maxfreq*1e6;
+            printf(" %.1f %.3f", maxfreq*1e6, maxampl);
 
-            cpgsvp(0.1, 0.9, 0.5, 0.9);
-            cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
-            cpgmove(maxfreq, 60);
-            cpgdraw(maxfreq, 0);
+            if (!save_ps || end)
+            {
+                cpgsvp(0.1, 0.9, 0.5, 0.9);
+                cpgswin(display_freq_min*1e-6, display_freq_max*1e-6, 0, 60);
+                cpgmove(maxfreq, 60);
+                cpgdraw(maxfreq, 0);
 
-            cpgsvp(0.1, 0.9, 0.075, 0.5);
-            cpgswin(0, 11, peak_freqs[j].min, peak_freqs[j].max);
-            cpgline(i, peak_time, &peak_freq[j*num_steps]);
+                cpgsvp(0.1, 0.9, 0.075, 0.5);
+                cpgswin(0, 11, peak_freqs[j].min, peak_freqs[j].max);
+                cpgline(i, peak_time, &peak_freq[j*data->obs_count]);
+            }
         }
-        cpgebuf();
+
         printf("\n");
+
+        if (!save_ps || end)
+            cpgebuf();
+        if (end)
+            break;
     }
     cpgend();
 

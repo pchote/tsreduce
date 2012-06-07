@@ -942,6 +942,10 @@ int animated_window(char *tsfile)
     if (cpgopen(save_ps ? "test.ps/cps" : "6/xs") <= 0)
         error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
 
+    // TODO: FIXME
+    double phase_offset[] = {0,0,0};
+    double last_phase[] = {0,0,0};
+
     // 800 x 480
     cpgpap(9.41, 0.6);
     cpgask(0);
@@ -1040,6 +1044,8 @@ int animated_window(char *tsfile)
         // Calculate peak frequencies
         peak_time[i] = (time[window_start] + time[window_end])/2/3600;
         printf("%f", peak_time[i]/24);
+
+        // Offset for unwrapping phase
         for (size_t j = 0; j < peak_freq_count; j++)
         {
             cpgsci(peak_freqs[j].color);
@@ -1066,10 +1072,19 @@ int animated_window(char *tsfile)
             // Calculate phase offset from absolute phase
             maxphase -= maxfreq*2*M_PI*peak_time[i]*3600;
 
-            // Map into 0->2*PI
+            // Map into (0, 2*PI)
             maxphase = fmod(maxphase, 2*M_PI);
             if (maxphase < 0)
                 maxphase += 2*M_PI;
+
+            // Unwrap phase
+            if (i > 0 && last_phase[j] - (maxphase + phase_offset[j]) > M_PI)
+                phase_offset[j] += 2*M_PI;
+            if (i > 0 &&last_phase[j] - (maxphase + phase_offset[j]) < -M_PI)
+                phase_offset[j] -= 2*M_PI;
+
+            maxphase += phase_offset[j];
+            last_phase[j] = maxphase;
 
             peak_freq[j*num_obs + i] = maxfreq*1e6;
             printf(" %.1f %.5f %.3f", maxfreq*1e6, maxphase, maxampl);

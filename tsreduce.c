@@ -133,6 +133,8 @@ int main( int argc, char *argv[] )
         return monitor_phase_amplitude(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]));
     else if (argc == 3 && strncmp(argv[1], "slide", 5) == 0)
         return animated_window(argv[2]);
+    else if (argc == 4 && strcmp(argv[1], "prewhiten-variable") == 0)
+        return prewhiten_variable_freqs(argv[2], argv[3]);
     else
         error("Invalid args");
     return 0;

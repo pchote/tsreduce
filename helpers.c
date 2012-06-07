@@ -615,6 +615,28 @@ char *prompt_user_input(char *message, char *fallback)
     return input;
 }
 
+void calculate_amplitude_phase_spectrum(double *time, double *mma, size_t count,
+                                        double freq_min, double freq_max,
+                                        double *freq, double *ampl, double *phase, size_t length)
+{
+    double df = (freq_max - freq_min)/length;
+    for (size_t j = 0; j < length; j++)
+    {
+        double real = 0;
+        double imag = 0;
+        freq[j] = freq_min + j*df;
+
+        for (size_t i = 0; i < count; i++)
+        {
+            double phase = -freq[j]*2*M_PI*(time[i] - time[0]);
+            real += mma[i]*cos(phase)/count;
+            imag += mma[i]*sin(phase)/count;
+        }
+        phase[j] = atan2(imag, real);
+        ampl[j] = 2*sqrt(real*real + imag*imag);
+    }
+}
+
 // Calculate the amplitude spectrum between (freq_min, freq_max)
 // for the signal time/mma (count points)
 // length results are stored in (freq, ampl)

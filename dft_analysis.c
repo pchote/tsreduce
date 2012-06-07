@@ -918,6 +918,10 @@ int animated_window(char *tsfile)
     if (!peak_dftfreq)
         error_jump(peak_dftfreq_alloc_error, ret, "Error allocating peak_dftfreq");
 
+    double *peak_dftphase = (double *)malloc(peak_freq_working_size*sizeof(double));
+    if (!peak_dftphase)
+        error_jump(peak_dftphase_alloc_error, ret, "Error allocating peak_dftphase");
+
     double *peak_dftampl = (double *)malloc(peak_freq_working_size*sizeof(double));
     if (!peak_dftampl)
         error_jump(peak_dftampl_alloc_error, ret, "Error allocating peak_dftampl");
@@ -1042,23 +1046,33 @@ int animated_window(char *tsfile)
 
             size_t count = (size_t)((peak_freqs[j].max - peak_freqs[j].min)/peak_freqs[j].step);
             // Find max intensity
-            calculate_amplitude_spectrum(&time[window_start], mmi_windowed, window_end-window_start,
-                                         peak_freqs[j].min*1e-6, peak_freqs[j].max*1e-6,
-                                         peak_dftfreq, peak_dftampl, count);
+            calculate_amplitude_phase_spectrum(&time[window_start], mmi_windowed, window_end-window_start,
+                                               peak_freqs[j].min*1e-6, peak_freqs[j].max*1e-6,
+                                               peak_dftfreq, peak_dftampl, peak_dftphase, count);
 
             double maxfreq = 0;
             double maxampl = 0;
+            double maxphase = 0;
             for (size_t k = 0; k < count; k++)
             {
                 if (peak_dftampl[k] > maxampl)
                 {
                     maxampl = peak_dftampl[k];
                     maxfreq = peak_dftfreq[k];
+                    maxphase = peak_dftphase[k];
                 }
             }
 
+            // Calculate phase offset from absolute phase
+            maxphase -= maxfreq*2*M_PI*peak_time[i]*3600;
+
+            // Map into 0->2*PI
+            maxphase = fmod(maxphase, 2*M_PI);
+            if (maxphase < 0)
+                maxphase += 2*M_PI;
+
             peak_freq[j*num_obs + i] = maxfreq*1e6;
-            printf(" %.1f %.3f", maxfreq*1e6, maxampl);
+            printf(" %.1f %.5f %.3f", maxfreq*1e6, maxphase, maxampl);
 
             if (!save_ps || end)
             {
@@ -1091,6 +1105,8 @@ peak_freq_alloc_error:
 peak_time_alloc_error:
     free(peak_dftampl);
 peak_dftampl_alloc_error:
+    free(peak_dftphase);
+peak_dftphase_alloc_error:
     free(peak_dftfreq);
 peak_dftfreq_alloc_error:
     free(display_dftampl);

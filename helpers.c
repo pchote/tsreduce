@@ -639,3 +639,15 @@ void calculate_amplitude_spectrum(double *time, double *mma, size_t count,
         ampl[j] = 2*sqrt(real*real + imag*imag);
     }
 }
+
+double evaluate_polynomial(double *coeffs, size_t degree, double x)
+{
+    double y = 0;
+    double pow = 1;
+    for (int i = 0; i <= degree; i++)
+    {
+        y += pow*coeffs[i];
+        pow *= x;
+    }
+    return y;
+}

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "datafile.h"
 #include "helpers.h"
@@ -16,6 +17,28 @@
 #include "ts_analysis.h"
 
 int verbosity = 0;
+
+int generate_data()
+{
+    for (int i = 0; i < 1000; i++)
+    {
+        double t = i*30.0;
+        double f1 = 1e-6*(1000 + (i/100.0)*(i/100.0)*(i/10.0));
+        double a1 = 1;
+        double f2 = 2*f1;
+        double a2 = 0.1;
+        double f3 = 3*f1;
+        double a3 = 0.4;
+
+        // slidedft file
+        fprintf(stderr, "%f %f %f %f %f %f %f\n", t/86400, 1e6*f1, a1, 1e6*f2, a2, 1e6*f3, a3);
+
+        // ts file
+        double ampl = a1*sin(2*M_PI*f1*t + M_PI/4) + a2*sin(2*M_PI*f2*t + M_PI/16) + a3*sin(2*M_PI*f3*t);
+        printf("%f %f 1.0\n", t/86400, ampl);
+    }
+    return 0;
+}
 
 int main( int argc, char *argv[] )
 {

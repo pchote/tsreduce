@@ -1306,3 +1306,68 @@ time_alloc_error:
     fclose(file);
     return ret;
 }
+
+int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
+{
+    int ret = 0;
+
+    char *freq_labels;
+    int *freq_modes;
+    double *ts_time, *ts_mmi, *ts_err, *freqs;
+    size_t num_obs, num_freqs;
+
+    if (load_tsfile(tsfile, &ts_time, &ts_mmi, &ts_err, &num_obs))
+        error_jump(ts_load_error, ret, "Error loading data");
+
+    if (load_freqfile(freqfile, &freq_labels, &freqs, &freq_modes, &num_freqs))
+        error_jump(freq_load_error, ret, "Freq load failed");
+
+    size_t poly_degree = 3;
+    double *ampl_coeffs = (double *)malloc(2*num_freqs*(poly_degree + 1)*sizeof(double));
+    if (!ampl_coeffs)
+        error_jump(ampl_coeffs_alloc_error, ret, "Error allocating ampl_coeffs array");
+
+    if (fit_polynomial_sinusoids(ts_time, ts_mmi, ts_err, num_obs,
+                               ampl_coeffs, poly_degree, freqs, num_freqs))
+        error_jump(fit_failed_error, ret, "Sinusoid fit failed");
+
+    for (size_t i = 0; i < num_obs; i++)
+    {
+        double model = 0;
+        for (size_t j = 0; j < num_freqs; j++)
+        {
+            double cos_ampl = evaluate_polynomial(&ampl_coeffs[2*j*(poly_degree + 1)], poly_degree, ts_time[i]);
+            double sin_ampl = evaluate_polynomial(&ampl_coeffs[(2*j+1)*(poly_degree + 1)], poly_degree, ts_time[i]);
+            double phase = 2*M_PI*freqs[j]*ts_time[i];
+            model += cos_ampl*cos(phase);
+            model += sin_ampl*sin(phase);
+        }
+        printf("%f %f\n", ts_time[i]/86400, model);
+    }
+
+    for (size_t i = 0; i < num_freqs; i++)
+    {
+         printf("%f:\n\tcos -> ", freqs[i]);
+         for (size_t j = poly_degree; j > 0; j--)
+             printf("%.3e t^%zu + ",ampl_coeffs[2*i*(poly_degree+1) + j], j);
+         printf("%.3e\n", ampl_coeffs[2*i*(poly_degree+1)]);
+
+         printf("\tsin -> ");
+         for (size_t j = poly_degree; j > 0; j--)
+             printf("%.3e t^%zu + ",ampl_coeffs[(2*i+1)*(poly_degree+1) + j], j);
+         printf("%.3e\n", ampl_coeffs[(2*i+1)*(poly_degree+1)]);
+    }
+
+fit_failed_error:
+    free(ampl_coeffs);
+ampl_coeffs_alloc_error:
+    free(freqs);
+    free(freq_labels);
+    free(freq_modes);
+freq_load_error:
+    free(ts_time);
+    free(ts_mmi);
+    free(ts_err);
+ts_load_error:
+    return ret;
+}

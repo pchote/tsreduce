@@ -14,5 +14,7 @@ int fit_polynomial(double *x, double *y, double *e, size_t c, double *coeffs, si
 int fit_variable_sinusoids(double *x, double *y, double *e, size_t n,
                            double *freq_coeffs, double *ampl_coeffs, double *phase_coeffs, size_t poly_degree,
                            size_t numFreqs,double *amplitudes);
+int fit_polynomial_sinusoids(double *x, double *y, double *e, size_t n,
+                             double *coeffs, size_t degree, double *freqs, size_t num_freqs);
 
 #endif

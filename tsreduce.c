@@ -18,7 +18,7 @@
 
 int verbosity = 0;
 
-int generate_data()
+int generate_polynomialfreq_data()
 {
     for (int i = 0; i < 1000; i++)
     {
@@ -35,6 +35,20 @@ int generate_data()
 
         // ts file
         double ampl = a1*sin(2*M_PI*f1*t + M_PI/4) + a2*sin(2*M_PI*f2*t + M_PI/16) + a3*sin(2*M_PI*f3*t);
+        printf("%f %f 1.0\n", t/86400, ampl);
+    }
+    return 0;
+}
+
+int generate_polynomialamplitude_data()
+{
+    double f1 = 1e-6*1000;
+    double coeffs[] = {1, 0.0001, -1e-8};
+    size_t degree = 2;
+    for (int i = 0; i < 1000; i++)
+    {
+        double t = i*30.0;
+        double ampl = evaluate_polynomial(coeffs, degree, t)*sin(2*M_PI*f1*t);
         printf("%f %f 1.0\n", t/86400, ampl);
     }
     return 0;
@@ -158,6 +172,8 @@ int main( int argc, char *argv[] )
         return animated_window(argv[2]);
     else if (argc == 4 && strcmp(argv[1], "prewhiten-variable") == 0)
         return prewhiten_variable_freqs(argv[2], argv[3]);
+    else if (argc == 4 && strcmp(argv[1], "prewhiten-polynomial") == 0)
+        return prewhiten_polynomial_freqs(argv[2], argv[3]);
     else
         error("Invalid args");
     return 0;

@@ -1311,7 +1311,7 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
 {
     int ret = 0;
 
-    char *freq_labels;
+    char **freq_labels;
     int *freq_modes;
     double *ts_time, *ts_mmi, *ts_err, *freqs;
     size_t num_obs, num_freqs;
@@ -1322,7 +1322,7 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
     if (load_freqfile(freqfile, &freq_labels, &freqs, &freq_modes, &num_freqs))
         error_jump(freq_load_error, ret, "Freq load failed");
 
-    size_t poly_degree = 3;
+    size_t poly_degree = 4;
     double *ampl_coeffs = (double *)malloc(2*num_freqs*(poly_degree + 1)*sizeof(double));
     if (!ampl_coeffs)
         error_jump(ampl_coeffs_alloc_error, ret, "Error allocating ampl_coeffs array");
@@ -1330,6 +1330,14 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
     if (fit_polynomial_sinusoids(ts_time, ts_mmi, ts_err, num_obs,
                                ampl_coeffs, poly_degree, freqs, num_freqs))
         error_jump(fit_failed_error, ret, "Sinusoid fit failed");
+
+    double *phase_offset = (double *)calloc(num_freqs, sizeof(double));
+    if (!phase_offset)
+        error_jump(phase_offset_alloc_error, ret, "Error allocating phase_offset array");
+
+    double *last_phase = (double *)calloc(num_freqs, sizeof(double));
+    if (!last_phase)
+        error_jump(last_phase_alloc_error, ret, "Error allocating last_phase array");
 
     for (size_t i = 0; i < num_obs; i++)
     {
@@ -1342,7 +1350,27 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
             model += cos_ampl*cos(phase);
             model += sin_ampl*sin(phase);
         }
-        printf("%f %f\n", ts_time[i]/86400, model);
+        printf("%f %f ", ts_time[i]/86400, model);
+
+        // Include amplitude and phase offset for each frequency
+        for (size_t j = 0; j < num_freqs; j++)
+        {
+            double cos_ampl = evaluate_polynomial(&ampl_coeffs[2*j*(poly_degree + 1)], poly_degree, ts_time[i]);
+            double sin_ampl = evaluate_polynomial(&ampl_coeffs[(2*j+1)*(poly_degree + 1)], poly_degree, ts_time[i]);
+            double phase = atan2(sin_ampl, cos_ampl);
+            double ampl = sqrt(cos_ampl*cos_ampl+sin_ampl*sin_ampl);
+
+            // unwrap phase
+            if (phase < 0)
+                phase += 2*M_PI;
+            if (i > 0 && last_phase[j] - (phase + phase_offset[j]) > M_PI)
+                phase_offset[j] += 2*M_PI;
+            if (i > 0 && last_phase[j] - (phase + phase_offset[j]) < -M_PI)
+                phase_offset[j] -= 2*M_PI;
+
+            printf("%f %f ", ampl, phase);
+        }
+        printf("\n");
     }
 
     for (size_t i = 0; i < num_freqs; i++)
@@ -1358,6 +1386,10 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
          printf("%.3e\n", ampl_coeffs[(2*i+1)*(poly_degree+1)]);
     }
 
+    free(last_phase);
+last_phase_alloc_error:
+    free(phase_offset);
+phase_offset_alloc_error:
 fit_failed_error:
     free(ampl_coeffs);
 ampl_coeffs_alloc_error:

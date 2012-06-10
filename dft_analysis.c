@@ -1363,12 +1363,14 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
             // unwrap phase
             if (phase < 0)
                 phase += 2*M_PI;
+
             if (i > 0 && last_phase[j] - (phase + phase_offset[j]) > M_PI)
                 phase_offset[j] += 2*M_PI;
-            if (i > 0 && last_phase[j] - (phase + phase_offset[j]) < -M_PI)
+            else if (i > 0 && last_phase[j] - (phase + phase_offset[j]) < -M_PI)
                 phase_offset[j] -= 2*M_PI;
 
-            printf("%f %f ", ampl, phase);
+            last_phase[j] = phase + phase_offset[j];
+            printf("%f %f ", ampl, last_phase[j]);
         }
         printf("\n");
     }

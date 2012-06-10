@@ -607,7 +607,7 @@ int nonlinear_fit(char *tsFile, char *freqFile)
         fit_freqs[j] = init_freqs[j];
 
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
-    double coarse_step = 1.0/(24*3600);
+    double coarse_step = 1e-6;//1.0/(24*3600);
     int coarse_step_count = 5;
     double fine_step = 0.01e-6;
     int fine_step_count = 10;
@@ -879,7 +879,7 @@ int animated_window(char *tsfile)
     double display_freq_min = 500;
     double display_freq_max = 4000;
     double display_freq_step = 5;
-    double window_length = 4.0*3600; // 4h
+    double window_length = 2.0*3600; // 4h
     size_t window_increment = 2; // Number of data points to step through each iteration
 
     size_t display_freq_count = (size_t)((display_freq_max - display_freq_min)/display_freq_step);
@@ -1160,6 +1160,10 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
     if (!freq)
         error_jump(freq_alloc_error, ret, "Error allocating freq array");
 
+    double *phase = (double *)malloc(num_variable_freqs*total_freqs*sizeof(double));
+    if (!phase)
+        error_jump(phase_alloc_error, ret, "Error allocating phase array");
+
     double *ampl = (double *)malloc(num_variable_freqs*total_freqs*sizeof(double));
     if (!ampl)
         error_jump(ampl_alloc_error, ret, "Error allocating ampl array");
@@ -1171,10 +1175,10 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
         if (linebuf[0] == '#' || linebuf[0] == '\n')
             continue;
         
-        sscanf(linebuf, "%lf %lf %lf %lf %lf %lf %lf\n", &time[num_freqs],
-                          &freq[num_freqs], &ampl[num_freqs],
-                          &freq[total_freqs + num_freqs], &ampl[total_freqs + num_freqs],
-                          &freq[2*total_freqs + num_freqs], &ampl[2*total_freqs + num_freqs]);
+        sscanf(linebuf, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n", &time[num_freqs],
+                          &freq[num_freqs], &phase[num_freqs], &ampl[num_freqs],
+                          &freq[total_freqs + num_freqs], &phase[total_freqs + num_freqs], &ampl[total_freqs + num_freqs],
+                          &freq[2*total_freqs + num_freqs], &phase[2*total_freqs + num_freqs], &ampl[2*total_freqs + num_freqs]);
 
         // Convert to seconds
         time[num_freqs] *= 86400;
@@ -1184,7 +1188,7 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
         num_freqs++;
     }
 
-    size_t poly_degree = 5;
+    size_t poly_degree = 10;
     double *ampl_coeffs = (double *)malloc(num_variable_freqs*(poly_degree + 1)*sizeof(double));
     if (!ampl_coeffs)
         error_jump(ampl_coeffs_alloc_error, ret, "Error allocating ampl_coeffs array");
@@ -1192,6 +1196,10 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
     double *freq_coeffs = (double *)malloc(num_variable_freqs*(poly_degree + 1)*sizeof(double));
     if (!freq_coeffs)
         error_jump(freq_coeffs_alloc_error, ret, "Error allocating freq_coeffs array");
+
+    double *phase_coeffs = (double *)malloc(num_variable_freqs*(poly_degree + 1)*sizeof(double));
+    if (!phase_coeffs)
+        error_jump(phase_coeffs_alloc_error, ret, "Error allocating phase_coeffs array");
 
     double *err = (double *)malloc(total_freqs*sizeof(double));
     if (!err)
@@ -1208,6 +1216,10 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
 
         if (fit_polynomial(time, &ampl[i*total_freqs], err, total_freqs, &ampl_coeffs[i*(poly_degree+1)], poly_degree))
             error_jump(poly_fit_error, ret, "Polynomial fit failed");
+        
+        if (fit_polynomial(time, &phase[i*total_freqs], err, total_freqs, &phase_coeffs[i*(poly_degree+1)], poly_degree))
+            error_jump(poly_fit_error, ret, "Polynomial fit failed");
+
 /*
         printf("%f:\n\tfreq ->", freq[i*total_freqs]);
         for (size_t j = poly_degree; j > 0; j--)
@@ -1218,6 +1230,11 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
         for (size_t j = poly_degree; j > 0; j--)
             printf("%.3e t^%zu + ",ampl_coeffs[i*(poly_degree+1) + j], j);
         printf("%.3e\n", ampl_coeffs[i*(poly_degree+1)]);
+
+        printf("%f:\n\tphase ->", freq[i*total_freqs]);
+        for (size_t j = poly_degree; j > 0; j--)
+            printf("%.3e t^%zu + ",phase_coeffs[i*(poly_degree+1) + j], j);
+        printf("%.3e\n", phase_coeffs[i*(poly_degree+1)]);
 */
     }
     
@@ -1239,7 +1256,9 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
     size_t ts_end_index = ts_start_index;
     while (ts_time[ts_end_index++] < time[total_freqs - 1]);
 
-    if (fit_variable_sinusoids(&ts_time[ts_start_index], &ts_mmi[ts_start_index], ts_err, ts_end_index - ts_start_index, freq_coeffs, ampl_coeffs, poly_degree, num_variable_freqs, fitted_ampl))
+    if (fit_variable_sinusoids(&ts_time[ts_start_index], &ts_mmi[ts_start_index], ts_err, ts_end_index - ts_start_index,
+                               freq_coeffs, ampl_coeffs, phase_coeffs, poly_degree,
+                               num_variable_freqs, fitted_ampl))
         error_jump(sin_fit_failed, ret, "Sinusoid fit failed");
 
     for (size_t i = 0; i < num_obs; i++)
@@ -1251,10 +1270,12 @@ int prewhiten_variable_freqs(char *tsfile, char *freqfile)
         for (size_t j = 0; j < num_variable_freqs; j++)
         {
             double freq = evaluate_polynomial(&freq_coeffs[j*(poly_degree + 1)], poly_degree, ts_time[i]);
-            double phase = 2*M_PI*freq*ts_time[i];
-            model += fitted_ampl[2*j]*cos(phase);
-            model += fitted_ampl[2*j+1]*sin(phase);
+            double ampl = evaluate_polynomial(&ampl_coeffs[j*(poly_degree + 1)], poly_degree, ts_time[i]);
+            double phase = 2*M_PI*freq*ts_time[i] + evaluate_polynomial(&phase_coeffs[j*(poly_degree + 1)], poly_degree, ts_time[i]);
+            model += ampl*fitted_ampl[2*j]*cos(phase);
+            model += ampl*fitted_ampl[2*j+1]*sin(phase);
         }
+        fprintf(stderr, "%f %f\n", ts_time[i]/86400, ts_mmi[i] - model);
         printf("%f %f\n", ts_time[i]/86400, model);
     }
 
@@ -1268,12 +1289,16 @@ load_failed_error:
 poly_fit_error:
     free(err);
 err_alloc_error:
+    free(phase_coeffs);
+phase_coeffs_alloc_error:
     free(freq_coeffs);
 freq_coeffs_alloc_error:
     free(ampl_coeffs);
 ampl_coeffs_alloc_error:
     free(ampl);
 ampl_alloc_error:
+    free(phase);
+phase_alloc_error:
     free(freq);
 freq_alloc_error:
     free(time);

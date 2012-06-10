@@ -188,6 +188,7 @@ typedef struct
 {
     double *freq_coeffs;
     double *ampl_coeffs;
+    double *phase_coeffs;
     size_t poly_degree;
 } variable_sinusoidal_fit_params;
 
@@ -197,9 +198,10 @@ static void variable_sinusoidal_fit(double t, double *basis, size_t n, void *par
     for (size_t j = 0; j < n/2; j++)
     {
         double freq = evaluate_polynomial(&p->freq_coeffs[j*(p->poly_degree + 1)], p->poly_degree, t);
-        double phase = 2*M_PI*freq*t;
-        basis[2*j] = cos(phase);
-        basis[2*j+1] = sin(phase);
+        double phase = 2*M_PI*freq*t + evaluate_polynomial(&p->phase_coeffs[j*(p->poly_degree + 1)], p->poly_degree, t);
+        double ampl = evaluate_polynomial(&p->ampl_coeffs[j*(p->poly_degree + 1)], p->poly_degree, t);
+        basis[2*j] = ampl*cos(phase);
+        basis[2*j+1] = ampl*sin(phase);
     }
 }
 
@@ -218,8 +220,13 @@ int fit_sinusoids(double *x, double *y, double *e, size_t n, double *freqs, size
     return fit(x, y, e, n, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
 }
 
-int fit_variable_sinusoids(double *x, double *y, double *e, size_t n, double *freq_coeffs, double *ampl_coeffs, size_t poly_degree, size_t numFreqs,double *amplitudes)
+/*
+ * Fit sinusoids with given frequency, amplitude, and phase described by polynomials
+ */
+int fit_variable_sinusoids(double *x, double *y, double *e, size_t n,
+                           double *freq_coeffs, double *ampl_coeffs, double *phase_coeffs, size_t poly_degree,
+                           size_t numFreqs,double *amplitudes)
 {
-    variable_sinusoidal_fit_params p = {freq_coeffs, ampl_coeffs, poly_degree};
+    variable_sinusoidal_fit_params p = {freq_coeffs, ampl_coeffs, phase_coeffs, poly_degree};
     return fit(x, y, e, n, amplitudes, 2*numFreqs, variable_sinusoidal_fit, &p);
 }

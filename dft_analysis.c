@@ -1351,6 +1351,7 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
             model += sin_ampl*sin(phase);
         }
         printf("%f %f ", ts_time[i]/86400, model);
+        fprintf(stderr, "%f %f\n", ts_time[i]/86400, ts_mmi[i] - model);
 
         // Include amplitude and phase offset for each frequency
         for (size_t j = 0; j < num_freqs; j++)
@@ -1374,7 +1375,7 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
         }
         printf("\n");
     }
-
+/*
     for (size_t i = 0; i < num_freqs; i++)
     {
          printf("%f:\n\tcos -> ", freqs[i]);
@@ -1387,7 +1388,7 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
              printf("%.3e t^%zu + ",ampl_coeffs[(2*i+1)*(poly_degree+1) + j], j);
          printf("%.3e\n", ampl_coeffs[(2*i+1)*(poly_degree+1)]);
     }
-
+*/
     free(last_phase);
 last_phase_alloc_error:
     free(phase_offset);

@@ -561,7 +561,30 @@ load_failed_error:
     return ret;
 }
 
-static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
+static double calculate_polynomial_chi2(double *freqs, size_t num_freqs,
+                                        double *ampl_coeffs, size_t poly_degree,
+                                        double *time, double *mmi, double *err, size_t num_obs)
+{
+    double chi2 = 0;
+    for (size_t i = 0; i < num_obs; i++)
+    {
+        double model = 0;
+        for (size_t j = 0; j < num_freqs; j++)
+        {
+            double cos_ampl = evaluate_polynomial(&ampl_coeffs[2*j*(poly_degree + 1)], poly_degree, time[i]);
+            double sin_ampl = evaluate_polynomial(&ampl_coeffs[(2*j+1)*(poly_degree + 1)], poly_degree, time[i]);
+            double phase = 2*M_PI*freqs[j]*time[i];
+            model += cos_ampl*cos(phase);
+            model += sin_ampl*sin(phase);
+        }
+
+        double t = (mmi[i] - model)/err[i];
+        chi2 += t*t;
+    }
+    return chi2;
+}
+
+static int step_freq(double *fit_freqs, size_t num_freqs, double *ampl_coeffs, size_t poly_degree,
                      double *time, double *mma, double *err, int num_obs,
                      int vary_freq, double centerFreq, double stepSize, int numSteps,
                      double *best_freq, double *best_chi2)
@@ -570,10 +593,11 @@ static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
     {
         fit_freqs[vary_freq] = centerFreq + j*stepSize;
 
-        if (fit_sinusoids(time, mma, err, num_obs, fit_freqs, num_freqs, fit_amplitudes))
+        if (fit_polynomial_sinusoids(time, mma, err, num_obs,
+                                     ampl_coeffs, poly_degree, fit_freqs, num_freqs))
             continue;
 
-        double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, time, mma, err, num_obs);
+        double chi2 = calculate_polynomial_chi2(fit_freqs, num_freqs, ampl_coeffs, poly_degree, time, mma, err, num_obs);
         if (chi2 < *best_chi2)
         {
             *best_chi2 = chi2;
@@ -587,18 +611,18 @@ int nonlinear_fit(char *tsFile, char *freqFile)
 {
     int ret = 0;
 
-    double *time, *mma, *err, *init_freqs, *fit_amplitudes;
+    double *time, *mma, *err, *init_freqs;
     char **freq_labels;
     int *freq_modes;
     size_t num_obs, num_freqs;
 
-    if (load_and_fit_freqs(tsFile, freqFile,
-                           &time, &mma, &err, &num_obs,
-                           &freq_labels, &init_freqs, &fit_amplitudes, &freq_modes, &num_freqs))
-    {
-        error_jump(load_failed_error, ret, "Error processing data");
-    }
+    if (load_tsfile(tsFile, &time, &mma, &err, &num_obs))
+        error_jump(ts_load_failed, ret, "ts load failed");
 
+    if (load_freqfile(freqFile, &freq_labels, &init_freqs, &freq_modes, &num_freqs))
+        error_jump(freq_load_failed, ret, "Freq load failed");
+
+    // Take a copy of the initial frequencies to be modified
     double *fit_freqs = (double *)malloc(num_freqs*sizeof(double));
     if (!fit_freqs)
         error_jump(fit_freqs_alloc_error, ret, "Error allocating fit_freqs");
@@ -606,13 +630,24 @@ int nonlinear_fit(char *tsFile, char *freqFile)
     for (size_t j = 0; j < num_freqs; j++)
         fit_freqs[j] = init_freqs[j];
 
+    // Allocate coefficients array
+    size_t poly_degree = 4;
+    double *ampl_coeffs = (double *)malloc(2*num_freqs*(poly_degree + 1)*sizeof(double));
+    if (!ampl_coeffs)
+        error_jump(ampl_coeffs_alloc_error, ret, "Error allocating ampl_coeffs array");
+
+    // Do an initial fit
+    if (fit_polynomial_sinusoids(time, mma, err, num_obs,
+                                 ampl_coeffs, poly_degree, fit_freqs, num_freqs))
+        error_jump(initial_fit_failed, ret, "Initial fit failed");
+
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
-    double coarse_step = 1e-6;//1.0/(24*3600);
+    double coarse_step = 1e-6; //1.0/(24*3600);
     int coarse_step_count = 5;
     double fine_step = 0.01e-6;
     int fine_step_count = 10;
 
-    double chi2 = calculate_chi2(init_freqs, fit_amplitudes, num_freqs, time, mma, err, num_obs);
+    double chi2 = calculate_polynomial_chi2(fit_freqs, num_freqs, ampl_coeffs, poly_degree, time, mma, err, num_obs);
     double initialchi2 = chi2;
     double lastouterchi2 = chi2;
     double lastchi2 = chi2;
@@ -637,7 +672,8 @@ int nonlinear_fit(char *tsFile, char *freqFile)
             do
             {
                 double last_best_freq = best_freq;
-                if (step_freq(fit_freqs, fit_amplitudes, num_freqs,
+                if (step_freq(fit_freqs, num_freqs,
+                              ampl_coeffs, poly_degree,
                               time, mma, err, num_obs,
                               i, best_freq, step, num_steps,
                               &best_freq, &best_chi2))
@@ -673,16 +709,19 @@ int nonlinear_fit(char *tsFile, char *freqFile)
         printf("%-4s %7.2f %d\n", freq_labels[i], 1e6*fit_freqs[i], freq_modes[i]);
 
 variation_failed_error:
+initial_fit_failed:
+    free(ampl_coeffs);
+ampl_coeffs_alloc_error:
     free(fit_freqs);
 fit_freqs_alloc_error:
     free(freq_labels);
     free(init_freqs);
-    free(fit_amplitudes);
     free(freq_modes);
+freq_load_failed:
     free(time);
     free(mma);
     free(err);
-load_failed_error:
+ts_load_failed:
     return ret;
 }
 

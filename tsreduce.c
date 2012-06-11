@@ -174,6 +174,8 @@ int main( int argc, char *argv[] )
         return prewhiten_variable_freqs(argv[2], argv[3]);
     else if (argc == 4 && strcmp(argv[1], "prewhiten-polynomial") == 0)
         return prewhiten_polynomial_freqs(argv[2], argv[3]);
+    else if (argc == 4 && strcmp(argv[1], "baseline") == 0)
+        return fit_baseline_polynomial(argv[2], atoi(argv[3]));
     else
         error("Invalid args");
     return 0;

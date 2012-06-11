@@ -1406,3 +1406,37 @@ freq_load_error:
 ts_load_error:
     return ret;
 }
+
+int fit_baseline_polynomial(char *tsfile, size_t poly_degree)
+{
+    int ret = 0;
+
+    double *ts_time, *ts_mmi, *ts_err;
+    size_t num_obs;
+
+    if (load_tsfile(tsfile, &ts_time, &ts_mmi, &ts_err, &num_obs))
+        error_jump(ts_load_error, ret, "Error loading data");
+
+    double *coeffs = (double *)malloc((poly_degree + 1)*sizeof(double));
+    if (!coeffs)
+        error_jump(coeffs_alloc_error, ret, "Error allocating coeffs array");
+
+    if (fit_polynomial(ts_time, ts_mmi, ts_err, num_obs, coeffs, poly_degree))
+        error_jump(fit_failed_error, ret, "Polynomial fit failed");
+
+    for (size_t i = 0; i < num_obs; i++)
+    {
+        double model = evaluate_polynomial(coeffs, poly_degree, ts_time[i]);
+        printf("%f %f\n", ts_time[i]/86400, model);
+        fprintf(stderr, "%f %f\n", ts_time[i]/86400, ts_mmi[i] - model);
+    }
+fit_failed_error:
+    free(coeffs);
+coeffs_alloc_error:
+    free(ts_time);
+    free(ts_mmi);
+    free(ts_err);
+ts_load_error:
+    return ret;
+}
+

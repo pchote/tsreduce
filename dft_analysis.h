@@ -19,4 +19,8 @@ int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_coun
 int animated_window(char *tsfile);
 int prewhiten_variable_freqs(char *tsfile, char *freqfile);
 
+int animated_window(char *tsfile);
+int prewhiten_polynomial_freqs(char *tsfile, char *freqfile);
+int fit_baseline_polynomial(char *tsfile, size_t poly_degree);
+
 #endif

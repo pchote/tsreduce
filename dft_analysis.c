@@ -1378,6 +1378,12 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
     if (!last_phase)
         error_jump(last_phase_alloc_error, ret, "Error allocating last_phase array");
 
+    double chi2 = calculate_polynomial_chi2(freqs, num_freqs,
+                                            ampl_coeffs, poly_degree,
+                                            ts_time, ts_mmi, ts_err, num_obs);
+    int dof = num_obs - num_freqs - 2*num_freqs*(poly_degree+1);
+    printf("Chi^2: %f dof: %d; chi^2/dof: %f\n", chi2, dof, chi2/dof);
+    /*
     for (size_t i = 0; i < num_obs; i++)
     {
         double model = 0;
@@ -1414,6 +1420,7 @@ int prewhiten_polynomial_freqs(char *tsfile, char *freqfile)
         }
         printf("\n");
     }
+    */
 /*
     for (size_t i = 0; i < num_freqs; i++)
     {

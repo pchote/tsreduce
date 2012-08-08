@@ -3,3 +3,4 @@ tsreduce
 .wiphistory
 reduction.xcworkspace/xcuserdata/
 .DS_Store
+DerivedData/*

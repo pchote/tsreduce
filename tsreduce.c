@@ -58,9 +58,9 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strncmp(argv[1], "optimizefreqs", 13) == 0)
         return nonlinear_fit(argv[2], argv[3]);
 
-    // `tsreduce mmi foo.dat`
-    else if (argc == 3 && strncmp(argv[1], "mmi", 3) == 0)
-        return create_mmi(argv[2]);
+    // `tsreduce mma foo.dat`
+    else if (argc == 3 && strncmp(argv[1], "mma", 3) == 0)
+        return create_mma(argv[2]);
 
     // `tsreduce reduce-range ec05221.dat 2 15 0.5 ec05221-range`
     else if (argc == 7 && strncmp(argv[1], "reduce-range", 12) == 0)

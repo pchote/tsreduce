@@ -316,14 +316,14 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     gmtime_r(&data->reference_time, &starttime);
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
 
-    double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mmi_d, *ratio_noise_d, *mmi_noise_d, *freq_d, *ampl_d;
-    double ratio_mean, ratio_std, mmi_mean, mmi_std;
+    double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
+    double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
                                      &raw_time_d, &raw_d, &num_raw,
-                                     &time_d, &ratio_d, &polyfit_d, &mmi_d, &num_filtered,
-                                     &ratio_noise_d, &mmi_noise_d,
-                                     &ratio_mean, &ratio_std, &mmi_mean, &mmi_std,
+                                     &time_d, &ratio_d, &polyfit_d, &mma_d, &num_filtered,
+                                     &ratio_noise_d, &mma_noise_d,
+                                     &ratio_mean, &ratio_std, &mma_mean, &mma_std,
                                      &freq_d, &ampl_d, &num_dft))
     {
         datafile_free(data);
@@ -352,13 +352,13 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
     float *ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
     float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
-    float *mmi = cast_double_array_to_float(mmi_d, num_filtered);
-    float *mmi_noise = cast_double_array_to_float(mmi_noise_d, num_filtered);
+    float *mma = cast_double_array_to_float(mma_d, num_filtered);
+    float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
     float *freq = cast_double_array_to_float(freq_d, num_dft);
     float *ampl = cast_double_array_to_float(ampl_d, num_dft);
 
-    float min_mmi = mmi_mean - 5*mmi_std;
-    float max_mmi = mmi_mean + 5*mmi_std;
+    float min_mma = mma_mean - 5*mma_std;
+    float max_mma = mma_mean + 5*mma_std;
     float min_ratio = ratio_mean - 5*ratio_std;
     float max_ratio = ratio_mean + 5*ratio_std;
 
@@ -385,22 +385,22 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgsfs(2);
     cpgscf(2);
 
-    // Fitted MMI
+    // Fitted MMA
     cpgsvp(0.1, 0.9, 0.75, 0.9);
     cpgsch(1.25);
     cpgmtxt("t", 2, 0.5, 0.5, "Time Series Data");
     cpgsch(1.0);
 
     cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
-    cpgswin(min_time, max_time, min_mmi, max_mmi);
+    cpgswin(min_time, max_time, min_mma, max_mma);
     cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
-    cpgswin(0, raw_time[num_raw-1], min_mmi, max_mmi);
+    cpgswin(0, raw_time[num_raw-1], min_mma, max_mma);
 
     if (data->version >= 5)
-        cpgerrb(6, num_filtered, time, mmi, mmi_noise, 0.0);
+        cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
     else
-        cpgpt(num_filtered, time, mmi, 20);
+        cpgpt(num_filtered, time, mma, 20);
 
     // Ratio
     cpgsvp(0.1, 0.9, 0.55, 0.75);
@@ -488,7 +488,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     cpgswin(0, 1, 0, 1);
     char *ampl_label;
-    asprintf(&ampl_label, "Mean amplitude: %.2f mmi", mean_dft_ampl);
+    asprintf(&ampl_label, "Mean amplitude: %.2f mma", mean_dft_ampl);
     cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
     free(ampl_label);
 
@@ -505,7 +505,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     free(time);
     free(ratio);
     free(polyfit);
-    free(mmi);
+    free(mma);
     free(freq);
     free(ampl);
     datafile_free(data);
@@ -518,11 +518,11 @@ int amplitude_spectrum(char *dataPath)
     if (data == NULL)
         return error("Error opening data file");
 
-    double *raw_time, *raw, *time, *ratio, *polyfit, *mmi, *freq, *ampl;
+    double *raw_time, *raw, *time, *ratio, *polyfit, *mma, *freq, *ampl;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
-                                     &time, &ratio, &polyfit, &mmi, &num_filtered,
+                                     &time, &ratio, &polyfit, &mma, &num_filtered,
                                      NULL, NULL,
                                      NULL, NULL, NULL, NULL,
                                      &freq, &ampl, &num_dft))
@@ -539,7 +539,7 @@ int amplitude_spectrum(char *dataPath)
     free(time);
     free(ratio);
     free(polyfit);
-    free(mmi);
+    free(mma);
     free(freq);
     free(ampl);
     datafile_free(data);
@@ -648,14 +648,14 @@ int report_time(char *dataPath)
     if (data == NULL)
         return error("Error opening data file %s", dataPath);
 
-    double *raw_time, *raw, *time, *ratio, *polyfit, *mmi, *ratio_noise, *mmi_noise;
-    double ratio_mean, ratio_std, mmi_mean, mmi_std;
+    double *raw_time, *raw, *time, *ratio, *polyfit, *mma, *ratio_noise, *mma_noise;
+    double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered;
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
-                                     &time, &ratio, &polyfit, &mmi, &num_filtered,
-                                     &ratio_noise, &mmi_noise,
-                                     &ratio_mean, &ratio_std, &mmi_mean, &mmi_std,
+                                     &time, &ratio, &polyfit, &mma, &num_filtered,
+                                     &ratio_noise, &mma_noise,
+                                     &ratio_mean, &ratio_std, &mma_mean, &mma_std,
                                      NULL, NULL, NULL))
     {
         datafile_free(data);
@@ -671,7 +671,7 @@ int report_time(char *dataPath)
     free(time);
     free(ratio);
     free(polyfit);
-    free(mmi);
+    free(mma);
     datafile_free(data);
     return 0;
 }

@@ -27,9 +27,9 @@ int generate_photometry_dft_data(datafile *data,
     // Raw data, unfiltered by blocked ranges
     double **raw_time, double **raw, size_t *num_raw,
     // Filtered data: polynomial fit, ratio, MMI
-    double **time, double **ratio, double **polyfit, double **mmi, size_t *num_filtered,
-    double **ratio_noise, double **mmi_noise,
-    double *ratio_mean_out, double *ratio_std_out, double *mmi_mean_out, double *mmi_std_out,
+    double **time, double **ratio, double **polyfit, double **mma, size_t *num_filtered,
+    double **ratio_noise, double **mma_noise,
+    double *ratio_mean_out, double *ratio_std_out, double *mma_mean_out, double *mma_std_out,
     // Fourier transform; set to NULL to skip calculation
     double **freq, double **ampl, size_t *num_dft)
 {
@@ -129,18 +129,18 @@ int generate_photometry_dft_data(datafile *data,
     if (fit_polynomial(*time, *ratio, *ratio_noise, *num_filtered, coeffs, data->plot_fit_degree))
         error_jump(poly_fit_error, ret, "Polynomial fit failed");
 
-    *mmi = (double *)malloc(*num_filtered*sizeof(double));
-    if (*mmi == NULL)
-        error_jump(mmi_alloc_error, ret, "mmi malloc failed");
+    *mma = (double *)malloc(*num_filtered*sizeof(double));
+    if (*mma == NULL)
+        error_jump(mma_alloc_error, ret, "mma malloc failed");
 
-    *mmi_noise = (double *)malloc(*num_filtered*sizeof(double));
-    if (*mmi_noise == NULL)
-        error_jump(mmi_noise_alloc_error, ret, "ratio malloc failed");
+    *mma_noise = (double *)malloc(*num_filtered*sizeof(double));
+    if (*mma_noise == NULL)
+        error_jump(mma_noise_alloc_error, ret, "ratio malloc failed");
 
-    double mmi_mean = 0;
+    double mma_mean = 0;
     for (int i = 0; i < *num_filtered; i++)
     {
-        // Subtract polynomial fit and convert to mmi
+        // Subtract polynomial fit and convert to mma
         (*polyfit)[i] = 0;
         double pow = 1;
         for (int j = 0; j <= data->plot_fit_degree; j++)
@@ -148,50 +148,50 @@ int generate_photometry_dft_data(datafile *data,
             (*polyfit)[i] += pow*coeffs[j];
             pow *= (*time)[i];
         }
-        (*mmi)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*polyfit)[i];
+        (*mma)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*polyfit)[i];
 
         if (data->version >= 5)
         {
             double numer_error = fabs((*ratio_noise)[i]/((*ratio)[i] - (*polyfit)[i]));
             double denom_error = fabs((*ratio_noise)[i]/(*ratio)[i]);
-            (*mmi_noise)[i] = (numer_error + denom_error)*fabs((*mmi)[i]);
+            (*mma_noise)[i] = (numer_error + denom_error)*fabs((*mma)[i]);
         }
         else
-            (*mmi_noise)[i] = 1;
+            (*mma_noise)[i] = 1;
 
-        mmi_mean += (*mmi)[i];
+        mma_mean += (*mma)[i];
     }
-    mmi_mean /= *num_filtered;
+    mma_mean /= *num_filtered;
 
     // Calculate standard deviation
-    double mmi_std = 0;
+    double mma_std = 0;
     for (int i = 0; i < *num_filtered; i++)
-        mmi_std += ((*mmi)[i] - mmi_mean)*((*mmi)[i] - mmi_mean);
-    mmi_std = sqrt(mmi_std/(*num_filtered));
+        mma_std += ((*mma)[i] - mma_mean)*((*mma)[i] - mma_mean);
+    mma_std = sqrt(mma_std/(*num_filtered));
 
-    double mmi_corrected_mean = 0;
-    int mmi_corrected_count = 0;
+    double mma_corrected_mean = 0;
+    int mma_corrected_count = 0;
 
     // Discard outliers and recalculate mean
     for (int i = 0; i < *num_filtered; i++)
     {
-        if (fabs((*mmi)[i] - mmi_mean) > 3*mmi_std)
+        if (fabs((*mma)[i] - mma_mean) > 3*mma_std)
         {
             error("%f is an outlier, setting to 0", (*time)[i]);
-            (*mmi)[i] = 0;
+            (*mma)[i] = 0;
         }
         else
         {
-            mmi_corrected_mean += (*mmi)[i];
-            mmi_corrected_count++;
+            mma_corrected_mean += (*mma)[i];
+            mma_corrected_count++;
         }
     }
-    mmi_corrected_mean /= mmi_corrected_count;
-    if (mmi_mean_out)
-        *mmi_mean_out = mmi_corrected_mean;
+    mma_corrected_mean /= mma_corrected_count;
+    if (mma_mean_out)
+        *mma_mean_out = mma_corrected_mean;
 
-    if (mmi_std_out)
-        *mmi_std_out = mmi_std;
+    if (mma_std_out)
+        *mma_std_out = mma_std;
 
     // Calculate DFT
     if (freq && ampl && num_dft)
@@ -205,7 +205,7 @@ int generate_photometry_dft_data(datafile *data,
             error_jump(ampl_alloc_error, ret, "ampl malloc failed");
         *num_dft = data->plot_num_uhz;
         calculate_amplitude_spectrum(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6,
-                                           *time, *mmi, *num_filtered,
+                                           *time, *mma, *num_filtered,
                                            *freq, *ampl, *num_dft);
     }
 
@@ -218,12 +218,12 @@ ampl_alloc_error:
     free(*freq);
     *freq = NULL;
 freq_alloc_error:
-    free(*mmi_noise);
-    *mmi_noise = NULL;
-mmi_noise_alloc_error:
-    free(*mmi);
-    *mmi = NULL;
-mmi_alloc_error:
+    free(*mma_noise);
+    *mma_noise = NULL;
+mma_noise_alloc_error:
+    free(*mma);
+    *mma = NULL;
+mma_alloc_error:
 poly_fit_error:
     free(coeffs);
 coeffs_alloc_error:
@@ -1044,21 +1044,21 @@ setup_error:
 }
 
 /*
- * Convert a .dat file to .mmi for analysis with ts3add etc
+ * Convert a .dat file to .mma for analysis with ts3add etc
  */
-int create_mmi(char *dataPath)
+int create_mma(char *dataPath)
 {
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");
 
-    double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mmi, *mmi_noise;
+    double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mma, *mma_noise;
     size_t num_raw, num_filtered;
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &num_raw,
-                                     &time, &ratio, &polyfit, &mmi, &num_filtered,
-                                     &ratio_noise, &mmi_noise,
+                                     &time, &ratio, &polyfit, &mma, &num_filtered,
+                                     &ratio_noise, &mma_noise,
                                      NULL, NULL, NULL, NULL,
                                      NULL, NULL, NULL))
     {
@@ -1074,7 +1074,7 @@ int create_mmi(char *dataPath)
     printf("# Time MMI error\n");
 
     for (int i = 0; i < num_filtered; i++)
-        printf("%f %f %f\n", time[i]/3600.0, mmi[i], mmi_noise[i]);
+        printf("%f %f %f\n", time[i]/3600.0, mma[i], mma_noise[i]);
 
     free(raw_time);
     free(raw);
@@ -1082,8 +1082,8 @@ int create_mmi(char *dataPath)
     free(ratio);
     free(ratio_noise);
     free(polyfit);
-    free(mmi);
-    free(mmi_noise);
+    free(mma);
+    free(mma_noise);
     datafile_free(data);
     return 0;
 }
@@ -1206,12 +1206,12 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
         double2 start_coords = precess(coords, epoch, tmtoyear(&st));
         printf("%s start BJD: %f\n", filenames[i], jdtobjd(start_jd, start_coords));
 
-        double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mmi, *mmi_noise;
+        double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mma, *mma_noise;
         size_t num_raw, num_filtered;
         if (generate_photometry_dft_data(datafiles[i],
                                          &raw_time, &raw, &num_raw,
-                                         &time, &ratio, &polyfit, &mmi, &num_filtered,
-                                         &ratio_noise, &mmi_noise,
+                                         &time, &ratio, &polyfit, &mma, &num_filtered,
+                                         &ratio_noise, &mma_noise,
                                          NULL, NULL, NULL, NULL,
                                          NULL, NULL, NULL))
         {
@@ -1221,7 +1221,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
         for (int j = 0; j < num_filtered; j++)
         {
             double bjd = jdtobjd(start_jd + time[j]/86400, start_coords);
-            fprintf(out,"%f %f %f\n", bjd - reference_bjd, mmi[j], mmi_noise[j]);
+            fprintf(out,"%f %f %f\n", bjd - reference_bjd, mma[j], mma_noise[j]);
             num_saved++;
         }
 
@@ -1231,8 +1231,8 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
         free(ratio);
         free(ratio_noise);
         free(polyfit);
-        free(mmi);
-        free(mmi_noise);
+        free(mma);
+        free(mma_noise);
     }
     printf("Converted %d observations\n", num_saved);
 

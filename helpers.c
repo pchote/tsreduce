@@ -363,10 +363,10 @@ float *cast_double_array_to_float(double *d_ptr, size_t count)
 #define S_Z    0xC
 #define CMP    2
 #define LEN    3
-int tsreduce_versionsort(const void *a, const void *b)
+int ts_versionsort(const struct dirent **a, const struct dirent **b)
 {
-    const unsigned char *p1 = (const unsigned char *) (*(const struct dirent **) a)->d_name;
-    const unsigned char *p2 = (const unsigned char *) (*(const struct dirent **) b)->d_name;
+    const char *p1 = (*a)->d_name;
+    const char *p2 = (*b)->d_name;
     unsigned char c1, c2;
     int state;
     int diff;
@@ -450,7 +450,7 @@ int get_matching_files(const char *pattern, char ***outList)
     // Find the matching files
     // TODO: Use native filehandling functionality under windows
     struct dirent **files;
-    int numFiles = scandir(".", &files, 0, tsreduce_versionsort);
+    int numFiles = scandir(".", &files, 0, ts_versionsort);
     
     char **ret = (char **)malloc(numFiles*sizeof(char*));
     if (ret == NULL)

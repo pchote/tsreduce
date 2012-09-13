@@ -250,7 +250,6 @@ raw_time_alloc_error:
 static time_t get_frame_time(framedata *frame)
 {
     char datebuf[128], timebuf[128], datetimebuf[257];
-    struct tm t;
     if (framedata_has_header_string(frame, "UTC-BEG"))
     {
         framedata_get_header_string(frame, "UTC-DATE", datebuf);
@@ -1045,11 +1044,9 @@ int create_mma(char *dataPath)
     printf("# points = %d; dt = %f\n", (unsigned int)num_filtered, (time[num_filtered-1] - time[0])/3600.0);
     printf("# tgt = %s\n", data->frame_pattern);
 
-    char buf[25];
-    struct tm start_time;
-    ts_gmtime(data->reference_time, &start_time);
-    strftime(buf, 25, "# UT start = %H %M %S\n", &start_time);
-    printf("%s", buf);
+    char buf[20];
+    serialize_time_t(data->reference_time, buf);
+    printf("# UT start = %s\n", buf);
     printf("# Time MMI error\n");
 
     for (int i = 0; i < num_filtered; i++)

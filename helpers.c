@@ -328,6 +328,13 @@ struct tm parse_date_time_tm(const char *date, const char *time)
     return t;
 }
 
+void serialize_time_t(time_t t, char buf[20])
+{
+    struct tm time;
+    ts_gmtime(t, &time);
+    strftime(buf, 20, "%Y-%m-%d %H:%M:%S", &time);
+}
+
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, int len)
 {

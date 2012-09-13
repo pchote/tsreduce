@@ -5,11 +5,7 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
-
-#include <sys/time.h>
-#include <time.h>
 #include <string.h>
-
 #include "datafile.h"
 #include "helpers.h"
 
@@ -255,9 +251,7 @@ int datafile_save_header(datafile *data, char *filename)
     if (data->reference_time)
     {
         char datetimebuf[20];
-        struct tm time;
-        ts_gmtime(data->reference_time, &time);
-        strftime(datetimebuf, 20, "%F %H:%M:%S", &time);
+        serialize_time_t(data->reference_time, datetimebuf);
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
 

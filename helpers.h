@@ -41,5 +41,6 @@ time_t ts_timegm(struct tm *t);
 void ts_gmtime(time_t in, struct tm *out);
 time_t parse_time_t(const char *string);
 struct tm parse_date_time_tm(const char *date, const char *time);
+void serialize_time_t(time_t t, char buf[20]);
 
 #endif

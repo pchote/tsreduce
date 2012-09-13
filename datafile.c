@@ -117,7 +117,7 @@ datafile* datafile_load(char *filename)
         {
             struct tm t;
             strptime(linebuf, "# ReferenceTime: %Y-%m-%d %H:%M:%S\n", &t);
-            dp->reference_time = timegm(&t);
+            dp->reference_time = ts_timegm(&t);
         }
         else if (!strncmp(linebuf,"# Version:", 10))
             sscanf(linebuf, "# Version: %d\n", &dp->version);

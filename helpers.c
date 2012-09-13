@@ -272,6 +272,18 @@ char *realpath(const char *path, char resolved_path[PATH_MAX])
 #include <xpa.h>
 #endif
 
+// Cross platform equivalent of timegm()
+time_t ts_timegm(struct tm *t)
+{
+#ifdef _WIN32
+    return mktime(t);
+#elif defined _WIN64
+    return _mkgmtime(t);
+#else
+    return timegm(t);
+#endif
+}
+
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, int len)
 {

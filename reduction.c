@@ -261,7 +261,7 @@ static time_t get_frame_time(framedata *frame)
         framedata_get_header_string(frame, "GPSTIME", datetimebuf);
 
     strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
-    return timegm(&t);
+    return ts_timegm(&t);
 }
 
 // Prepare a raw flat frame for combining into the master-flat

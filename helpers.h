@@ -36,4 +36,6 @@ char *strndup(const char *s, size_t max);
 char *realpath(const char *path, char resolved_path[PATH_MAX]);
 #endif
 
+time_t ts_timegm(struct tm *t);
+
 #endif

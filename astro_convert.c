@@ -533,7 +533,7 @@ double tmtoyear(struct tm *t)
  */
 double utcttoffset(struct tm *t)
 {
-    time_t ut = timegm(t);
+    time_t ut = ts_timegm(t);
     size_t total = sizeof(leapseconds)/sizeof(leapseconds[0]);
 
     for (int i = total - 2; i >= 0; i -= 2)

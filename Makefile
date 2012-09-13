@@ -17,6 +17,10 @@ endif
 SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c ts_analysis.c astro_convert.c random.c
 OBJ = $(SRC:.c=.o)
 
+ifeq ($(MSYSTEM),MINGW32)
+    CFLAGS += -I/usr/local/include
+    LFLAGS += -L/usr/local/lib
+endif
 
 tsreduce: $(OBJ)
 	$(LINKER) -o $@ $(OBJ) $(LFLAGS)

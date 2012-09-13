@@ -695,17 +695,6 @@ int update_reduction(char *dataPath)
     if (chdir(data->frame_dir))
         error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
 
-    // Compile the filepattern into a regex
-    regex_t regex;
-    int regerr = 0;
-    if ((regerr = regcomp(&regex, data->frame_pattern, REG_EXTENDED | REG_NOSUB)))
-    {
-        char errbuf[1024];
-        regerror(regerr, &regex, errbuf, 1024);
-        error_jump(regex_error, ret,
-            "Error compiling `%s` into a regular expression: %s", data->frame_pattern, errbuf);
-    }
-
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
         error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
@@ -718,24 +707,15 @@ int update_reduction(char *dataPath)
         error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
 
     // Iterate through the files in the directory
+    char **frame_paths;
     int start_obs = data->num_obs;
-    struct dirent **matched;
-    char filename[NAME_MAX];
-    int numMatched = scandir(".", &matched, 0, alphasort);
-    for (int i = 0; i < numMatched; i++)
+    int num_frames = get_matching_files(data->frame_pattern, &frame_paths);
+    for (int i = 0; i < num_frames; i++)
     {
-        strncpy(filename, matched[i]->d_name, NAME_MAX);
-        filename[NAME_MAX-1] = '\0';
-        free(matched[i]);
-
-        // Ignore files that don't match the regex
-        if (regexec(&regex, filename, 0, NULL, 0))
-            continue;
-
         // Check whether the frame has been processed
         int processed = FALSE;
-        for (int i = 0; i < data->num_obs; i++)
-            if (strcmp(filename, data->obs[i].filename) == 0)
+        for (int j = 0; j < data->num_obs; j++)
+            if (strcmp(frame_paths[i], data->obs[j].filename) == 0)
             {
                 processed = TRUE;
                 break;
@@ -744,13 +724,13 @@ int update_reduction(char *dataPath)
         if (processed)
             continue;
 
-        printf("Reducing %s\n", filename);
+        printf("Reducing %s\n", frame_paths[i]);
 
-        framedata *frame = framedata_load(filename);
+        framedata *frame = framedata_load(frame_paths[i]);
         if (!frame)
         {
             framedata_free(frame);
-            error_jump(process_error, ret, "Error loading frame %s", filename);
+            error_jump(process_error, ret, "Error loading frame %s", frame_paths[i]);
         }
         int exptime = framedata_get_header_int(frame, "EXPTIME");
 
@@ -834,8 +814,8 @@ int update_reduction(char *dataPath)
             fprintf(data->file, "%.3e ", ratioNoise);
 
         // Filename
-        fprintf(data->file, "%s\n", filename);
-        strncpy(data->obs[data->num_obs].filename, filename, sizeof(filename));
+        fprintf(data->file, "%s\n", frame_paths[i]);
+        strncpy(data->obs[data->num_obs].filename, frame_paths[i], 64);
         data->num_obs++;
 
         framedata_free(frame);
@@ -844,14 +824,11 @@ int update_reduction(char *dataPath)
     printf("Reduced %d observations\n", data->num_obs - start_obs);
 
 process_error:
-    free(matched);
+    free_2d_array(frame_paths, num_frames);
 
 frame_error:
     framedata_free(flat);
     framedata_free(dark);
-
-regex_error:
-    regfree(&regex);
 
 data_error:
     datafile_free(data);

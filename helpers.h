@@ -10,6 +10,11 @@
 #ifndef HELPERS_H
 #define HELPERS_H
 
+// M_PI isn't defined on windows
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846
+#endif
+
 #define error_jump(label, ret, ...) do { ret = error(__VA_ARGS__); goto label; } while(0)
 
 void free_2d_array(char **array, int len);

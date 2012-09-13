@@ -14,6 +14,110 @@
 #include "helpers.h"
 
 #if (defined _WIN32 || defined _WIN64)
+
+#include <windows.h>
+
+// scandir() for win32
+// this tool should make life easier for people writing for both unix and wintel
+// written by Tom Torfs, 2002/10/31
+// donated to the public domain; use this code for anything you like as long as
+// it is understood there are absolutely *NO* warranties of any kind, even implied
+int scandir(const char *dirname,
+            struct dirent ***namelist,
+            int (*select)(const struct dirent *),
+            int (*compar)(const struct dirent **,
+                          const struct dirent **))
+{
+	WIN32_FIND_DATA wfd;
+	HANDLE hf;
+	struct dirent **plist, **newlist;
+	struct dirent d;
+	int numentries = 0;
+	int allocentries = 255;
+	int i;
+	char path[FILENAME_MAX];
+
+	i = strlen(dirname);
+
+	if (i > sizeof path - 5)
+		return -1;
+
+	strcpy(path, dirname);
+	if (i>0 && dirname[i-1]!='\\' && dirname[i-1]!='/')
+		strcat(path, "\\");
+	strcat(path, "*.*");
+
+	hf = FindFirstFile(path, &wfd);
+	if (hf == INVALID_HANDLE_VALUE)
+		return -1;
+
+	plist = malloc(sizeof *plist * allocentries);
+	if (plist==NULL)
+	{
+		FindClose(hf);
+		return -1;
+	}
+
+	do
+	{
+		if (numentries==allocentries)
+		{
+			allocentries *= 2;
+			newlist = realloc(plist, sizeof *plist * allocentries);
+			if (newlist==NULL)
+			{
+				for (i=0; i<numentries; i++)
+                    free(plist[i]);
+				free(plist);
+				FindClose(hf);
+				return -1;
+			}
+			plist = newlist;
+		}
+
+		strncpy(d.d_name, wfd.cFileName, sizeof d.d_name);
+		d.d_ino = 0;
+		d.d_namlen = strlen(wfd.cFileName);
+		d.d_reclen = sizeof d;
+
+		if (select==NULL || select(&d))
+		{
+			plist[numentries] = malloc(sizeof d);
+			if (plist[numentries]==NULL)
+			{
+				for (i=0; i<numentries; i++)
+                    free(plist[i]);
+				free(plist);
+				FindClose(hf);
+				return -1;
+			};
+			memcpy(plist[numentries], &d, sizeof d);
+			numentries++;
+		}
+	}
+	while (FindNextFile(hf, &wfd));
+
+	FindClose(hf);
+
+	if (numentries==0)
+	{
+		free(plist);
+		*namelist = NULL;
+	}
+	else
+	{
+		newlist = realloc(plist, sizeof *plist * numentries);
+		if (newlist!=NULL)
+            plist = newlist;
+
+		if (compar!=NULL)
+			qsort(plist, numentries, sizeof *plist, compar);
+
+		*namelist = plist;
+	}
+	return numentries;
+}
+
 #else
 #include <xpa.h>
 #endif
@@ -26,9 +130,8 @@ void free_2d_array(char **array, int len)
     free(array);
 }
 
-/*
- * Cast an array of doubles to an array of floats reusing the same memory
- */
+
+// Cast an array of doubles to an array of floats reusing the same memory
 float *cast_double_array_to_float(double *d_ptr, size_t count)
 {
     float *f_ptr = (float *)d_ptr;
@@ -37,10 +140,9 @@ float *cast_double_array_to_float(double *d_ptr, size_t count)
     return f_ptr;
 }
 
-/*
- * versionsort isn't defined on all platforms (e.g osx), so define our own copy
- * Taken from GNU strverscmp.c, licenced under GPLv2 or later
- */
+
+// versionsort isn't defined on all platforms (e.g osx), so define our own copy
+// Taken from GNU strverscmp.c, licenced under GPLv2 or later
 #define ISDIGIT(c) ((unsigned int) (c) - '0' <= 9)
 #define S_N    0x0
 #define S_I    0x4
@@ -56,11 +158,11 @@ int tsreduce_versionsort(const void *a, const void *b)
     int state;
     int diff;
 
-    /* Symbol(s)    0       [1-9]   others  (padding)
-     Transition   (10) 0  (01) d  (00) x  (11) -   */
+    //  Symbol(s)    0       [1-9]   others  (padding)
+    // Transition   (10) 0  (01) d  (00) x  (11) -
     static const unsigned int next_state[] =
     {
-        /* state    x    d    0    - */
+        // state    x    d    0    - 
         /* S_N */  S_N, S_I, S_Z, S_N,
         /* S_I */  S_N, S_I, S_I, S_I,
         /* S_F */  S_N, S_F, S_F, S_F,
@@ -69,8 +171,8 @@ int tsreduce_versionsort(const void *a, const void *b)
 
     static const int result_type[] =
     {
-        /* state   x/x  x/d  x/0  x/-  d/x  d/d  d/0  d/-
-         0/x  0/d  0/0  0/-  -/x  -/d  -/0  -/- */
+        //  state   x/x  x/d  x/0  x/-  d/x  d/d  d/0  d/-
+        // 0/x  0/d  0/0  0/-  -/x  -/d  -/0  -/- 
 
         /* S_N */  CMP, CMP, CMP, CMP, CMP, LEN, CMP, CMP,
         CMP, CMP, CMP, CMP, CMP, CMP, CMP, CMP,
@@ -87,7 +189,7 @@ int tsreduce_versionsort(const void *a, const void *b)
 
     c1 = *p1++;
     c2 = *p2++;
-    /* Hint: '0' is a digit too.  */
+    // Hint: '0' is a digit too.
     state = S_N | ((c1 == '0') + (ISDIGIT (c1) != 0));
 
     while ((diff = c1 - c2) == 0 && c1 != '\0')
@@ -133,6 +235,7 @@ int get_matching_files(const char *pattern, char ***outList)
     }
 
     // Find the matching files
+    // TODO: Use native filehandling functionality under windows
     struct dirent **files;
     int numFiles = scandir(".", &files, 0, tsreduce_versionsort);
     

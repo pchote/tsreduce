@@ -840,8 +840,14 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 {
     int ret = 0;
 
+#if (defined _WIN32 || defined _WIN64)
+    // Windows doesn't support the "x" mode
+    const char *mode = "w";
+#else
     // Non-rigorous test that we won't overwrite an existing file
-    FILE *fileTest = fopen(outname, "wx");
+    const char *mode = "wx";
+#endif
+    FILE *fileTest = fopen(outname, mode);
     if (fileTest == NULL)
         return error("Unable to create data file: %s. Does it already exist?", outname);
     fclose(fileTest);
@@ -890,11 +896,10 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     data->flat_template = strdup(flatTemplate);
 
     {
-        char *command;
-        asprintf(&command, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+        char command[128];
+        snprintf(command, 128, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
         if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
             error_jump(frameload_error, ret, "ds9 command failed: %s", command);
-        free(command);
     }
 
     // Set scaling mode

@@ -577,7 +577,7 @@ int ts_exec_read(const char *cmd, char **output_ptr)
 // Runs an external process and pipes the given data to stdin
 int ts_exec_write(const char *cmd, const void *restrict data, size_t size)
 {
-    FILE *process = popen(cmd, "w");
+    FILE *process = popen(cmd, "wb");
     if (!process)
         return error("Error invoking process: %s", cmd);
 
@@ -590,7 +590,12 @@ int ts_exec_write(const char *cmd, const void *restrict data, size_t size)
 int init_ds9()
 {
     // xpa exit code = 1 if ds9 is available
-    bool available = ts_exec_write("xpaaccess tsreduce > /dev/null", NULL, 0);
+#if (defined _WIN32 || defined _WIN64)
+    const char *test_command = "xpaaccess tsreduce > nul";
+#else
+    const char *test_command = "xpaaccess tsreduce > /dev/null";
+#endif
+    bool available = ts_exec_write(test_command, NULL, 0);
 
     if (!available)
     {
@@ -600,8 +605,12 @@ int init_ds9()
         do
         {
             printf("Waiting...\n");
+#if (defined _WIN32 || defined _WIN64)
+            Sleep(1000);
+#else
             sleep(1);
-            available = ts_exec_write("xpaaccess tsreduce > /dev/null", NULL, 0);
+#endif
+            available = ts_exec_write(test_command, NULL, 0);
         } while (!available);
     }
     return 0;

@@ -168,26 +168,26 @@ datafile* datafile_load(char *filename)
         //
 
         // Time
-        char *ctx;
-        dp->obs[dp->num_obs].time = atof(strtok_r(linebuf, " ", &ctx));
+        // Note: strtok_r is unsupported under windows
+        dp->obs[dp->num_obs].time = atof(strtok(linebuf, " "));
 
         // Target intensity / sky / aperture x / aperture y
         for (int i = 0; i < dp->num_targets; i++)
         {
-            dp->obs[dp->num_obs].star[i] = atof(strtok_r(NULL, " ", &ctx));
-            dp->obs[dp->num_obs].sky[i] = atof(strtok_r(NULL, " ", &ctx));
-            dp->obs[dp->num_obs].pos[i].x = atof(strtok_r(NULL, " ", &ctx));
-            dp->obs[dp->num_obs].pos[i].y = atof(strtok_r(NULL, " ", &ctx));
+            dp->obs[dp->num_obs].star[i] = atof(strtok(NULL, " "));
+            dp->obs[dp->num_obs].sky[i] = atof(strtok(NULL, " "));
+            dp->obs[dp->num_obs].pos[i].x = atof(strtok(NULL, " "));
+            dp->obs[dp->num_obs].pos[i].y = atof(strtok(NULL, " "));
         }
 
         // Ratio
-        dp->obs[dp->num_obs].ratio = atof(strtok_r(NULL, " ", &ctx));
+        dp->obs[dp->num_obs].ratio = atof(strtok(NULL, " "));
 
         if (dp->version >= 5)
-            dp->obs[dp->num_obs].ratio_noise = atof(strtok_r(NULL, " ", &ctx));
+            dp->obs[dp->num_obs].ratio_noise = atof(strtok(NULL, " "));
 
         // Filename
-        strncpy(dp->obs[dp->num_obs].filename, strtok_r(NULL, " ", &ctx),
+        strncpy(dp->obs[dp->num_obs].filename, strtok(NULL, " "),
                 sizeof(dp->obs[dp->num_obs].filename));
 
         // Strip newline

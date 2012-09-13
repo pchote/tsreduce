@@ -258,7 +258,9 @@ int datafile_save_header(datafile *data, char *filename)
     if (data->reference_time)
     {
         char datetimebuf[20];
-        strftime(datetimebuf, 20, "%F %H:%M:%S", gmtime(&data->reference_time));
+        struct tm time;
+        ts_gmtime(data->reference_time, &time);
+        strftime(datetimebuf, 20, "%F %H:%M:%S", &time);
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
 

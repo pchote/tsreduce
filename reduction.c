@@ -1045,8 +1045,11 @@ int create_mma(char *dataPath)
 
     printf("# points = %d; dt = %f\n", (unsigned int)num_filtered, (time[num_filtered-1] - time[0])/3600.0);
     printf("# tgt = %s\n", data->frame_pattern);
+
     char buf[25];
-    strftime(buf, 25, "# UT start = %H %M %S\n", gmtime(&data->reference_time));
+    struct tm start_time;
+    ts_gmtime(data->reference_time, &start_time);
+    strftime(buf, 25, "# UT start = %H %M %S\n", &start_time);
     printf("%s", buf);
     printf("# Time MMI error\n");
 
@@ -1172,7 +1175,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
     {
         // Calculate time offset relative to the reference
         struct tm st;
-        gmtime_r(&datafiles[i]->reference_time, &st);
+        ts_gmtime(datafiles[i]->reference_time, &st);
 
         // Convert from UT to TT
         st.tm_sec += utcttoffset(&t);

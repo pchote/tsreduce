@@ -284,6 +284,18 @@ time_t ts_timegm(struct tm *t)
 #endif
 }
 
+// Cross platform equivalent of gmtime_r()
+void ts_gmtime(time_t in, struct tm *out)
+{
+#ifdef _WIN32
+    *out = *localtime(&in);
+#elif defined _WIN64
+    gmtime_s(&in, out);
+#else
+    gmtime_r(&in, out);
+#endif
+}
+
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, int len)
 {

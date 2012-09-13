@@ -5,10 +5,11 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
-#include <stdarg.h>
-
 #ifndef HELPERS_H
 #define HELPERS_H
+
+#include <stdarg.h>
+#include <time.h>
 
 // M_PI isn't defined on windows
 #ifndef M_PI
@@ -37,5 +38,6 @@ char *realpath(const char *path, char resolved_path[PATH_MAX]);
 #endif
 
 time_t ts_timegm(struct tm *t);
+void ts_gmtime(time_t in, struct tm *out);
 
 #endif

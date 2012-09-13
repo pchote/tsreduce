@@ -310,7 +310,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     // Start time in hours
     struct tm starttime;
-    gmtime_r(&data->reference_time, &starttime);
+    ts_gmtime(data->reference_time, &starttime);
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
 
     double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
@@ -660,7 +660,9 @@ int report_time(char *dataPath)
     }
 
     char datetimebuf[20];
-    strftime(datetimebuf, 20, "%F %H:%M:%S", gmtime(&data->reference_time));
+    struct tm start_time;
+    ts_gmtime(data->reference_time, &start_time);
+    strftime(datetimebuf, 20, "%F %H:%M:%S", &start_time);
     printf("%s %.2f %zu\n", datetimebuf, (time[num_filtered-1] - time[0])/3600, num_filtered);
 
     free(raw_time);

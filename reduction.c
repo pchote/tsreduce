@@ -846,7 +846,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         return error("Unable to create data file: %s. Does it already exist?", outname);
     fclose(fileTest);
 
-    if (!init_ds9("tsreduce"))
+    if (init_ds9())
         return error("Unable to launch ds9");
 
     char pathBuf[PATH_MAX];
@@ -889,26 +889,29 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     framedata_free(flat);
     data->flat_template = strdup(flatTemplate);
 
-    char command[128];
-    snprintf(command, 128, "array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
-    if (tell_ds9("tsreduce", command, frame->data, frame->rows*frame->cols*sizeof(double)))
-        error_jump(frameload_error, ret, "ds9 command failed: %s", command);
-    
+    {
+        char *command;
+        asprintf(&command, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+        if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
+            error_jump(frameload_error, ret, "ds9 command failed: %s", command);
+        free(command);
+    }
+
     // Set scaling mode
-    if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
-        error_jump(frameload_error, ret, "ds9 command failed: scale mode 99.5");
+    if (ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0))
+        error_jump(frameload_error, ret, "ds9 command failed");
     
     // Flip X axis
-    if (tell_ds9("tsreduce", "orient x", NULL, 0))
-        error_jump(frameload_error, ret, "ds9 command failed: orient x");
+    if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
+        error_jump(frameload_error, ret, "ds9 command failed");
 
     printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
     getchar();
-    
+
     char *ds9buf;
-    if (ask_ds9("tsreduce", "regions", &ds9buf) || ds9buf == NULL)
+    if (ts_exec_read("xpaget tsreduce regions", &ds9buf))
         error_jump(frameload_error, ret, "ds9 request regions failed");
-    
+
     // Parse the region definitions
     char *cur = ds9buf;
     double largest_aperture = 0;
@@ -983,24 +986,19 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     printf("Founds %d targets\n", data->num_targets);
     
     // Display results in ds9 - errors are non-fatal
-    snprintf(command, 128, "regions delete all");
-    if (tell_ds9("tsreduce", command, NULL, 0))
-        error("ds9 command failed: %s", command);
-    
+    ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
+
     for (int i = 0; i < data->num_targets; i++)
     {
         double x = data->targets[i].x + 1;
         double y = data->targets[i].y + 1;
-        
-        snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data->targets[i].r);
-        if (tell_ds9("tsreduce", command, NULL, 0))
-            error("ds9 command failed: %s\n", command);
-        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s1);
-        if (tell_ds9("tsreduce", command, NULL, 0))
-            error("ds9 command failed: %s\n", command);
-        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s2);
-        if (tell_ds9("tsreduce", command, NULL, 0))
-            error("ds9 command failed: %s\n", command);
+        char command[128];
+        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #color=red}'", x, y, data->targets[i].r);
+        ts_exec_write(command, NULL, 0);
+        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s1);
+        ts_exec_write(command, NULL, 0);
+        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s2);
+        ts_exec_write(command, NULL, 0);
     }
 
     // Save to disk

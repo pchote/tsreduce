@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <limits.h>
 #include <unistd.h>
@@ -268,8 +269,6 @@ char *realpath(const char *path, char resolved_path[PATH_MAX])
     return return_path;
 }
 
-#else
-#include <xpa.h>
 #endif
 
 // Cross platform equivalent of timegm()
@@ -530,96 +529,82 @@ void die(const char * format, ...)
     exit(1);
 }
 
-static int ds9_available(char *title)
+// Run an external process and return the error code.
+// stdout is a pointer to a string which is allocated to hold the output
+int ts_exec_read(const char *cmd, char **output_ptr)
 {
-#if (defined _WIN32 || defined _WIN64)
-    return 0;
-#else
-    char *names[1];
-    char *errs[1];
-    int valid = XPAAccess(NULL, title, NULL, NULL, names, errs, 1);
-    if (errs[0] != NULL)
+    *output_ptr = NULL;
+
+    FILE *process = popen(cmd, "r");
+    if (!process)
+        return error("Error invoking process: %s", cmd);
+
+    size_t output_size = 512;
+    size_t output_step = 512;
+    char *output = calloc(output_size, sizeof(char));
+    if (!output)
+        return error("Allocation error");
+
+    char buffer[128];
+    while (!feof(process))
     {
-        valid = 0;
-        free(errs[0]);
-    }
-    if (names[0]) free(names[0]);
-
-    return valid;
-#endif
-}
-
-int init_ds9(char *title)
-{
-#if (defined _WIN32 || defined _WIN64)
-    return 0;
-#else
-    if (!ds9_available(title))
-    {
-        char buf[128];
-        snprintf(buf, 128, "ds9 -title %s&", title);
-        system(buf);
-
-        int wait = 0;
-        while (!ds9_available(title))
+        if (fgets(buffer, 128, process) != NULL)
         {
-            if (wait++ == 10)
-                return 0;
+            size_t current_length = strlen(output);
+            size_t append_length = strlen(buffer);
+            size_t new_length = current_length + append_length;
 
-            printf("Waiting for ds9... %d\n", wait);
-            sleep(1);
+            // Increase buffer size
+            if (new_length >= output_size)
+            {
+                while (output_size < new_length)
+                    output_size += output_step;
+                output = realloc(output, output_size*sizeof(char));
+                if (!output)
+                    return error("Allocation error");
+
+                for (size_t i = current_length; i < output_size; i++)
+                    output[i] = '\0';
+            }
+            strcat(output, buffer);
         }
     }
-    return 1;
-#endif
+
+    *output_ptr = output;
+    return pclose(process);
 }
 
-// Send a command to ds9 (with optional data) and ignore any response
-int tell_ds9(char *title, char *command, void *data, int dataSize)
+// Runs an external process and pipes the given data to stdin
+int ts_exec_write(const char *cmd, const void *restrict data, size_t size)
 {
-#if (defined _WIN32 || defined _WIN64)
-    return error("ds9 communication not implemented");
-#else
-    char *names[1];
-    char *errs[1];
-    int valid = XPASet(NULL, title, command, NULL, data, dataSize, names, errs, 1);
-    if (errs[0] != NULL)
-    {
-        valid = 0;
-        printf("Error: %s", errs[0]);
-        free(errs[0]);
-    }
-    if (names[0]) free(names[0]);
-    return !valid;
-#endif
+    FILE *process = popen(cmd, "w");
+    if (!process)
+        return error("Error invoking process: %s", cmd);
+
+    if (size > 0)
+        fwrite(data, size, 1, process);
+
+    return pclose(process);
 }
 
-// Send a command to ds9 and return its response.
-// outbuf is a pointer to a string, which must be later freed by the caller.
-int ask_ds9(char *title, char *command, char **outbuf)
+int init_ds9()
 {
-#if (defined _WIN32 || defined _WIN64)
-    return error("ds9 communication not implemented");
-#else
-    char *names[1];
-    char *errs[1];
-    char *ret[1];
-    int len[1];
+    // xpa exit code = 1 if ds9 is available
+    bool available = ts_exec_write("xpaaccess tsreduce > /dev/null", NULL, 0);
 
-    int valid = XPAGet(NULL, title, command, NULL, ret, len, names, errs, 1);
-
-    if( errs[0] != NULL )
+    if (!available)
     {
-        valid = 0;
-        printf("Error: %s", errs[0]);
-        free(errs[0]);
-    }
-    else
-        *outbuf = ret[0]; // The caller can free this later
+        printf("Starting ds9...\n");
+        ts_exec_write("ds9 -title tsreduce&", NULL, 0);
 
-    if (names[0]) free(names[0]);
-    return !valid;
-#endif
+        do
+        {
+            printf("Waiting...\n");
+            sleep(1);
+            available = ts_exec_write("xpaaccess tsreduce > /dev/null", NULL, 0);
+        } while (!available);
+    }
+    return 0;
 }
 
 // Calculate the amplitude spectrum of the signal defined by numData points in (time, data)

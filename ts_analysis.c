@@ -23,7 +23,7 @@
 // observation index obsIndex over an image frame in ds9
 int display_targets(char *dataPath, int obsIndex)
 {
-    if (!init_ds9("tsreduce"))
+    if (init_ds9())
         return error("Unable to launch ds9");
 
     // Read file header
@@ -43,7 +43,6 @@ int display_targets(char *dataPath, int obsIndex)
         return error("Invalid frame path: %s", data->frame_dir);
     }
 
-    char command[128];
     char *filename = (obsIndex >= 0) ? strdup(data->obs[obsIndex].filename) : get_first_matching_file(data->frame_pattern);
     if (!filename)
     {
@@ -52,17 +51,18 @@ int display_targets(char *dataPath, int obsIndex)
     }
 
     // DS9 errors are nonfatal
-    snprintf(command, 128, "file %s/%s", data->frame_dir, filename);
-    if (tell_ds9("tsreduce", command, NULL, 0))
-        error("ds9 command failed: %s", command);
+    {
+        char *command;
+        asprintf(&command, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
+        ts_exec_write(command, NULL, 0);
+        free(command);
+    }
 
     // Set scaling mode
-    if (tell_ds9("tsreduce", "scale mode 99.5", NULL, 0))
-        error("ds9 command failed: scale mode 99.5");
+    ts_exec_write("xpaset tsreduce scale mode 99.5", NULL, 0);
 
     // Flip X axis
-    if (tell_ds9("tsreduce", "orient x", NULL, 0))
-        error("ds9 command failed: orient x");
+    ts_exec_write("xpaset tsreduce orient x", NULL, 0);
 
     for (int i = 0; i < data->num_targets; i++)
     {
@@ -81,17 +81,13 @@ int display_targets(char *dataPath, int obsIndex)
             y = data->obs[obsIndex].pos[i].y + 1;
         }
 
-        snprintf(command, 128, "regions command {circle %f %f %f #color=red}", x, y, data->targets[i].r);
-        if (tell_ds9("tsreduce", command, NULL, 0))
-            error("ds9 command failed: %s\n", command);
-
-        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s1);
-        if (tell_ds9("tsreduce", command, NULL, 0))
-            error("ds9 command failed: %s\n", command);
-
-        snprintf(command, 128, "regions command {circle %f %f %f #background}", x, y, data->targets[i].s2);
-        if (tell_ds9("tsreduce", command, NULL, 0))
-            error("ds9 command failed: %s\n", command);
+        char command[128];
+        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #color=red}'", x, y, data->targets[i].r);
+        ts_exec_write(command, NULL, 0);
+        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s1);
+        ts_exec_write(command, NULL, 0);
+        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s2);
+        ts_exec_write(command, NULL, 0);
     }
 
     free(filename);

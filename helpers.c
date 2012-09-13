@@ -300,17 +300,30 @@ void ts_gmtime(time_t in, struct tm *out)
 time_t parse_time_t(const char *string)
 {
     struct tm t;
+#if (defined _WIN32 || defined _WIN64)
+    sscanf(string, "%d-%d-%d %d:%d:%d", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec);
+    t.tm_year -= 1900;
+    t.tm_mon -= 1;
+#else
     strptime(string, "%Y-%m-%d %H:%M:%S", &t);
+#endif
     return ts_timegm(&t);
 }
 
 struct tm parse_date_time_tm(const char *date, const char *time)
 {
     struct tm t;
+#if (defined _WIN32 || defined _WIN64)
+    sscanf(date, "%d-%d-%d", &t.tm_year, &t.tm_mon, &t.tm_mday);
+    sscanf(time, "%d:%d:%d", &t.tm_hour, &t.tm_min, &t.tm_sec);
+    t.tm_year -= 1900;
+    t.tm_mon -= 1;
+#else
     char *datetime;
     asprintf(&datetime, "%s %s", date, time);
     strptime(datetime, "%Y-%m-%d %H:%M:%S", &t);
     free(datetime);
+#endif
 
     return t;
 }

@@ -114,11 +114,8 @@ datafile* datafile_load(char *filename)
             }
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
-        {
-            struct tm t;
-            strptime(linebuf, "# ReferenceTime: %Y-%m-%d %H:%M:%S\n", &t);
-            dp->reference_time = ts_timegm(&t);
-        }
+            dp->reference_time = parse_time_t(linebuf+17);
+
         else if (!strncmp(linebuf,"# Version:", 10))
             sscanf(linebuf, "# Version: %d\n", &dp->version);
         else if (!strncmp(linebuf,"# PlotFitDegree:", 16))

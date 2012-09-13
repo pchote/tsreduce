@@ -296,6 +296,25 @@ void ts_gmtime(time_t in, struct tm *out)
 #endif
 }
 
+// Possibly obsoletes timegm?
+time_t parse_time_t(const char *string)
+{
+    struct tm t;
+    strptime(string, "%Y-%m-%d %H:%M:%S", &t);
+    return ts_timegm(&t);
+}
+
+struct tm parse_date_time_tm(const char *date, const char *time)
+{
+    struct tm t;
+    char *datetime;
+    asprintf(&datetime, "%s %s", date, time);
+    strptime(datetime, "%Y-%m-%d %H:%M:%S", &t);
+    free(datetime);
+
+    return t;
+}
+
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, int len)
 {

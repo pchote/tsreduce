@@ -260,8 +260,7 @@ static time_t get_frame_time(framedata *frame)
     else if (framedata_has_header_string(frame, "GPSTIME"))
         framedata_get_header_string(frame, "GPSTIME", datetimebuf);
 
-    strptime(datetimebuf, "%Y-%m-%d %H:%M:%S", &t);
-    return ts_timegm(&t);
+    return parse_time_t(datetimebuf);
 }
 
 // Prepare a raw flat frame for combining into the master-flat
@@ -1083,11 +1082,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
     double dec = (a + b/60 + c/3600)*M_PI/180;
 
     // Generate a struct tm for our reference time
-    struct tm t;
-    char *reference_datetime;
-    asprintf(&reference_datetime, "%s %s", date, time);
-    strptime(reference_datetime, "%F %T", &t);
-    free(reference_datetime);
+    struct tm t = parse_date_time_tm(date, time);
 
     // Convert from UT to TT
     t.tm_sec += utcttoffset(&t);
@@ -1142,10 +1137,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
     double epoch = datafiles[0]->coord_epoch;
 
     // Generate a struct tm for our reference time
-    struct tm t;
-    char *reference_datetime;
-    asprintf(&reference_datetime, "%s %s", reference_date, reference_time);
-    strptime(reference_datetime, "%F %T", &t);
+    struct tm t = parse_date_time_tm(reference_date, reference_time);
 
     // Convert from UT to TT
     t.tm_sec += utcttoffset(&t);
@@ -1162,12 +1154,10 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
 
     // Print file header
     fprintf(out, "# tsreduce create-ts output file\n");
-    fprintf(out, "# Reference time: %s UTC; %f BJD\n", reference_datetime, reference_bjd);
+    fprintf(out, "# Reference time: %s %s UTC; %f BJD\n", reference_date, reference_time, reference_bjd);
     fprintf(out, "# Files:\n");
     for (int i = 0; i < num_datafiles; i++)
         fprintf(out, "#   %s\n", filenames[i]);
-
-    free(reference_datetime);
 
     // Convert data to BJD relative to the reference time
     int num_saved = 0;

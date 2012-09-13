@@ -6,7 +6,7 @@
 CC = gcc
 LINKER = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
-LFLAGS = -lcfitsio -lxpa  -lcpgplot -lpgplot
+LFLAGS = -lcfitsio -lcpgplot -lpgplot
 
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
@@ -20,6 +20,8 @@ OBJ = $(SRC:.c=.o)
 ifeq ($(MSYSTEM),MINGW32)
     CFLAGS += -I/usr/local/include
     LFLAGS += -L/usr/local/lib
+else
+    LFLAGS += -lxpa
 endif
 
 tsreduce: $(OBJ)

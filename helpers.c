@@ -7,12 +7,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <xpa.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <regex.h>
 #include <math.h>
 #include "helpers.h"
+
+#if (defined _WIN32 || defined _WIN64)
+#else
+#include <xpa.h>
+#endif
 
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, int len)
@@ -231,6 +235,9 @@ void die(const char * format, ...)
 
 static int ds9_available(char *title)
 {
+#if (defined _WIN32 || defined _WIN64)
+    return 0;
+#else
     char *names[1];
     char *errs[1];
     int valid = XPAAccess(NULL, title, NULL, NULL, names, errs, 1);
@@ -242,10 +249,14 @@ static int ds9_available(char *title)
     if (names[0]) free(names[0]);
 
     return valid;
+#endif
 }
 
 int init_ds9(char *title)
 {
+#if (defined _WIN32 || defined _WIN64)
+    return 0;
+#else
     if (!ds9_available(title))
     {
         char buf[128];
@@ -263,11 +274,15 @@ int init_ds9(char *title)
         }
     }
     return 1;
+#endif
 }
 
 // Send a command to ds9 (with optional data) and ignore any response
 int tell_ds9(char *title, char *command, void *data, int dataSize)
 {
+#if (defined _WIN32 || defined _WIN64)
+    return error("ds9 communication not implemented");
+#else
     char *names[1];
     char *errs[1];
     int valid = XPASet(NULL, title, command, NULL, data, dataSize, names, errs, 1);
@@ -279,12 +294,16 @@ int tell_ds9(char *title, char *command, void *data, int dataSize)
     }
     if (names[0]) free(names[0]);
     return !valid;
+#endif
 }
 
 // Send a command to ds9 and return its response.
 // outbuf is a pointer to a string, which must be later freed by the caller.
 int ask_ds9(char *title, char *command, char **outbuf)
 {
+#if (defined _WIN32 || defined _WIN64)
+    return error("ds9 communication not implemented");
+#else
     char *names[1];
     char *errs[1];
     char *ret[1];
@@ -303,6 +322,7 @@ int ask_ds9(char *title, char *command, char **outbuf)
 
     if (names[0]) free(names[0]);
     return !valid;
+#endif
 }
 
 // Calculate the amplitude spectrum of the signal defined by numData points in (time, data)

@@ -20,7 +20,7 @@ OBJ = $(SRC:.c=.o)
 ifeq ($(MSYSTEM),MINGW32)
     LINKER = gfortran
     CFLAGS += -I/usr/local/include
-    LFLAGS += -L/usr/local/lib -lgdi32
+    LFLAGS += -L/usr/local/lib -lgdi32 -lregex
 else
     LFLAGS += -lxpa
 endif

@@ -271,8 +271,13 @@ static time_t get_frame_time(framedata *frame)
 // Returns the mean intensity before normalization
 double prepare_flat(framedata *flat, framedata *dark)
 {
-    int flatexp = framedata_get_header_int(flat, "EXPTIME");
-    int darkexp = framedata_get_header_int(dark, "EXPTIME");
+    // TODO: Remove use of die()
+    int flatexp, darkexp;
+    if (framedata_get_header_int(flat, "EXPTIME", &flatexp))
+        die("EXPTIME is undefined in flat frame");
+
+    if (framedata_get_header_int(dark, "EXPTIME", &darkexp))
+        die("EXPTIME is undefined in dark frame");
 
     // Subtract bias
     subtract_bias(flat);
@@ -551,7 +556,10 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     if (!base)
         error_jump(insufficient_frames, ret, "Error loading frame %s", frame_paths[0]);
 
-    int exptime = framedata_get_header_int(base, "EXPTIME");
+    int exptime;
+    if (framedata_get_header_int(base, "EXPTIME", &exptime))
+        error_jump(dark_failed, ret, "EXPTIME undefined in %s", frame_paths[0]);
+
     double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
     if (median_dark == NULL)
         error_jump(dark_failed, ret, "median_dark alloc failed");
@@ -694,14 +702,24 @@ int update_reduction(char *dataPath)
 
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
-        error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
+        error_jump(data_error, ret, "Error loading frame %s", data->flat_template);
 
-    double readnoise = data->ccd_readnoise > 0 ? data->ccd_readnoise : framedata_get_header_dbl(flat, "CCD-READ");
-    double gain = data->ccd_gain > 0 ? data->ccd_gain : framedata_get_header_dbl(flat, "CCD-GAIN");
+    double readnoise, gain;
+    if (framedata_get_header_dbl(flat, "CCD-READ", &readnoise))
+        readnoise = data->ccd_readnoise;
+
+    if (readnoise <= 0)
+        error_jump(flat_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
+
+    if (framedata_get_header_dbl(flat, "CCD-GAIN", &gain))
+        gain = data->ccd_gain;
+
+    if (gain <= 0)
+        error_jump(flat_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
 
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
-        error_jump(frame_error, ret, "Error loading frame %s", data->flat_template);
+        error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
 
     // Iterate through the files in the directory
     char **frame_paths;
@@ -729,7 +747,13 @@ int update_reduction(char *dataPath)
             framedata_free(frame);
             error_jump(process_error, ret, "Error loading frame %s", frame_paths[i]);
         }
-        int exptime = framedata_get_header_int(frame, "EXPTIME");
+
+        int exptime;
+        if (framedata_get_header_int(frame, "EXPTIME", &exptime))
+        {
+            framedata_free(frame);
+            error_jump(process_error, ret, "EXPTIME undefined in %s", frame_paths[i]);
+        }
 
         // Calculate time at the start of the exposure relative to ReferenceTime
         time_t frame_time = get_frame_time(frame);
@@ -822,11 +846,9 @@ int update_reduction(char *dataPath)
 
 process_error:
     free_2d_array(frame_paths, num_frames);
-
-frame_error:
-    framedata_free(flat);
     framedata_free(dark);
-
+flat_error:
+    framedata_free(flat);
 data_error:
     datafile_free(data);
     return ret;

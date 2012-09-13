@@ -88,21 +88,25 @@ framedata *framedata_load(const char *filename)
     return fp;
 }
 
-int framedata_get_header_int(framedata *this, const char *key)
+int framedata_get_header_int(framedata *this, const char *key, int *value)
 {
     int ret, status = 0;
     if (fits_read_key(this->fptr, TINT, key, &ret, NULL, &status))
-        die("framedata_get_header_int failed for key %s", key);
-    return ret;
+        return error("framedata_get_header_int failed for key %s", key);
+
+    *value = ret;
+    return 0;
 }
 
-double framedata_get_header_dbl(framedata *this, const char *key)
+int framedata_get_header_dbl(framedata *this, const char *key, double *value)
 {
     double ret;
     int status = 0;
     if (fits_read_key(this->fptr, TDOUBLE, key, &ret, NULL, &status))
-        die("framedata_get_header_dbl failed for key %s", key);
-    return ret;
+        return error("framedata_get_header_dbl failed for key %s", key);
+
+    *value = ret;
+    return 0;
 }
 
 int framedata_has_header_string(framedata *this, const char *key)

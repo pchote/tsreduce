@@ -18,8 +18,9 @@ SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.
 OBJ = $(SRC:.c=.o)
 
 ifeq ($(MSYSTEM),MINGW32)
+    LINKER = gfortran
     CFLAGS += -I/usr/local/include
-    LFLAGS += -L/usr/local/lib
+    LFLAGS += -L/usr/local/lib -lgdi32
 else
     LFLAGS += -lxpa
 endif

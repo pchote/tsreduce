@@ -15,7 +15,7 @@
 void free_2d_array(char **array, int len);
 float *cast_double_array_to_float(double *d_ptr, size_t count);
 int get_matching_files(const char *pattern, char ***files);
-int get_first_matching_file(char *pattern, char *filenamebuf, int buflen);
+char *get_first_matching_file(char *pattern);
 int compare_double(const void *a, const void *b);
 int error(const char * format, ...);
 void die(const char * format, ...) __attribute__ ((noreturn));

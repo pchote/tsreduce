@@ -678,7 +678,6 @@ load_error:
     return ret;
 }
 
-
 // Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {
@@ -839,14 +838,14 @@ data_error:
 // Create a reduction file at filePath, with frames from the dir framePath
 // matching the regex framePattern, with dark and flat frames given by
 // darkTemplate and flatTemplate
-int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *filename)
+int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *outname)
 {
     int ret = 0;
 
     // Non-rigorous test that we won't overwrite an existing file
-    FILE *fileTest = fopen(filename, "wx");
+    FILE *fileTest = fopen(outname, "wx");
     if (fileTest == NULL)
-        return error("Unable to create data file: %s. Does it already exist?", filename);
+        return error("Unable to create data file: %s. Does it already exist?", outname);
     fclose(fileTest);
 
     if (!init_ds9("tsreduce"))
@@ -863,15 +862,15 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         error_jump(setup_error, ret, "Invalid frame path: %s", pathBuf);
     data->frame_dir = strdup(pathBuf);
     
-    char filenamebuf[NAME_MAX];
-    if (!get_first_matching_file(framePattern, filenamebuf, NAME_MAX))
+    char *filename = get_first_matching_file(framePattern);
+    if (!filename)
         error_jump(setup_error, ret, "No matching files found");
     data->frame_pattern = strdup(framePattern);
     
     // Open the file to find the reference time
-    framedata *frame = framedata_load(filenamebuf);
+    framedata *frame = framedata_load(filename);
     if (!frame)
-        error_jump(frameload_error, ret, "Error loading frame %s", filenamebuf);
+        error_jump(frameload_error, ret, "Error loading frame %s", filename);
 
     subtract_bias(frame);
     data->reference_time = get_frame_time(frame);
@@ -1010,11 +1009,12 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     if (chdir(datadir))
         error_jump(aperture_converge_error, ret, "Invalid data path: %s", datadir);
 
-    datafile_save_header(data, filename);
+    datafile_save_header(data, outname);
 aperture_converge_error:
     free(ds9buf);
 frameload_error:
     framedata_free(frame);
+    free(filename);
 setup_error:
     datafile_free(data);
     return ret;

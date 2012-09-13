@@ -44,18 +44,15 @@ int display_targets(char *dataPath, int obsIndex)
     }
 
     char command[128];
-    char filenamebuf[NAME_MAX];
-    filenamebuf[0] = '\0';
-    if (obsIndex >= 0)
-        strncpy(filenamebuf, data->obs[obsIndex].filename, NAME_MAX);
-    else if (!get_first_matching_file(data->frame_pattern, filenamebuf, NAME_MAX))
+    char *filename = (obsIndex >= 0) ? strdup(data->obs[obsIndex].filename) : get_first_matching_file(data->frame_pattern);
+    if (!filename)
     {
         datafile_free(data);
         return error("No matching files found");
     }
 
     // DS9 errors are nonfatal
-    snprintf(command, 128, "file %s/%s", data->frame_dir, filenamebuf);
+    snprintf(command, 128, "file %s/%s", data->frame_dir, filename);
     if (tell_ds9("tsreduce", command, NULL, 0))
         error("ds9 command failed: %s", command);
 
@@ -97,6 +94,7 @@ int display_targets(char *dataPath, int obsIndex)
             error("ds9 command failed: %s\n", command);
     }
 
+    free(filename);
     datafile_free(data);
     return 0;
 }
@@ -118,15 +116,13 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     if (chdir(data->frame_dir))
         error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
 
-    char filenamebuf[NAME_MAX];
-    if (obsIndex >= 0)
-        strncpy(filenamebuf, data->obs[obsIndex].filename, NAME_MAX);
-    else if (!get_first_matching_file(data->frame_pattern, filenamebuf, NAME_MAX))
+    char *filename = (obsIndex >= 0) ? strdup(data->obs[obsIndex].filename) : get_first_matching_file(data->frame_pattern);
+    if (!filename)
         error_jump(setup_error, ret, "No matching files found");
 
-    framedata *frame = framedata_load(filenamebuf);
+    framedata *frame = framedata_load(filename);
     if (!frame)
-        error_jump(setup_error, ret, "Error loading frame %s", filenamebuf);
+        error_jump(setup_error, ret, "Error loading frame %s", filename);
     subtract_bias(frame);
 
     framedata *dark = framedata_load(data->dark_template);
@@ -250,6 +246,7 @@ flat_error:
     framedata_free(dark);
 dark_error:
     framedata_free(frame);
+    free(filename);
 setup_error:
     datafile_free(data);
     return ret;

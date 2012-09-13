@@ -169,37 +169,18 @@ int get_matching_files(const char *pattern, char ***outList)
     return numMatched;
 }
 
-// Find the filename of the first file that (alphabetically) matches the given regex pattern
-// Result is copied into filenamebuf. Returns 1 on success, 0 on failure.
-int get_first_matching_file(char *pattern, char *filenamebuf, int buflen)
+// Find the filename of the first file that matches the given regex pattern
+// Returns an allocated string, or NULL on failure
+char *get_first_matching_file(char *pattern)
 {
-    // Compile the pattern into a regex
-    regex_t regex;
-    int regerr = 0;
-    if ((regerr = regcomp(&regex, pattern, REG_EXTENDED | REG_NOSUB)))
-    {
-        char errbuf[1024];
-        regerror(regerr, &regex, errbuf, 1024);
-        return error("Error compiling `%s` into a regular expression: %s", pattern, errbuf);
-    }
+    char **frame_paths;
+    int num_frames = get_matching_files(pattern, &frame_paths);
+    if (num_frames <= 0)
+        return NULL;
 
-    // Find the first matching file
-    struct dirent **matched;
-    int numMatched = scandir(".", &matched, 0, alphasort);
-    int found = 0;
-    for (int i = 0; i < numMatched; i++)
-    {
-        if (!found && !regexec(&regex, matched[i]->d_name, 0, NULL, 0))
-        {
-            found = 1;
-            strncpy(filenamebuf, matched[i]->d_name, buflen);
-            filenamebuf[NAME_MAX-1] = '\0';
-        }
-        free(matched[i]);
-    }
-    free(matched);
-    regfree(&regex);
-    return found;
+    char *match = strdup(frame_paths[0]);
+    free_2d_array(frame_paths, num_frames);
+    return match;
 }
 
 // qsort() doubles in ascending order

@@ -16,6 +16,19 @@
     #define M_PI 3.14159265358979323846
 #endif
 
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#define strdup _strdup
+
+#if defined(_USE_32BIT_TIME_T)
+#define _gmtime_s _gmtime32_s
+#else
+#define _gmtime_s _gmtime64_s
+#endif
+
+#endif
+
 #define error_jump(label, ret, ...) do { ret = error(__VA_ARGS__); goto label; } while(0)
 
 void free_2d_array(char **array, int len);

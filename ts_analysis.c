@@ -666,9 +666,7 @@ int report_time(char *dataPath)
     }
 
     char datetimebuf[20];
-    struct tm start_time;
-    ts_gmtime(data->reference_time, &start_time);
-    strftime(datetimebuf, 20, "%F %H:%M:%S", &start_time);
+    serialize_time_t(data->reference_time, datetimebuf);
     printf("%s %.2f %zu\n", datetimebuf, (time[num_filtered-1] - time[0])/3600, num_filtered);
 
     free(raw_time);

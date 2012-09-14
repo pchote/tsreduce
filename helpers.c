@@ -178,7 +178,7 @@ time_t ts_timegm(struct tm *t)
 // Cross platform equivalent of realpath()
 char *canonicalize_path(const char *path)
 {
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
     char pathBuf[MAX_PATH], *ptr;
     GetFullPathName(path, MAX_PATH, pathBuf, &ptr);
 #else
@@ -188,12 +188,11 @@ char *canonicalize_path(const char *path)
     return strdup(pathBuf);
 }
 
-
 // Cross platform equivalent of gmtime_r()
 void ts_gmtime(time_t in, struct tm *out)
 {
 #ifdef _WIN64
-    gmtime_s(&in, out);
+    _gmtime_s(out, &in);
 #elif defined _WIN32
     *out = *localtime(&in);
 #else
@@ -440,12 +439,7 @@ void die(const char * format, ...)
 int ts_exec_read(const char *cmd, char **output_ptr)
 {
     *output_ptr = NULL;
-
-#if (defined _WIN32)
-    FILE *process = _popen(cmd, "r");
-#else
     FILE *process = popen(cmd, "r");
-#endif
     if (!process)
         return error("Error invoking read process: %s", cmd);
 
@@ -481,32 +475,25 @@ int ts_exec_read(const char *cmd, char **output_ptr)
     }
 
     *output_ptr = output;
-#if (defined _WIN32)
-    return _pclose(process);
-#else
     return pclose(process);
-#endif
 }
 
 // Runs an external process and pipes the given data to stdin
 int ts_exec_write(const char *cmd, const void *restrict data, size_t size)
 {
 #if (defined _WIN32)
-    FILE *process = _popen(cmd, "wb");
+    const char *mode = "wb";
 #else
-    FILE *process = popen(cmd, "w");
+    const char *mode = "w";
 #endif
+    FILE *process = popen(cmd, mode);
     if (!process)
         return error("Error invoking write process: %s", cmd);
 
     if (size > 0)
         fwrite(data, size, 1, process);
 
-#if (defined _WIN32)
-    return _pclose(process);
-#else
     return pclose(process);
-#endif
 }
 
 int init_ds9()

@@ -854,7 +854,6 @@ data_error:
     return ret;
 }
 
-
 // Create a reduction file at filePath, with frames from the dir framePath
 // matching the regex framePattern, with dark and flat frames given by
 // darkTemplate and flatTemplate
@@ -877,8 +876,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
     if (init_ds9())
         return error("Unable to launch ds9");
 
-    char pathBuf[PATH_MAX];
-    realpath(framePath, pathBuf);
+    char *pathBuf = canonicalize_path(framePath);
     datafile *data = datafile_alloc();
 
     // Store the current directory so we can return before saving the data file

@@ -36,9 +36,9 @@ void calculate_amplitude_spectrum_float(float fmin, float fmax, float *time, flo
 int vasprintf (char **resultp, const char *format, va_list args);
 int asprintf(char **resultp, const char *format, ...);
 char *strndup(const char *s, size_t max);
-char *realpath(const char *path, char resolved_path[]);
 #endif
 
+char *canonicalize_path(const char *path);
 time_t ts_timegm(struct tm *t);
 void ts_gmtime(time_t in, struct tm *out);
 time_t parse_time_t(const char *string);

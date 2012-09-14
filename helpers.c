@@ -14,8 +14,7 @@
 #include <math.h>
 #include "helpers.h"
 
-#if (defined _WIN32 || defined _WIN64)
-
+#if (defined _WIN32)
 #include <windows.h>
 #include <errno.h>
 #include <sys/time.h>
@@ -269,15 +268,37 @@ char *realpath(const char *path, char resolved_path[PATH_MAX])
     return return_path;
 }
 
+// Defined in 64bit MinGW, but not 32bit
+#ifndef _WIN64
+int vasprintf(char **bufptr, const char *fmt, va_list args)
+{
+    // Get length
+    int len = vsnprintf(NULL, 0, fmt, args);
+    if (len < 0 || (*bufptr = malloc(len + 1)) == NULL)
+        return -1;
+
+    return vsprintf(*bufptr, fmt, args);
+}
+
+int asprintf(char **bufptr, const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int ret = vasprintf(bufptr, fmt, args);
+    va_end(args);
+    return ret;
+}
+#endif
+
 #endif
 
 // Cross platform equivalent of timegm()
 time_t ts_timegm(struct tm *t)
 {
-#ifdef _WIN32
-    return mktime(t);
-#elif defined _WIN64
+#ifdef _WIN64
     return _mkgmtime(t);
+#elif defined _WIN32
+    return mktime(t);
 #else
     return timegm(t);
 #endif
@@ -286,10 +307,10 @@ time_t ts_timegm(struct tm *t)
 // Cross platform equivalent of gmtime_r()
 void ts_gmtime(time_t in, struct tm *out)
 {
-#ifdef _WIN32
-    *out = *localtime(&in);
-#elif defined _WIN64
+#ifdef _WIN64
     gmtime_s(&in, out);
+#elif defined _WIN32
+    *out = *localtime(&in);
 #else
     gmtime_r(&in, out);
 #endif
@@ -299,7 +320,7 @@ void ts_gmtime(time_t in, struct tm *out)
 time_t parse_time_t(const char *string)
 {
     struct tm t;
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
     sscanf(string, "%d-%d-%d %d:%d:%d", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec);
     t.tm_year -= 1900;
     t.tm_mon -= 1;
@@ -312,7 +333,7 @@ time_t parse_time_t(const char *string)
 struct tm parse_date_time_tm(const char *date, const char *time)
 {
     struct tm t;
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
     sscanf(date, "%d-%d-%d", &t.tm_year, &t.tm_mon, &t.tm_mday);
     sscanf(time, "%d:%d:%d", &t.tm_hour, &t.tm_min, &t.tm_sec);
     t.tm_year -= 1900;
@@ -535,9 +556,13 @@ int ts_exec_read(const char *cmd, char **output_ptr)
 {
     *output_ptr = NULL;
 
+#if (defined _WIN32)
+    FILE *process = _popen(cmd, "r");
+#else
     FILE *process = popen(cmd, "r");
+#endif
     if (!process)
-        return error("Error invoking process: %s", cmd);
+        return error("Error invoking read process: %s", cmd);
 
     size_t output_size = 512;
     size_t output_step = 512;
@@ -571,26 +596,38 @@ int ts_exec_read(const char *cmd, char **output_ptr)
     }
 
     *output_ptr = output;
+#if (defined _WIN32)
+    return _pclose(process);
+#else
     return pclose(process);
+#endif
 }
 
 // Runs an external process and pipes the given data to stdin
 int ts_exec_write(const char *cmd, const void *restrict data, size_t size)
 {
-    FILE *process = popen(cmd, "wb");
+#if (defined _WIN32)
+    FILE *process = _popen(cmd, "wb");
+#else
+    FILE *process = popen(cmd, "w");
+#endif
     if (!process)
-        return error("Error invoking process: %s", cmd);
+        return error("Error invoking write process: %s", cmd);
 
     if (size > 0)
         fwrite(data, size, 1, process);
 
+#if (defined _WIN32)
+    return _pclose(process);
+#else
     return pclose(process);
+#endif
 }
 
 int init_ds9()
 {
     // xpa exit code = 1 if ds9 is available
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
     const char *test_command = "xpaaccess tsreduce > nul";
 #else
     const char *test_command = "xpaaccess tsreduce > /dev/null";
@@ -605,7 +642,7 @@ int init_ds9()
         do
         {
             printf("Waiting...\n");
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
             Sleep(1000);
 #else
             sleep(1);

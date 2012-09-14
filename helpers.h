@@ -32,9 +32,11 @@ int init_ds9();
 void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *data, int numData, double *outFreq, double *outAmpl, int numOut);
 void calculate_amplitude_spectrum_float(float fmin, float fmax, float *time, float *data, int numData, float *outFreq, float *outAmpl, int numOut);
 
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
+int vasprintf (char **resultp, const char *format, va_list args);
+int asprintf(char **resultp, const char *format, ...);
 char *strndup(const char *s, size_t max);
-char *realpath(const char *path, char resolved_path[PATH_MAX]);
+char *realpath(const char *path, char resolved_path[]);
 #endif
 
 time_t ts_timegm(struct tm *t);

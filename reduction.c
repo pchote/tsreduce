@@ -862,7 +862,7 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
 {
     int ret = 0;
 
-#if (defined _WIN32 || defined _WIN64)
+#if (defined _WIN32)
     // Windows doesn't support the "x" mode
     const char *mode = "w";
 #else

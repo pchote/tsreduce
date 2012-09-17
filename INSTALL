@@ -1,0 +1,79 @@
+
+Windows:
+
+This assumes that MinGW, git etc are set up as instructed for the puoko-nui acquisition program
+
+The home directory path "~" below refers to the MinGW home directory
+
+Download the mingw regex library from http://sourceforge.net/projects/mingw/files/Other/UserContributed/regex/mingw-regex-2.5.1/
+Extract, ./configure, make, and install
+
+Download the original PGPLOT 5.2.2 code from ftp://ftp.astro.caltech.edu/pub/pgplot/pgplot522.tar.gz and extract to ~/pgplot
+
+Download the PGPLOT patch for windows 7 from http://www.ii.uib.no/~avle/pgplot.html
+Extract the files in patchfor522.zip on top of ~/pgplot
+
+======== 32-bit MinGW only ========
+Install gfortran by running the following command from the MinGW shell
+$ mingw-get install fortran
+
+Insert the following code in ~/pgplot/sys/gruser.c between the lines "char *getlogin();" and "void GRUSER(string, length, maxlen)"
+
+#if defined __MINGW32__ && !defined HAVE_GETLOGIN
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <lmcons.h> /* for UNLEN */
+
+static char *
+w32_getlogin (void)
+{
+	static char name [UNLEN + 1];
+	DWORD namelen = sizeof (name);
+
+	GetUserName (name, &namelen);
+	return (name[0] == 0 ? NULL : name);
+}
+
+#undef getlogin
+#define getlogin w32_getlogin
+#define HAVE_GETLOGIN 1
+#endif
+
+The dll path for libgfortran-3 is broken, so copy the dlls to somewhere more useful
+TODO: copy dlls to /usr/local/bin
+
+======== End 32-bit MinGW only ========
+======== 64-bit MinGW only ========
+
+The dll path for libgfortran-3 is broken, so copy the dlls to somewhere more useful
+cp /mingw/x86_64-w64-mingw32/lib/*.dll /usr/local/bin
+
+======== End 64-bit MinGW only ========
+
+TODO: Copy dlls to tsreduce folder so it can be run from windows
+
+Create a dir ~/pgplot-5.2 and cd into it
+Copy the new drivers.list into ~/pgplot-5.2
+The following should run without problems
+
+../pgplot/makemake ../pgplot win7
+make
+make cpg
+
+Install the library by copying the files:
+cp libpgplot.a libcpgplot.a /usr/local/lib
+cp libcpgplot.a /usr/local/lib
+cp cpgplot.h /usr/local/include
+mkdir /usr/local/share/pgplot
+cp grfont.dat rgb.txt /usr/local/share/pgplot
+
+Set PGPLOT_DIR environment variable in ~/.profile by appending the line
+export PGPLOT_DIR=/usr/local/share/pgplot
+
+Return to the home directory and checkout the tsreduce code
+git clone https://github.com/pchote/tsreduce.git
+cd tsreduce
+make
+
+Every other platform
+TODO

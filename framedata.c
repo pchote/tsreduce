@@ -92,7 +92,7 @@ int framedata_get_header_int(framedata *this, const char *key, int *value)
 {
     int ret, status = 0;
     if (fits_read_key(this->fptr, TINT, key, &ret, NULL, &status))
-        return error("framedata_get_header_int failed for key %s", key);
+        return 1;
 
     *value = ret;
     return 0;
@@ -103,7 +103,7 @@ int framedata_get_header_dbl(framedata *this, const char *key, double *value)
     double ret;
     int status = 0;
     if (fits_read_key(this->fptr, TDOUBLE, key, &ret, NULL, &status))
-        return error("framedata_get_header_dbl failed for key %s", key);
+        return 1;
 
     *value = ret;
     return 0;

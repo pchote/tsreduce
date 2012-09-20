@@ -53,7 +53,7 @@ int display_targets(char *dataPath, int obsIndex)
     // DS9 errors are nonfatal
     {
         char *command;
-        asprintf(&command, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
+        ts_asprintf(&command, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
         ts_exec_write(command, NULL, 0);
         free(command);
     }
@@ -441,7 +441,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgswin(0, 1, 0, 1);
     cpgsci(1);
     char *snr_label;
-    asprintf(&snr_label, "Ratio SNR: %.2f", snr_ratio);
+    ts_asprintf(&snr_label, "Ratio SNR: %.2f", snr_ratio);
     cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
     free(snr_label);
     cpgend();
@@ -491,7 +491,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     cpgswin(0, 1, 0, 1);
     char *ampl_label;
-    asprintf(&ampl_label, "Mean amplitude: %.2f mma", mean_dft_ampl);
+    ts_asprintf(&ampl_label, "Mean amplitude: %.2f mma", mean_dft_ampl);
     cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
     free(ampl_label);
 
@@ -569,7 +569,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
             data->targets[i].r = radius;
 
         char *filename;
-        asprintf(&filename, "%s-%0.2f.dat", prefix, radius);
+        ts_asprintf(&filename, "%s-%0.2f.dat", prefix, radius);
 
         chdir(dir);
         // Errors are non-fatal -> proceeed to the next file

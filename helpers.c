@@ -139,9 +139,10 @@ char *strndup(const char *s, size_t max)
     return ret;
 }
 
+#endif
+
 // Defined in 64bit MinGW, but not 32bit
-#ifndef _WIN64
-int vasprintf(char **bufptr, const char *fmt, va_list args)
+int ts_vasprintf(char **bufptr, const char *fmt, va_list args)
 {
     // Get length
     int len = vsnprintf(NULL, 0, fmt, args);
@@ -151,17 +152,14 @@ int vasprintf(char **bufptr, const char *fmt, va_list args)
     return vsprintf(*bufptr, fmt, args);
 }
 
-int asprintf(char **bufptr, const char *fmt, ...)
+int ts_asprintf(char **bufptr, const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
-    int ret = vasprintf(bufptr, fmt, args);
+    int ret = ts_vasprintf(bufptr, fmt, args);
     va_end(args);
     return ret;
 }
-#endif
-
-#endif
 
 // Cross platform equivalent of timegm()
 time_t ts_timegm(struct tm *t)
@@ -224,7 +222,7 @@ struct tm parse_date_time_tm(const char *date, const char *time)
     t.tm_mon -= 1;
 #else
     char *datetime;
-    asprintf(&datetime, "%s %s", date, time);
+    ts_asprintf(&datetime, "%s %s", date, time);
     strptime(datetime, "%Y-%m-%d %H:%M:%S", &t);
     free(datetime);
 #endif

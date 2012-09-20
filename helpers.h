@@ -46,10 +46,11 @@ void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *d
 void calculate_amplitude_spectrum_float(float fmin, float fmax, float *time, float *data, int numData, float *outFreq, float *outAmpl, int numOut);
 
 #if (defined _WIN32)
-int vasprintf (char **resultp, const char *format, va_list args);
-int asprintf(char **resultp, const char *format, ...);
 char *strndup(const char *s, size_t max);
 #endif
+
+int ts_vasprintf (char **resultp, const char *format, va_list args);
+int ts_asprintf(char **resultp, const char *format, ...);
 
 char *canonicalize_path(const char *path);
 time_t ts_timegm(struct tm *t);

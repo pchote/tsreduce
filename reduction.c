@@ -489,7 +489,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     fitsfile *out;
     int status = 0;
     char *outbuf;
-    asprintf(&outbuf, "!%s", outname);
+    ts_asprintf(&outbuf, "!%s", outname);
     fits_create_file(&out, outbuf, &status);
     free(outbuf);
 
@@ -895,7 +895,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             prompt_user_input("Enter dark prefix", "dark", inputbuf, 1024);
-            asprintf(&dark_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+            ts_asprintf(&dark_pattern, "%s-[0-9]+.fits.gz", inputbuf);
 
             char **dark_filenames;
             num_darks = get_matching_files(dark_pattern, &dark_filenames);
@@ -913,7 +913,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             char *fallback;
-            asprintf(&fallback, "%d", num_darks/2);
+            ts_asprintf(&fallback, "%d", num_darks/2);
             prompt_user_input("Enter number of darks around median to average", fallback, inputbuf, 1024);
             free(fallback);
 
@@ -945,7 +945,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             prompt_user_input("Enter flat prefix", "flat", inputbuf, 1024);
-            asprintf(&flat_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+            ts_asprintf(&flat_pattern, "%s-[0-9]+.fits.gz", inputbuf);
 
             char **flat_filenames;
             num_flats = get_matching_files(flat_pattern, &flat_filenames);
@@ -963,7 +963,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             char *fallback;
-            asprintf(&fallback, "%d", num_flats/2);
+            ts_asprintf(&fallback, "%d", num_flats/2);
             prompt_user_input("Enter number of flats around median to average", fallback, inputbuf, 1024);
             free(fallback);
 
@@ -986,7 +986,7 @@ int create_reduction_file(char *outname)
     while (true)
     {
         prompt_user_input("Enter target prefix", NULL, inputbuf, 1024);
-        asprintf(&data->frame_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+        ts_asprintf(&data->frame_pattern, "%s-[0-9]+.fits.gz", inputbuf);
 
         preview_filename = get_first_matching_file(data->frame_pattern);
         if (preview_filename)

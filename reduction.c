@@ -857,63 +857,169 @@ data_error:
 // Create a reduction file at filePath, with frames from the dir framePath
 // matching the regex framePattern, with dark and flat frames given by
 // darkTemplate and flatTemplate
-int create_reduction_file(char *framePath, char *framePattern, char *darkTemplate, char *flatTemplate, char *outname)
+int create_reduction_file(char *outname)
 {
     int ret = 0;
 
-#if (defined _WIN32)
-    // Windows doesn't support the "x" mode
-    const char *mode = "w";
-#else
-    // Non-rigorous test that we won't overwrite an existing file
-    const char *mode = "wx";
-#endif
-    FILE *fileTest = fopen(outname, mode);
+    FILE *fileTest = fopen(outname, "w");
     if (fileTest == NULL)
         return error("Unable to create data file: %s. Does it already exist?", outname);
     fclose(fileTest);
 
-    if (init_ds9())
-        return error("Unable to launch ds9");
-
-    char *pathBuf = canonicalize_path(framePath);
     datafile *data = datafile_alloc();
 
     // Store the current directory so we can return before saving the data file
     char *datadir = getcwd(NULL, 0);
+    char inputbuf[1024];
 
-    if (chdir(pathBuf))
-        error_jump(setup_error, ret, "Invalid frame path: %s", pathBuf);
-    data->frame_dir = strdup(pathBuf);
+    while (true)
+    {
+        prompt_user_input("Enter frame path", ".", inputbuf, 1024);
+        data->frame_dir = canonicalize_path(inputbuf);
+        if (!chdir(data->frame_dir))
+            break;
+        printf("Invalid frame path: %s\n", inputbuf);
+        free(data->frame_dir);
+    }
+
+    prompt_user_input("Enter output master dark filename", "master-dark.fits.gz", inputbuf, 1024);
+    data->dark_template = strdup(inputbuf);
+
+    // Create master-dark if necessary
+    if (access(data->dark_template, F_OK) != -1)
+        printf("Skipping master dark creation - file already exists\n");
+    else
+    {
+        char *dark_pattern;
+        int num_darks;
+        while (true)
+        {
+            prompt_user_input("Enter dark prefix", "dark", inputbuf, 1024);
+            asprintf(&dark_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+
+            char **dark_filenames;
+            num_darks = get_matching_files(dark_pattern, &dark_filenames);
+            if (num_darks > 0)
+            {
+                free_2d_array(dark_filenames, num_darks);
+                break;
+            }
+
+            printf("No files found matching pattern: %s/%s\n", data->frame_dir, dark_pattern);
+            free(dark_pattern);
+        }
+
+        int minmax = 0;
+        while (true)
+        {
+            char *fallback;
+            asprintf(&fallback, "%d", num_darks/2);
+            prompt_user_input("Enter number of darks around median to average", fallback, inputbuf, 1024);
+            free(fallback);
+
+            int count = atoi(inputbuf);
+            if (count > 0 && count <= num_darks)
+            {
+                minmax = (num_darks - count) / 2;
+                break;
+            }
+            printf("Number must be between 0 and %d\n", num_darks);
+        }
+
+        int failed = create_dark(dark_pattern, minmax, data->dark_template);
+        free(dark_pattern);
+        if (failed)
+            error_jump(create_dark_error, ret, "master dark generation failed");
+    }
+
+    prompt_user_input("Enter output master flat filename", "master-flat.fits.gz", inputbuf, 1024);
+    data->flat_template = strdup(inputbuf);
     
-    char *filename = get_first_matching_file(framePattern);
-    if (!filename)
-        error_jump(setup_error, ret, "No matching files found");
-    data->frame_pattern = strdup(framePattern);
-    
+    // Create master-flat if necessary
+    if (access(data->flat_template, F_OK) != -1)
+        printf("Skipping master flat creation - file already exists\n");
+    else
+    {
+        char *flat_pattern;
+        int num_flats;
+        while (true)
+        {
+            prompt_user_input("Enter flat prefix", "flat", inputbuf, 1024);
+            asprintf(&flat_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+
+            char **flat_filenames;
+            num_flats = get_matching_files(flat_pattern, &flat_filenames);
+            if (num_flats > 0)
+            {
+                free_2d_array(flat_filenames, num_flats);
+                break;
+            }
+
+            printf("No files found matching pattern: %s/%s\n", data->frame_dir, flat_pattern);
+            free(flat_pattern);
+        }
+
+        int minmax = 0;
+        while (true)
+        {
+            char *fallback;
+            asprintf(&fallback, "%d", num_flats/2);
+            prompt_user_input("Enter number of flats around median to average", fallback, inputbuf, 1024);
+            free(fallback);
+
+            int count = atoi(inputbuf);
+            if (count > 0 && count <= num_flats)
+            {
+                minmax = (num_flats - count) / 2;
+                break;
+            }
+            printf("Number must be between 0 and %d\n", num_flats);
+        }
+
+        int failed = create_flat(flat_pattern, minmax, data->dark_template, data->flat_template);
+        free(flat_pattern);
+        if (failed)
+            error_jump(create_flat_error, ret, "master flat generation failed");
+    }
+
+    char *preview_filename;
+    while (true)
+    {
+        prompt_user_input("Enter target prefix", NULL, inputbuf, 1024);
+        asprintf(&data->frame_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+
+        preview_filename = get_first_matching_file(data->frame_pattern);
+        if (preview_filename)
+            break;
+
+        printf("No files found matching pattern: %s/%s\n", data->frame_dir, data->frame_pattern);
+        free(preview_filename);
+        free(data->frame_pattern);
+    }
+
     // Open the file to find the reference time
-    framedata *frame = framedata_load(filename);
+    framedata *frame = framedata_load(preview_filename);
     if (!frame)
-        error_jump(frameload_error, ret, "Error loading frame %s", filename);
+        error_jump(frameload_error, ret, "Error loading frame %s", preview_filename);
 
     subtract_bias(frame);
     data->reference_time = get_frame_time(frame);
 
-    framedata *dark = framedata_load(darkTemplate);
+    framedata *dark = framedata_load(data->dark_template);
     if (!dark)
-        error_jump(frameload_error, ret, "Error loading frame %s", darkTemplate);
+        error_jump(frameload_error, ret, "Error loading frame %s", data->dark_template);
 
     framedata_subtract(frame, dark);
     framedata_free(dark);
-    data->dark_template = strdup(darkTemplate);
 
-    framedata *flat = framedata_load(flatTemplate);
+    framedata *flat = framedata_load(data->flat_template);
     if (!flat)
-        error_jump(frameload_error, ret, "Error loading frame %s", flatTemplate);
+        error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
 
     framedata_divide(frame, flat);
     framedata_free(flat);
-    data->flat_template = strdup(flatTemplate);
+    if (init_ds9())
+        return error("Unable to launch ds9");
 
     {
         char command[128];
@@ -1031,12 +1137,15 @@ int create_reduction_file(char *framePath, char *framePattern, char *darkTemplat
         error_jump(aperture_converge_error, ret, "Invalid data path: %s", datadir);
 
     datafile_save_header(data, outname);
+    printf("Saved to %s\n", outname);
+    printf("Run `tsreduce update %s` to reduce existing files\n", outname);
 aperture_converge_error:
     free(ds9buf);
 frameload_error:
     framedata_free(frame);
-    free(filename);
-setup_error:
+    free(preview_filename);
+create_flat_error:
+create_dark_error:
     datafile_free(data);
     return ret;
 }

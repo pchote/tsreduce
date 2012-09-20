@@ -83,8 +83,8 @@ int main( int argc, char *argv[] )
         return shuffle_dft(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], atoi(argv[8]));
 
     // `tsreduce create ~/data/20110307 ec04207-[0-9]+.fits.gz master-dark.fits master-skyflat-20110305.fits 20110307.dat`
-    else if (argc == 7 && strcmp(argv[1], "create") == 0)
-        return create_reduction_file(argv[2], argv[3], argv[4], argv[5], argv[6]);
+    else if (argc == 3 && strcmp(argv[1], "create") == 0)
+        return create_reduction_file(argv[2]);
 
     // Misc one-off utility functions
     else if (argc == 5 && strcmp(argv[1], "profile") == 0)

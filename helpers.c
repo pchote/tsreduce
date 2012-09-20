@@ -356,6 +356,12 @@ int get_matching_files(const char *pattern, char ***outList)
     struct dirent **files;
     int numFiles = scandir(".", &files, 0, ts_versionsort);
     
+    if (numFiles == 0)
+    {
+        *outList = NULL;
+        return 0;
+    }
+
     char **ret = (char **)malloc(numFiles*sizeof(char*));
     if (ret == NULL)
     {
@@ -523,6 +529,22 @@ int init_ds9()
         } while (!available);
     }
     return 0;
+}
+
+void prompt_user_input(char *message, char *fallback, char *buffer, size_t buffer_length)
+{
+    if (fallback)
+        printf("%s [%s]: ", message, fallback);
+    else
+        printf("%s: ", message);
+    fgets(buffer, buffer_length, stdin);
+
+    // Trim trailing newline, or read default
+    size_t len = strlen(buffer);
+    if (len < 2 && fallback)
+        strcpy(buffer, fallback);
+    else if (len > 1)
+        buffer[len - 1] = '\0';
 }
 
 // Calculate the amplitude spectrum of the signal defined by numData points in (time, data)

@@ -1016,6 +1016,32 @@ int create_reduction_file(char *outname)
     if (!flat)
         error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
 
+    if (framedata_get_header_dbl(flat, "CCD-READ", (double[]){0}))
+    {
+        while (true)
+        {
+            prompt_user_input("Enter CCD Readnoise (ADU):", "3.32", inputbuf, 1024);
+            data->ccd_readnoise = atof(inputbuf);
+            if (data->ccd_readnoise > 0)
+                break;
+
+            printf("Number must be greater than 0\n");
+        }
+    }
+
+    if (framedata_get_header_dbl(flat, "CCD-GAIN", (double[]){0}))
+    {
+        while (true)
+        {
+            prompt_user_input("Enter CCD Gain (ADU):", "2.00", inputbuf, 1024);
+            data->ccd_gain = atof(inputbuf);
+            if (data->ccd_gain > 0)
+                break;
+
+            printf("Number must be greater than 0\n");
+        }
+    }
+
     framedata_divide(frame, flat);
     framedata_free(flat);
     if (init_ds9())

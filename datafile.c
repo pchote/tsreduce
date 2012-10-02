@@ -59,7 +59,7 @@ datafile* datafile_load(char *filename)
 
     char linebuf[1024];
     char stringbuf[1024];
-    while (fgets(linebuf, sizeof(linebuf)-1, dp->file) != NULL)
+    while (fgets(linebuf, 1024, dp->file) != NULL)
     {
         //
         // Header
@@ -67,22 +67,22 @@ datafile* datafile_load(char *filename)
         if (!strncmp(linebuf,"# FramePattern:", 15))
         {
             sscanf(linebuf, "# FramePattern: %1024s\n", stringbuf);
-            dp->frame_pattern = strndup(stringbuf, 1024);
+            dp->frame_pattern = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# FrameDir:", 11))
         {
             sscanf(linebuf, "# FrameDir: %1024s\n", stringbuf);
-            dp->frame_dir = strndup(stringbuf, 1024);
+            dp->frame_dir = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# DarkTemplate:", 15))
         {
             sscanf(linebuf, "# DarkTemplate: %1024s\n", stringbuf);
-            dp->dark_template = strndup(stringbuf, 1024);
+            dp->dark_template = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# FlatTemplate:", 15))
         {
             sscanf(linebuf, "# FlatTemplate: %1024s\n", stringbuf);
-            dp->flat_template = strndup(stringbuf, 1024);
+            dp->flat_template = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# Target:", 9))
         {
@@ -131,12 +131,12 @@ datafile* datafile_load(char *filename)
         else if (!strncmp(linebuf,"# RA:", 5))
         {
             sscanf(linebuf, "# RA: %1024s\n", stringbuf);
-            dp->coord_ra = strndup(stringbuf, 1024);
+            dp->coord_ra = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# DEC:", 6))
         {
             sscanf(linebuf, "# DEC: %1024s\n", stringbuf);
-            dp->coord_dec = strndup(stringbuf, 1024);
+            dp->coord_dec = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# Epoch:", 8))
             sscanf(linebuf, "# Epoch: %lf\n", &dp->coord_epoch);

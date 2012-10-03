@@ -861,9 +861,6 @@ data_error:
     return ret;
 }
 
-// Create a reduction file at filePath, with frames from the dir framePath
-// matching the regex framePattern, with dark and flat frames given by
-// darkTemplate and flatTemplate
 int create_reduction_file(char *outname)
 {
     int ret = 0;

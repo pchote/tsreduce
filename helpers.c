@@ -476,8 +476,13 @@ int init_ds9()
 
     if (!available)
     {
+#if (defined _WIN32)
+        const char *ds9_command = "start /b ds9 -title tsreduce";
+#else
+        const char *ds9_command = "ds9 -title tsreduce&";
+#endif
         printf("Starting ds9...\n");
-        ts_exec_write("ds9 -title tsreduce&", NULL, 0);
+        ts_exec_write(ds9_command, NULL, 0);
 
         do
         {

@@ -488,8 +488,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Create a new fits file
     fitsfile *out;
     int status = 0;
-    char *outbuf;
-    ts_asprintf(&outbuf, "!%s", outname);
+    char *outbuf = malloc((strlen(outname) + 2)*sizeof(char));
+    sprintf(outbuf, "!%s", outname);
     fits_create_file(&out, outbuf, &status);
     free(outbuf);
 
@@ -890,12 +890,12 @@ int create_reduction_file(char *outname)
         printf("Skipping master dark creation - file already exists\n");
     else
     {
-        char *dark_pattern;
+        char dark_pattern[1039];
         int num_darks;
         while (true)
         {
             prompt_user_input("Enter dark prefix", "dark", inputbuf, 1024);
-            ts_asprintf(&dark_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+            sprintf(dark_pattern, "%s-[0-9]+.fits.gz", inputbuf);
 
             char **dark_filenames;
             num_darks = get_matching_files(dark_pattern, &dark_filenames);
@@ -906,16 +906,14 @@ int create_reduction_file(char *outname)
             }
 
             printf("No files found matching pattern: %s/%s\n", data->frame_dir, dark_pattern);
-            free(dark_pattern);
         }
 
         int minmax = 0;
         while (true)
         {
-            char *fallback;
-            ts_asprintf(&fallback, "%d", num_darks/2);
+            char fallback[32];
+            sprintf(fallback, "%d", num_darks/2);
             prompt_user_input("Enter number of darks around median to average", fallback, inputbuf, 1024);
-            free(fallback);
 
             int count = atoi(inputbuf);
             if (count > 0 && count <= num_darks)
@@ -927,7 +925,6 @@ int create_reduction_file(char *outname)
         }
 
         int failed = create_dark(dark_pattern, minmax, data->dark_template);
-        free(dark_pattern);
         if (failed)
             error_jump(create_dark_error, ret, "master dark generation failed");
     }
@@ -940,12 +937,12 @@ int create_reduction_file(char *outname)
         printf("Skipping master flat creation - file already exists\n");
     else
     {
-        char *flat_pattern;
+        char flat_pattern[1039];
         int num_flats;
         while (true)
         {
             prompt_user_input("Enter flat prefix", "flat", inputbuf, 1024);
-            ts_asprintf(&flat_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+            sprintf(flat_pattern, "%s-[0-9]+.fits.gz", inputbuf);
 
             char **flat_filenames;
             num_flats = get_matching_files(flat_pattern, &flat_filenames);
@@ -956,16 +953,14 @@ int create_reduction_file(char *outname)
             }
 
             printf("No files found matching pattern: %s/%s\n", data->frame_dir, flat_pattern);
-            free(flat_pattern);
         }
 
         int minmax = 0;
         while (true)
         {
-            char *fallback;
-            ts_asprintf(&fallback, "%d", num_flats/2);
+            char fallback[32];
+            sprintf(fallback, "%d", num_flats/2);
             prompt_user_input("Enter number of flats around median to average", fallback, inputbuf, 1024);
-            free(fallback);
 
             int count = atoi(inputbuf);
             if (count > 0 && count <= num_flats)
@@ -977,7 +972,6 @@ int create_reduction_file(char *outname)
         }
 
         int failed = create_flat(flat_pattern, minmax, data->dark_template, data->flat_template);
-        free(flat_pattern);
         if (failed)
             error_jump(create_flat_error, ret, "master flat generation failed");
     }
@@ -985,8 +979,10 @@ int create_reduction_file(char *outname)
     char *preview_filename;
     while (true)
     {
+        char namebuf[1039];
         prompt_user_input("Enter target prefix", NULL, inputbuf, 1024);
-        ts_asprintf(&data->frame_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+        sprintf(namebuf, "%s-[0-9]+.fits.gz", inputbuf);
+        data->frame_pattern = strdup(namebuf);
 
         preview_filename = get_first_matching_file(data->frame_pattern);
         if (preview_filename)

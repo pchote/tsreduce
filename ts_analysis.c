@@ -52,8 +52,8 @@ int display_targets(char *dataPath, int obsIndex)
 
     // DS9 errors are nonfatal
     {
-        char *command;
-        ts_asprintf(&command, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
+        char *command = malloc((strlen(data->frame_dir)+strlen(filename)+23)*sizeof(char));
+        sprintf(command, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
         ts_exec_write(command, NULL, 0);
         free(command);
     }
@@ -147,7 +147,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     // Calculation lives in its own scope to ensure jumping to the error handling is safe
     // TODO: this is a mess - either tidy this up or remove the function completely
     {
-        const int numIntensity = 21;
+        const int numIntensity = 46;
         double intensity[numIntensity];
         double noise[numIntensity];
         double radii[numIntensity];
@@ -440,10 +440,9 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     // SNR label
     cpgswin(0, 1, 0, 1);
     cpgsci(1);
-    char *snr_label;
-    ts_asprintf(&snr_label, "Ratio SNR: %.2f", snr_ratio);
+    char snr_label[32];
+    sprintf(snr_label, "Ratio SNR: %.2f", snr_ratio);
     cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
-    free(snr_label);
     cpgend();
 
     if (cpgopen(dftDevice ? dftDevice : "6/xs") <= 0)
@@ -490,10 +489,9 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgsci(1);
 
     cpgswin(0, 1, 0, 1);
-    char *ampl_label;
-    ts_asprintf(&ampl_label, "Mean amplitude: %.2f mma", mean_dft_ampl);
+    char ampl_label[32];
+    sprintf(ampl_label, "Mean amplitude: %.2f mma", mean_dft_ampl);
     cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
-    free(ampl_label);
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
@@ -568,8 +566,8 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
         for (int i = 0; i < data->num_targets; i++)
             data->targets[i].r = radius;
 
-        char *filename;
-        ts_asprintf(&filename, "%s-%0.2f.dat", prefix, radius);
+        char *filename = malloc((strlen(prefix)+11)*sizeof(char));
+        sprintf(filename, "%s-%0.2f.dat", prefix, radius);
 
         chdir(dir);
         // Errors are non-fatal -> proceeed to the next file

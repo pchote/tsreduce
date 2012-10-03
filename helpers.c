@@ -123,26 +123,6 @@ int scandir(const char *dirname,
 
 #endif
 
-// Defined in 64bit MinGW, but not 32bit
-int ts_vasprintf(char **bufptr, const char *fmt, va_list args)
-{
-    // Get length
-    int len = vsnprintf(NULL, 0, fmt, args);
-    if (len < 0 || (*bufptr = malloc(len + 1)) == NULL)
-        return -1;
-
-    return vsprintf(*bufptr, fmt, args);
-}
-
-int ts_asprintf(char **bufptr, const char *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    int ret = ts_vasprintf(bufptr, fmt, args);
-    va_end(args);
-    return ret;
-}
-
 // Cross platform equivalent of timegm()
 time_t ts_timegm(struct tm *t)
 {
@@ -203,12 +183,13 @@ struct tm parse_date_time_tm(const char *date, const char *time)
     t.tm_year -= 1900;
     t.tm_mon -= 1;
 #else
-    char *datetime;
-    ts_asprintf(&datetime, "%s %s", date, time);
+    char *datetime = malloc((strlen(date)+strlen(time)+2)*sizeof(char));
+    sprintf(datetime, "%s %s", date, time);
     strptime(datetime, "%Y-%m-%d %H:%M:%S", &t);
     free(datetime);
 #endif
 
+    printf("parse_date_time_tm %s %s\n", date, time);
     return t;
 }
 

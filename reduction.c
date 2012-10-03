@@ -249,12 +249,13 @@ raw_time_alloc_error:
 
 static time_t get_frame_time(framedata *frame)
 {
+    // Fits strings have a max length of FLEN_VALUE = 71
     char datebuf[128], timebuf[128], datetimebuf[257];
     if (framedata_has_header_string(frame, "UTC-BEG"))
     {
         framedata_get_header_string(frame, "UTC-DATE", datebuf);
         framedata_get_header_string(frame, "UTC-BEG", timebuf);
-        sprintf(datetimebuf, "%s %s", datebuf, timebuf);
+        snprintf(datetimebuf, 257, "%s %s", datebuf, timebuf);
     }
     else if (framedata_has_header_string(frame, "GPSTIME"))
         framedata_get_header_string(frame, "GPSTIME", datetimebuf);
@@ -488,10 +489,11 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // Create a new fits file
     fitsfile *out;
     int status = 0;
-    char *outbuf = malloc((strlen(outname) + 2)*sizeof(char));
-    sprintf(outbuf, "!%s", outname);
-    fits_create_file(&out, outbuf, &status);
-    free(outbuf);
+    size_t filename_len = strlen(outname) + 2;
+    char *filename = malloc(filename_len*sizeof(char));
+    snprintf(filename, filename_len, "!%s", outname);
+    fits_create_file(&out, filename, &status);
+    free(filename);
 
     // Create the primary array image (16-bit short integer pixels
     fits_create_img(out, DOUBLE_IMG, 2, (long []){dark->cols, dark->rows}, &status);
@@ -608,10 +610,12 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     // Create a new fits file
     fitsfile *out;
     int status = 0;
-    char outbuf[2048];
-    sprintf(outbuf, "!%s", outname);
     
-    fits_create_file(&out, outbuf, &status);
+    size_t filename_len = strlen(outname) + 2;
+    char *filename = malloc(filename_len*sizeof(char));
+    snprintf(filename, filename_len, "!%s", outname);
+    fits_create_file(&out, filename, &status);
+    free(filename);
     
     // Create the primary array image (16-bit short integer pixels
     fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
@@ -663,9 +667,12 @@ int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *o
     // Create a new fits file
     fitsfile *out;
     int status = 0;
-    char outbuf[2048];
-    sprintf(outbuf, "!%s", outPath);
-    fits_create_file(&out, outbuf, &status);
+
+    size_t filename_len = strlen(outPath) + 2;
+    char *filename = malloc(filename_len*sizeof(char));
+    snprintf(filename, filename_len, "!%s", outPath);
+    fits_create_file(&out, filename, &status);
+    free(filename);
 
     // Create the primary array image
     fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
@@ -895,7 +902,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             prompt_user_input("Enter dark prefix", "dark", inputbuf, 1024);
-            sprintf(dark_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+            snprintf(dark_pattern, 1039, "%s-[0-9]+.fits.gz", inputbuf);
 
             char **dark_filenames;
             num_darks = get_matching_files(dark_pattern, &dark_filenames);
@@ -912,7 +919,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             char fallback[32];
-            sprintf(fallback, "%d", num_darks/2);
+            snprintf(fallback, 32, "%d", num_darks/2);
             prompt_user_input("Enter number of darks around median to average", fallback, inputbuf, 1024);
 
             int count = atoi(inputbuf);
@@ -942,7 +949,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             prompt_user_input("Enter flat prefix", "flat", inputbuf, 1024);
-            sprintf(flat_pattern, "%s-[0-9]+.fits.gz", inputbuf);
+            snprintf(flat_pattern, 32, "%s-[0-9]+.fits.gz", inputbuf);
 
             char **flat_filenames;
             num_flats = get_matching_files(flat_pattern, &flat_filenames);
@@ -959,7 +966,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             char fallback[32];
-            sprintf(fallback, "%d", num_flats/2);
+            snprintf(fallback, 32, "%d", num_flats/2);
             prompt_user_input("Enter number of flats around median to average", fallback, inputbuf, 1024);
 
             int count = atoi(inputbuf);
@@ -981,7 +988,7 @@ int create_reduction_file(char *outname)
     {
         char namebuf[1039];
         prompt_user_input("Enter target prefix", NULL, inputbuf, 1024);
-        sprintf(namebuf, "%s-[0-9]+.fits.gz", inputbuf);
+        snprintf(namebuf, 1039, "%s-[0-9]+.fits.gz", inputbuf);
         data->frame_pattern = strdup(namebuf);
 
         preview_filename = get_first_matching_file(data->frame_pattern);

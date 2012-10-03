@@ -183,8 +183,9 @@ struct tm parse_date_time_tm(const char *date, const char *time)
     t.tm_year -= 1900;
     t.tm_mon -= 1;
 #else
-    char *datetime = malloc((strlen(date)+strlen(time)+2)*sizeof(char));
-    sprintf(datetime, "%s %s", date, time);
+    size_t datetime_len = strlen(date) + strlen(time) + 2;
+    char *datetime = malloc(datetime_len*sizeof(char));
+    snprintf(datetime, datetime_len, "%s %s", date, time);
     strptime(datetime, "%Y-%m-%d %H:%M:%S", &t);
     free(datetime);
 #endif

@@ -52,8 +52,9 @@ int display_targets(char *dataPath, int obsIndex)
 
     // DS9 errors are nonfatal
     {
-        char *command = malloc((strlen(data->frame_dir)+strlen(filename)+23)*sizeof(char));
-        sprintf(command, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
+        size_t command_len = strlen(data->frame_dir) + strlen(filename) + 23;
+        char *command = malloc(command_len*sizeof(char));
+        snprintf(command, command_len, "xpaset tsreduce file %s/%s", data->frame_dir, filename);
         ts_exec_write(command, NULL, 0);
         free(command);
     }
@@ -441,7 +442,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
     cpgswin(0, 1, 0, 1);
     cpgsci(1);
     char snr_label[32];
-    sprintf(snr_label, "Ratio SNR: %.2f", snr_ratio);
+    snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
     cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
     cpgend();
 
@@ -490,7 +491,7 @@ int plot_fits(char *dataPath, char *tsDevice, char *dftDevice)
 
     cpgswin(0, 1, 0, 1);
     char ampl_label[32];
-    sprintf(ampl_label, "Mean amplitude: %.2f mma", mean_dft_ampl);
+    snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", mean_dft_ampl);
     cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
@@ -566,8 +567,9 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
         for (int i = 0; i < data->num_targets; i++)
             data->targets[i].r = radius;
 
-        char *filename = malloc((strlen(prefix)+11)*sizeof(char));
-        sprintf(filename, "%s-%0.2f.dat", prefix, radius);
+        size_t filename_len = strlen(prefix) + 11;
+        char *filename = malloc(filename_len*sizeof(char));
+        snprintf(filename, filename_len, "%s-%0.2f.dat", prefix, radius);
 
         chdir(dir);
         // Errors are non-fatal -> proceeed to the next file

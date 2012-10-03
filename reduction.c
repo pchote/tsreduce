@@ -26,7 +26,7 @@
 int generate_photometry_dft_data(datafile *data,
     // Raw data, unfiltered by blocked ranges
     double **raw_time, double **raw, size_t *num_raw,
-    // Filtered data: polynomial fit, ratio, MMI
+    // Filtered data: polynomial fit, ratio, mma
     double **time, double **ratio, double **polyfit, double **mma, size_t *num_filtered,
     double **ratio_noise, double **mma_noise,
     double *ratio_mean_out, double *ratio_std_out, double *mma_mean_out, double *mma_std_out,
@@ -1184,52 +1184,6 @@ create_dark_error:
 }
 
 /*
- * Convert a .dat file to .mma for analysis with ts3add etc
- */
-int create_mma(char *dataPath)
-{
-    // Read file header
-    datafile *data = datafile_load(dataPath);
-    if (data == NULL)
-        return error("Error opening data file");
-
-    double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mma, *mma_noise;
-    size_t num_raw, num_filtered;
-    if (generate_photometry_dft_data(data,
-                                     &raw_time, &raw, &num_raw,
-                                     &time, &ratio, &polyfit, &mma, &num_filtered,
-                                     &ratio_noise, &mma_noise,
-                                     NULL, NULL, NULL, NULL,
-                                     NULL, NULL, NULL))
-    {
-        datafile_free(data);
-        return error("Error generating MMI data");
-    }
-
-    printf("# points = %d; dt = %f\n", (unsigned int)num_filtered, (time[num_filtered-1] - time[0])/3600.0);
-    printf("# tgt = %s\n", data->frame_pattern);
-
-    char buf[20];
-    serialize_time_t(data->reference_time, buf);
-    printf("# UT start = %s\n", buf);
-    printf("# Time MMI error\n");
-
-    for (int i = 0; i < num_filtered; i++)
-        printf("%f %f %f\n", time[i]/3600.0, mma[i], mma_noise[i]);
-
-    free(raw_time);
-    free(raw);
-    free(time);
-    free(ratio);
-    free(ratio_noise);
-    free(polyfit);
-    free(mma);
-    free(mma_noise);
-    datafile_free(data);
-    return 0;
-}
-
-/*
  * Calculate the BJD time for a given UTC timestamp and observation coordinates
  */
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch)
@@ -1347,7 +1301,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
                                          NULL, NULL, NULL, NULL,
                                          NULL, NULL, NULL))
         {
-            error_jump(processing_error, ret, "Error generating MMI data for data %s", filenames[i]);
+            error_jump(processing_error, ret, "Error generating photometry data for data %s", filenames[i]);
         }
 
         for (int j = 0; j < num_filtered; j++)

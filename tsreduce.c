@@ -58,10 +58,6 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strcmp(argv[1], "optimizefreqs") == 0)
         return nonlinear_fit(argv[2], argv[3]);
 
-    // `tsreduce mma foo.dat`
-    else if (argc == 3 && strcmp(argv[1], "mma") == 0)
-        return create_mma(argv[2]);
-
     // `tsreduce reduce-range ec05221.dat 2 15 0.5 ec05221-range`
     else if (argc == 7 && strcmp(argv[1], "reduce-range") == 0)
         return reduce_aperture_range(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), argv[6]);

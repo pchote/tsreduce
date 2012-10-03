@@ -270,15 +270,14 @@ static time_t get_frame_time(framedata *frame)
 // This ensures that the bias is correctly removed, as the scaling of the dark intensity would otherwise prevent this
 //
 // Returns the mean intensity before normalization
-double prepare_flat(framedata *flat, framedata *dark)
+double prepare_flat(framedata *flat, framedata *dark, double *mean_out)
 {
-    // TODO: Remove use of die()
     int flatexp, darkexp;
     if (framedata_get_header_int(flat, "EXPTIME", &flatexp))
-        die("EXPTIME is undefined in flat frame");
+        return error("EXPTIME is undefined in flat frame");
 
     if (framedata_get_header_int(dark, "EXPTIME", &darkexp))
-        die("EXPTIME is undefined in dark frame");
+        return error("EXPTIME is undefined in dark frame");
 
     // Subtract bias
     subtract_bias(flat);
@@ -319,7 +318,8 @@ double prepare_flat(framedata *flat, framedata *dark)
         flat->data[i] /= mean_new;
 
     // Return original mean level
-    return mean_new;
+    *mean_out = mean_new;
+    return 0;
 }
 
 // Create a flat field frame from the frames listed by the command `flatcmd',
@@ -392,7 +392,14 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         }
 
         // Dark-subtract and normalize the frame, recording the mean level for calculating the gain
-        mean_flat[i] = prepare_flat(frames[i], dark);
+        if (prepare_flat(frames[i], dark, &mean_flat[i]))
+        {
+            // Cleanup the frames that we have allocated
+            for (int j = 0; j <= i; j++)
+                framedata_free(frames[j]);
+
+            error_jump(loadflat_failed, ret, "prepare_flat failed on frame %s", frames[i]);
+        }
 
         // Store normalized data in data cube
         for (int j = 0; j < dark->rows*dark->cols; j++)

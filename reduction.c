@@ -1069,7 +1069,7 @@ int create_reduction_file(char *outname)
     if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
         error_jump(frameload_error, ret, "ds9 command failed");
 
-    printf("Circle the target stars and surrounding sky in ds9 then press enter to continue...\n");
+    printf("Circle the target stars and surrounding sky in ds9 then press enter in this terminal to continue...\n");
     getchar();
 
     char *ds9buf;

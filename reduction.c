@@ -1291,6 +1291,16 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
                  ds9_title, t.x + 1, t.y + 1 - t.s2 - 40, sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
     }
+
+    // Display frame time
+    char frame_end[128], frame_date[128];
+    framedata_get_header_string(frame, "UTC-END", frame_end);
+    framedata_get_header_string(frame, "UTC-DATE", frame_date);
+    snprintf(ds9_command_buf, 1024,
+             "xpaset -p %s regions command '{text %d %d #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Exposure Ending: %s %s\"}'",
+             ds9_title, frame->cols/2, frame->rows + 15, frame_date, frame_end);
+    ts_exec_write(ds9_command_buf, NULL, 0);
+
 region_error:
     framedata_free(frame);
 frame_error:

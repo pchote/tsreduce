@@ -82,6 +82,9 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "create") == 0)
         return create_reduction_file(argv[2]);
 
+    else if (argc == 5 && strcmp(argv[1], "preview") == 0)
+        return update_preview(argv[2], argv[3], atof(argv[4]));
+
     // Misc one-off utility functions
     else if (argc == 5 && strcmp(argv[1], "profile") == 0)
         return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));

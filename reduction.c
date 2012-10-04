@@ -1183,6 +1183,120 @@ create_dark_error:
     return ret;
 }
 
+// Update the ds9 preview with a frame and FWHM calculations
+int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
+{
+    int ret = 0;
+    char ds9_command_buf[1024];
+
+    framedata *frame = framedata_load(preview_filename);
+    if (!frame)
+        error_jump(frame_error, ret, "Error loading frame %s", preview_filename);
+    subtract_bias(frame);
+
+    // Read regions from ds9
+    snprintf(ds9_command_buf, 1024, "xpaget %s regions", ds9_title);
+    char *ds9buf;
+    if (ts_exec_read(ds9_command_buf, &ds9buf))
+        error_jump(region_error, ret, "ds9 request regions failed");
+
+    snprintf(ds9_command_buf, 1024, "xpaset -p %s file %s", ds9_title, preview_filename);
+    ts_exec_write(ds9_command_buf, NULL, 0);
+
+    // Parse the region definitions
+    char *cur = ds9buf;
+    for (; (cur = strstr(cur, "circle")) != NULL; cur++)
+    {
+        // Read aperture coords
+        target t;
+        int select = 1;
+        sscanf(cur, "circle(%lf,%lf,%lf) # color=red select=%d", &t.x, &t.y, &t.s2, &select);
+        if (!select)
+            continue;
+
+        // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
+        t.x -= 1;
+        t.y -= 1;
+
+        // Set outer sky radius to selected radius, inner to outer - 5
+        t.s1 = t.s2 - 5;
+
+        // Estimate initial aperture size as inner sky radius
+        t.r = t.s1;
+
+        double2 xy;
+        if (center_aperture(t, frame, &xy))
+        {
+            printf("Aperture converge failed. Removing target\n");
+            continue;
+        }
+        t.x = xy.x;
+        t.y = xy.y;
+
+        double sky_intensity, sky_std_dev;
+        if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
+        {
+            printf("Sky calculation failed. Removing target\n");
+            continue;
+        }
+
+        double centerProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
+        double lastIntensity = 0;
+        double lastProfile = centerProfile;
+        int maxRadius = (int)t.s2 + 1;
+
+        double fwhm = 0;
+        for (int radius = 1; radius <= maxRadius; radius++)
+        {
+            double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
+            double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+
+            if (profile < centerProfile/2)
+            {
+                double lastRadius = radius - 1;
+                fwhm = 2*(lastRadius + (radius - lastRadius)*(centerProfile/2 - lastProfile)/(profile - lastProfile));
+                break;
+            }
+
+            lastIntensity = intensity;
+            lastProfile = profile;
+        }
+
+        if (fwhm == 0)
+        {
+            printf("Invalid fwhm. Removing target\n");
+            continue;
+        }
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f}'", ds9_title, t.x + 1, t.y + 1, t.s2);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s1);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s2);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'", ds9_title, t.x + 1, t.y + 1, fwhm);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM≈%.2f arcsec\"}'",
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 10, fwhm*plate_scale);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak≈%.0f ADU/px\"}'",
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25, centerProfile);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG≈%.0f ADU/px\"}'",
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 40, sky_intensity);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+    }
+region_error:
+    framedata_free(frame);
+frame_error:
+    return ret;
+}
+
 /*
  * Calculate the BJD time for a given UTC timestamp and observation coordinates
  */

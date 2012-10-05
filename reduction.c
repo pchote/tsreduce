@@ -1196,15 +1196,24 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
 
     // Read regions from ds9
     snprintf(ds9_command_buf, 1024, "xpaget %s regions", ds9_title);
-    char *ds9buf;
-    if (ts_exec_read(ds9_command_buf, &ds9buf))
+    char *ds9_regions;
+    if (ts_exec_read(ds9_command_buf, &ds9_regions))
         error_jump(region_error, ret, "ds9 request regions failed");
 
+    // Read zoom from ds9
+    snprintf(ds9_command_buf, 1024, "xpaget %s zoom", ds9_title);
+    char *ds9_zoom;
+    if (ts_exec_read(ds9_command_buf, &ds9_zoom))
+        error_jump(region_error, ret, "ds9 request zoom failed");
+    float zoom = atof(ds9_zoom);
+    free(ds9_zoom);
+
+    // Set new frame
     snprintf(ds9_command_buf, 1024, "xpaset -p %s file %s", ds9_title, preview_filename);
     ts_exec_write(ds9_command_buf, NULL, 0);
 
     // Parse the region definitions
-    char *cur = ds9buf;
+    char *cur = ds9_regions;
     for (; (cur = strstr(cur, "circle")) != NULL; cur++)
     {
         // Read aperture coords
@@ -1280,15 +1289,15 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM≈%.2f arcsec\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 10, fwhm*plate_scale);
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 10/zoom, fwhm*plate_scale);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak≈%.0f ADU/px\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25, centerProfile);
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, centerProfile);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG≈%.0f ADU/px\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 40, sky_intensity);
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 40/zoom, sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
     }
 
@@ -1301,13 +1310,13 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
     framedata_get_header_int(frame, "EXPTIME", &frame_exp);
 
     snprintf(ds9_command_buf, 1024,
-             "xpaset -p %s regions command '{text %d %d #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %ds\"}'",
-             ds9_title, frame->cols/2, frame->rows + 30, frame_object, frame_exp);
+             "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %ds\"}'",
+             ds9_title, frame->cols/2.0, frame->rows + 30/zoom, frame_object, frame_exp);
     ts_exec_write(ds9_command_buf, NULL, 0);
 
     snprintf(ds9_command_buf, 1024,
-             "xpaset -p %s regions command '{text %d %d #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Ending: %s %s\"}'",
-             ds9_title, frame->cols/2, frame->rows + 10, frame_date, frame_end);
+             "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Ending: %s %s\"}'",
+             ds9_title, frame->cols/2.0, frame->rows + 10/zoom, frame_date, frame_end);
     ts_exec_write(ds9_command_buf, NULL, 0);
 
 region_error:

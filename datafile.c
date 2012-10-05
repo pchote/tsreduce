@@ -9,7 +9,7 @@
 #include "datafile.h"
 #include "helpers.h"
 
-#define PLOT_FIT_DEGREE_DEFAULT 4
+#define PLOT_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 5000
 #define PLOT_NUM_UHZ_DEFAULT 1000
 #define PLOT_MIN_UHZ_DEFAULT 0

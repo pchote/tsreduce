@@ -23,7 +23,7 @@ int create_dark(const char *pattern, int minmax, const char *outname);
 int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath);
 int update_reduction(char *dataPath);
 int create_reduction_file(char *filePath);
-
+int update_preview(char *preview_filename, char *ds9_title, double plate_scale);
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch);
 int create_ts(char *reference_date, char *reference_time, char **filenames, int num_datafiles, char *ts_filename);
 

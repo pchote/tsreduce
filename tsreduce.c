@@ -67,9 +67,13 @@ int main( int argc, char *argv[] )
         return plot_range(argv[2]);
 
     // `tsreduce plot ec04207.dat [ts.ps/cps [dft.ps/cps]]
-    else if ((argc >= 3 && argc <= 5) && strcmp(argv[1], "plot") == 0)
-        return plot_fits(argv[2], argc > 3 ? argv[3] : NULL, argc > 4 ? argv[4] : NULL);
-
+    else if ((argc == 3 || argc == 7) && strcmp(argv[1], "plot") == 0)
+    {
+        if (argc == 3)
+            return plot_fits(argv[2], "5/xs", 9.41, "6/xs", 9.41);
+        else
+            return plot_fits(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
+    }
     // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`
     else if (argc >= 3 && strcmp(argv[1], "create-ts") == 0)
         return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1]);

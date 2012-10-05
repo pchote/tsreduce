@@ -1293,12 +1293,21 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
     }
 
     // Display frame time
-    char frame_end[128], frame_date[128];
+    char frame_end[128], frame_date[128], frame_object[128];
+    int frame_exp;
     framedata_get_header_string(frame, "UTC-END", frame_end);
     framedata_get_header_string(frame, "UTC-DATE", frame_date);
+    framedata_get_header_string(frame, "OBJECT", frame_object);
+    framedata_get_header_int(frame, "EXPTIME", &frame_exp);
+
     snprintf(ds9_command_buf, 1024,
-             "xpaset -p %s regions command '{text %d %d #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Exposure Ending: %s %s\"}'",
-             ds9_title, frame->cols/2, frame->rows + 15, frame_date, frame_end);
+             "xpaset -p %s regions command '{text %d %d #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %ds\"}'",
+             ds9_title, frame->cols/2, frame->rows + 30, frame_object, frame_exp);
+    ts_exec_write(ds9_command_buf, NULL, 0);
+
+    snprintf(ds9_command_buf, 1024,
+             "xpaset -p %s regions command '{text %d %d #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Ending: %s %s\"}'",
+             ds9_title, frame->cols/2, frame->rows + 10, frame_date, frame_end);
     ts_exec_write(ds9_command_buf, NULL, 0);
 
 region_error:

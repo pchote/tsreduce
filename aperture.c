@@ -16,6 +16,8 @@
 #include "helpers.h"
 #include "framedata.h"
 
+extern int verbosity;
+
 // Optimize the centering of a circular aperture (radius r, initial position xy)
 // over a star in frame
 // Input position is modified in place, or an error code returned 
@@ -101,7 +103,8 @@ int center_aperture(target r, framedata *frame, double2 *center)
             }
             pos[n].x /= 5;
             pos[n].y /= 5;
-            error("\tConverge failed - using average of last 5 iterations: (%f,%f)", pos[n].x, pos[n].y);
+            if (verbosity >= 1)
+                error("\tConverge failed - using average of last 5 iterations: (%f,%f)", pos[n].x, pos[n].y);
             break;
         }
 
@@ -114,7 +117,7 @@ int center_aperture(target r, framedata *frame, double2 *center)
         int tr = ceil(r.r) + 1;
         if (tx - tr < 0 || tx + tr >= frame->cols ||
             ty - tr < 0 || ty + tr >= frame->rows)
-            return error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y);
+            return (verbosity >= 1) ? error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y) : 1;
 
         // Calculate new background
         double sky_intensity, sky_std_dev;
@@ -180,7 +183,7 @@ int calculate_background(target r, framedata *frame, double *sky_mode, double *s
     while (data[filtered_n - 1] > mean + 10*std)
         filtered_n--;
 
-    if (filtered_n != n)
+    if (verbosity >= 1 && filtered_n != n)
         printf("\tdiscarding %d bright sky pixels\n", n - filtered_n);
 
     // Recalculate mean and median ignoring discarded pixels

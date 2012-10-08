@@ -190,7 +190,6 @@ struct tm parse_date_time_tm(const char *date, const char *time)
     free(datetime);
 #endif
 
-    printf("parse_date_time_tm %s %s\n", date, time);
     return t;
 }
 

@@ -23,6 +23,8 @@
 #include "fit.h"
 #include "astro_convert.h"
 
+extern int verbosity;
+
 int generate_photometry_dft_data(datafile *data,
     // Raw data, unfiltered by blocked ranges
     double **raw_time, double **raw, size_t *num_raw,
@@ -99,7 +101,8 @@ int generate_photometry_dft_data(datafile *data,
             // Skip invalid observations
             if (target == 0 || comparison == 0)
             {
-                error("Ignoring bad observation at %f", data->obs[i].time);
+                if (verbosity >= 1)
+                    error("Ignoring bad observation at %f", data->obs[i].time);
                 continue;
             }
 
@@ -177,7 +180,8 @@ int generate_photometry_dft_data(datafile *data,
     {
         if (fabs((*mma)[i] - mma_mean) > 3*mma_std)
         {
-            error("%f is an outlier, setting to 0", (*time)[i]);
+            if (verbosity >= 1)
+                error("%f is an outlier, setting to 0", (*time)[i]);
             (*mma)[i] = 0;
         }
         else
@@ -369,7 +373,8 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     // data[0] = flat[0][0,0], data[1] = flat[1][0,0] ... data[num_frames] = flat[0][0,1] etc
     for(int i = 0; i < num_frames; i++)
     {
-        printf("loading `%s`\n", frame_paths[i]);
+        if (verbosity >= 1)
+            printf("loading `%s`\n", frame_paths[i]);
         frames[i] = framedata_load(frame_paths[i]);
         if (!frames[i])
         {
@@ -465,7 +470,9 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
                 }
             var /= dark->regions.image_px;
             gain[k] = (mean_flat[k] + mean_dark) / (var - readnoise*readnoise);
-            printf("%d var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
+
+            if (verbosity >= 1)
+                printf("%d var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
         }
     }
 
@@ -512,7 +519,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         fits_update_key(out, TDOUBLE, "CCD-GAIN", &median_gain, "Estimated gain (electrons/ADU)", &status);
 
         printf("Readnoise: %f\n", readnoise);
-        printf("Gain mean: %f median: %f\n", mean_gain, median_gain);
+        printf("Gain: %f\n", median_gain);
     }
 
     // Write the frame data to the image
@@ -579,9 +586,10 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     if (data_cube == NULL)
         error_jump(datacube_failed, ret, "data_cube alloc failed");
 
-    for( int i = 0; i < num_frames; i++)
+    for (int i = 0; i < num_frames; i++)
     {
-        printf("loading `%s`\n", frame_paths[i]);
+        if (verbosity >= 1)
+            printf("loading `%s`\n", frame_paths[i]);
         framedata *f = framedata_load(frame_paths[i]);
         if (!f)
             error_jump(loaddark_failed, ret, "Error loading frame %s", frame_paths[i]);
@@ -1069,7 +1077,7 @@ int create_reduction_file(char *outname)
     if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
         error_jump(frameload_error, ret, "ds9 command failed");
 
-    printf("Circle the target stars and surrounding sky in ds9 then press enter in this terminal to continue...\n");
+    printf("Circle the target stars and surrounding sky in ds9\nPress enter in this terminal to continue...\n");
     getchar();
 
     char *ds9buf;
@@ -1105,7 +1113,8 @@ int create_reduction_file(char *outname)
         // Estimate initial aperture size as inner sky radius
         t.r = t.s1;
         
-        printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
+        if (verbosity >= 1)
+            printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
         
         double2 xy;
         if (center_aperture(t, frame, &xy))
@@ -1147,7 +1156,7 @@ int create_reduction_file(char *outname)
     for (int i = 0; i < data->num_targets; i++)
         data->targets[i].r = largest_aperture;
     
-    printf("Founds %d targets\n", data->num_targets);
+    printf("Set %d targets\n", data->num_targets);
     
     // Display results in ds9 - errors are non-fatal
     ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
@@ -1172,6 +1181,7 @@ int create_reduction_file(char *outname)
     datafile_save_header(data, outname);
     printf("Saved to %s\n", outname);
     printf("Run `tsreduce update %s` to reduce existing files\n", outname);
+    printf("Run `tsreduce plot %s` to preview reduced data\n", outname);
 aperture_converge_error:
     free(ds9buf);
 frameload_error:

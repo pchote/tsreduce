@@ -13,6 +13,8 @@
 #include "reduction.h"
 #include "ts_analysis.h"
 
+int verbosity = 0;
+
 int main( int argc, char *argv[] )
 {
     // `tsreduce create-flat "flat-[0-9]+.fits.gz" 5 master-dark.fits.gz master-flat.fits.gz`

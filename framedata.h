@@ -32,7 +32,7 @@ typedef struct
 framedata *framedata_load(const char *filename);
 void framedata_free(framedata *frame);
 
-int framedata_get_header_int(framedata *this, const char *key, int *value);
+int framedata_get_header_long(framedata *this, const char *key, long *value);
 int framedata_get_header_dbl(framedata *this, const char *key, double *value);
 int framedata_has_header_string(framedata *this, const char *key);
 int framedata_has_header_string(framedata *this, const char *key);

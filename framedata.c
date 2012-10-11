@@ -88,10 +88,10 @@ framedata *framedata_load(const char *filename)
     return fp;
 }
 
-int framedata_get_header_int(framedata *this, const char *key, int *value)
+int framedata_get_header_long(framedata *this, const char *key, long *value)
 {
     int ret, status = 0;
-    if (fits_read_key(this->fptr, TINT, key, &ret, NULL, &status))
+    if (fits_read_key(this->fptr, TLONG, key, &ret, NULL, &status))
         return 1;
 
     *value = ret;

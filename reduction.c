@@ -276,11 +276,11 @@ static time_t get_frame_time(framedata *frame)
 // Returns the mean intensity before normalization
 double prepare_flat(framedata *flat, framedata *dark, double *mean_out)
 {
-    int flatexp, darkexp;
-    if (framedata_get_header_int(flat, "EXPTIME", &flatexp))
+    long flatexp, darkexp;
+    if (framedata_get_header_long(flat, "EXPTIME", &flatexp))
         return error("EXPTIME is undefined in flat frame");
 
-    if (framedata_get_header_int(dark, "EXPTIME", &darkexp))
+    if (framedata_get_header_long(dark, "EXPTIME", &darkexp))
         return error("EXPTIME is undefined in dark frame");
 
     // Subtract bias
@@ -572,8 +572,8 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     if (!base)
         error_jump(insufficient_frames, ret, "Error loading frame %s", frame_paths[0]);
 
-    int exptime;
-    if (framedata_get_header_int(base, "EXPTIME", &exptime))
+    long exptime;
+    if (framedata_get_header_long(base, "EXPTIME", &exptime))
         error_jump(dark_failed, ret, "EXPTIME undefined in %s", frame_paths[0]);
 
     double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
@@ -634,7 +634,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     
     // Create the primary array image (16-bit short integer pixels
     fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
-    fits_update_key(out, TINT, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
+    fits_update_key(out, TLONG, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
     
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, median_dark, &status))
@@ -770,8 +770,8 @@ int update_reduction(char *dataPath)
             error_jump(process_error, ret, "Error loading frame %s", frame_paths[i]);
         }
 
-        int exptime;
-        if (framedata_get_header_int(frame, "EXPTIME", &exptime))
+        long exptime;
+        if (framedata_get_header_long(frame, "EXPTIME", &exptime))
         {
             framedata_free(frame);
             error_jump(process_error, ret, "EXPTIME undefined in %s", frame_paths[i]);
@@ -1313,14 +1313,14 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
 
     // Display frame time
     char frame_end[128], frame_date[128], frame_object[128];
-    int frame_exp;
+    long frame_exp;
     framedata_get_header_string(frame, "UTC-END", frame_end);
     framedata_get_header_string(frame, "UTC-DATE", frame_date);
     framedata_get_header_string(frame, "OBJECT", frame_object);
-    framedata_get_header_int(frame, "EXPTIME", &frame_exp);
+    framedata_get_header_long(frame, "EXPTIME", &frame_exp);
 
     snprintf(ds9_command_buf, 1024,
-             "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %ds\"}'",
+             "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %lds\"}'",
              ds9_title, frame->cols/2.0, frame->rows + 30/zoom, frame_object, frame_exp);
     ts_exec_write(ds9_command_buf, NULL, 0);
 

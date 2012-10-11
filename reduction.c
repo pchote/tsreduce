@@ -1298,15 +1298,15 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'", ds9_title, t.x + 1, t.y + 1, fwhm);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM≈%.2f arcsec\"}'",
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM: %.2f arcsec\"}'",
                  ds9_title, t.x + 1, t.y + 1 - t.s2 - 10/zoom, fwhm*plate_scale);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak≈%.0f ADU/px\"}'",
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak: %.0f ADU/px\"}'",
                  ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, centerProfile);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG≈%.0f ADU/px\"}'",
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG: %.0f ADU/px\"}'",
                  ds9_title, t.x + 1, t.y + 1 - t.s2 - 40/zoom, sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
     }

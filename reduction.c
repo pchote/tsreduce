@@ -1194,7 +1194,7 @@ create_dark_error:
 }
 
 // Update the ds9 preview with a frame and FWHM calculations
-int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
+int update_preview(char *preview_filename, char *ds9_title)
 {
     int ret = 0;
     char ds9_command_buf[1024];
@@ -1203,6 +1203,10 @@ int update_preview(char *preview_filename, char *ds9_title, double plate_scale)
     if (!frame)
         error_jump(frame_error, ret, "Error loading frame %s", preview_filename);
     subtract_bias(frame);
+
+    double plate_scale = 1;
+    if (framedata_get_header_dbl(frame, "IM-SCALE", &plate_scale))
+        printf("IM-SCALE header key not found. Assuming 1px = 1arcsec.\n");
 
     // Read regions from ds9
     snprintf(ds9_command_buf, 1024, "xpaget %s regions", ds9_title);

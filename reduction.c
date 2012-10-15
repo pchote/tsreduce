@@ -1109,6 +1109,7 @@ int create_reduction_file(char *outname)
         data->num_targets = 0;
         char *cur = ds9buf;
         double largest_aperture = 0;
+        double sky[MAX_TARGETS];
         for (; (cur = strstr(cur, "circle")) != NULL; cur++)
         {
             if (data->num_targets == MAX_TARGETS)
@@ -1150,10 +1151,11 @@ int create_reduction_file(char *outname)
                 printf("Background calculation failed. Removing aperture.\n");
                 continue;
             }
+            sky[data->num_targets] = sky_intensity;
 
             // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
             double lastIntensity = 0;
-            double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
+            double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
             int maxRadius = (int)t.s2 + 1;
             for (int radius = 1; radius <= maxRadius; radius++)
             {
@@ -1200,7 +1202,11 @@ int create_reduction_file(char *outname)
             else
                 snprintf(msg, 16, "Comparison %d", i);
 
+            double intensity = frame->data[frame->cols*((size_t)data->targets[i].y) + (size_t)data->targets[i].x] - sky[i];
+
             snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - data->targets[i].s2 - 10/zoom, msg);
+            ts_exec_write(command, NULL, 0);
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%.0f ADU\"}'", x, y - data->targets[i].s2 - 25/zoom, intensity);
             ts_exec_write(command, NULL, 0);
         }
 

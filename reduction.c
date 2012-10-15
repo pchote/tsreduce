@@ -1059,131 +1059,165 @@ int create_reduction_file(char *outname)
 
     framedata_divide(frame, flat);
     framedata_free(flat);
-    if (init_ds9())
-        return error("Unable to launch ds9");
-
+    
+    float skyradius = 0;
+    while (true)
     {
-        char command[128];
-        snprintf(command, 128, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
-        if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
-            error_jump(frameload_error, ret, "ds9 command failed: %s", command);
+        prompt_user_input("Enter the sky annulus radius (px):", "5", inputbuf, 1024);
+        skyradius = atof(inputbuf);
+        if (skyradius > 1)
+            break;
+
+        printf("Radius must be greater than 0\n");
     }
 
-    // Set scaling mode
-    if (ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0))
-        error_jump(frameload_error, ret, "ds9 command failed");
-    
-    // Flip X axis
-    if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
-        error_jump(frameload_error, ret, "ds9 command failed");
-
-    printf("Circle the target stars and surrounding sky in ds9\nPress enter in this terminal to continue...\n");
-    getchar();
-
-    char *ds9buf;
-    if (ts_exec_read("xpaget tsreduce regions", &ds9buf))
-        error_jump(frameload_error, ret, "ds9 request regions failed");
-
-    // Parse the region definitions
-    char *cur = ds9buf;
-    double largest_aperture = 0;
-    while ((cur = strstr(cur, "circle")) != NULL)
+    while (true)
     {
-        if (data->num_targets == MAX_TARGETS)
+        if (init_ds9())
+            return error("Unable to launch ds9");
+
         {
-            printf("Limit of %d targets reached. Remaining targets have been ignored", MAX_TARGETS);
-            break;
+            char command[128];
+            snprintf(command, 128, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+            if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
+                error_jump(frameload_error, ret, "ds9 command failed: %s", command);
         }
-        
-        // Read aperture coords
-        target t;
-        sscanf(cur, "circle(%lf,%lf,%lf)", &t.x, &t.y, &t.s2);
-        
-        // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
-        t.x -= 1;
-        t.y -= 1;
-        
-        //
-        // Calculate the optimum aperture positioning
-        //
-        
-        // Set outer sky radius to selected radius, inner to outer - 5
-        t.s1 = t.s2 - 5;
-        
-        // Estimate initial aperture size as inner sky radius
-        t.r = t.s1;
-        
-        if (verbosity >= 1)
-            printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
-        
-        double2 xy;
-        if (center_aperture(t, frame, &xy))
-            error_jump(aperture_converge_error, ret, "Aperture did not converge");
-        t.x = xy.x;
-        t.y = xy.y;
 
-        double sky_intensity, sky_std_dev;
-        if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
-            error_jump(aperture_converge_error, ret, "Background calculation failed");
+        // Set scaling mode
+        if (ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0))
+            error_jump(frameload_error, ret, "ds9 command failed");
 
-        // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
-        double lastIntensity = 0;
-        double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
-        int maxRadius = (int)t.s2 + 1;
-        for (int radius = 1; radius <= maxRadius; radius++)
+        // Flip X axis
+        if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
+            error_jump(frameload_error, ret, "ds9 command failed");
+
+        printf("Circle the target stars and surrounding sky in ds9\nPress enter in this terminal to continue...");
+        getchar();
+
+        // Read zoom from ds9
+        char *ds9_zoom;
+        if (ts_exec_read("xpaget tsreduce zoom", &ds9_zoom))
+            error_jump(frameload_error, ret, "ds9 request zoom failed");
+        float zoom = atof(ds9_zoom);
+        free(ds9_zoom);
+
+        char *ds9buf;
+        if (ts_exec_read("xpaget tsreduce regions", &ds9buf))
+            error_jump(frameload_error, ret, "ds9 request regions failed");
+
+        // Parse the region definitions
+        data->num_targets = 0;
+        char *cur = ds9buf;
+        double largest_aperture = 0;
+        for (; (cur = strstr(cur, "circle")) != NULL; cur++)
         {
-            double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
-            double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-            if (profile < 5*sky_std_dev)
+            if (data->num_targets == MAX_TARGETS)
             {
-                // Linear interpolate radii to estimate the radius that gives 5*stddev
-                t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
-                largest_aperture = fmax(largest_aperture, t.r);
+                printf("Limit of %d targets reached. Remaining targets have been ignored", MAX_TARGETS);
                 break;
             }
-            lastIntensity = intensity;
-            lastProfile = profile;
+
+            // Read aperture coords
+            target t;
+            sscanf(cur, "circle(%lf,%lf,%lf)", &t.x, &t.y, &t.s2);
+
+            // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
+            t.x -= 1;
+            t.y -= 1;
+
+            // Set outer sky radius to selected radius, inner to outer - 5
+            t.s1 = t.s2 - skyradius;
+
+            // Estimate initial aperture size as inner sky radius
+            t.r = t.s1;
+
+            if (verbosity >= 1)
+                printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
+
+            double2 xy;
+            if (center_aperture(t, frame, &xy))
+            {
+                printf("Centering failed to converge. Removing aperture.\n");
+                continue;
+            }
+
+            t.x = xy.x;
+            t.y = xy.y;
+
+            double sky_intensity, sky_std_dev;
+            if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
+            {
+                printf("Background calculation failed. Removing aperture.\n");
+                continue;
+            }
+
+            // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
+            double lastIntensity = 0;
+            double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
+            int maxRadius = (int)t.s2 + 1;
+            for (int radius = 1; radius <= maxRadius; radius++)
+            {
+                double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
+                double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+                if (profile < 5*sky_std_dev)
+                {
+                    // Linear interpolate radii to estimate the radius that gives 5*stddev
+                    t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
+                    largest_aperture = fmax(largest_aperture, t.r);
+                    break;
+                }
+                lastIntensity = intensity;
+                lastProfile = profile;
+            }
+
+            // Set target parameters
+            data->targets[data->num_targets++] = t;
+        }
+        free(ds9buf);
+
+        // Set aperture radii to the same size, equal to the largest calculated above
+        for (int i = 0; i < data->num_targets; i++)
+            data->targets[i].r = largest_aperture;
+
+        // Display results in ds9 - errors are non-fatal
+        ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
+
+        for (int i = 0; i < data->num_targets; i++)
+        {
+            double x = data->targets[i].x + 1;
+            double y = data->targets[i].y + 1;
+            char command[1024];
+            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red}'", x, y, data->targets[i].r);
+            ts_exec_write(command, NULL, 0);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s1);
+            ts_exec_write(command, NULL, 0);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s2);
+            ts_exec_write(command, NULL, 0);
+
+            char msg[16];
+            if (i == 0)
+                strcpy(msg, "Target");
+            else
+                snprintf(msg, 16, "Comparison %d", i);
+
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - data->targets[i].s2 - 10/zoom, msg);
+            ts_exec_write(command, NULL, 0);
         }
 
-        // Set target parameters
-        data->targets[data->num_targets++] = t;
-        
-        // Increment by one char so strstr will find the next instance
-        cur++;
+        prompt_user_input("Are the displayed apertures correct?:", "y", inputbuf, 1024);
+        if (strcmp(inputbuf, "y") == 0)
+            break;
     }
-
-    // Set aperture radii to the same size, equal to the largest calculated above
-    for (int i = 0; i < data->num_targets; i++)
-        data->targets[i].r = largest_aperture;
-    
     printf("Set %d targets\n", data->num_targets);
-    
-    // Display results in ds9 - errors are non-fatal
-    ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
-
-    for (int i = 0; i < data->num_targets; i++)
-    {
-        double x = data->targets[i].x + 1;
-        double y = data->targets[i].y + 1;
-        char command[128];
-        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #color=red}'", x, y, data->targets[i].r);
-        ts_exec_write(command, NULL, 0);
-        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s1);
-        ts_exec_write(command, NULL, 0);
-        snprintf(command, 128, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s2);
-        ts_exec_write(command, NULL, 0);
-    }
 
     // Save to disk
     if (chdir(datadir))
-        error_jump(aperture_converge_error, ret, "Invalid data path: %s", datadir);
+        error_jump(frameload_error, ret, "Invalid data path: %s", datadir);
 
     datafile_save_header(data, outname);
     printf("Saved to %s\n", outname);
     printf("Run `tsreduce update %s` to reduce existing files\n", outname);
     printf("Run `tsreduce plot %s` to preview reduced data\n", outname);
-aperture_converge_error:
-    free(ds9buf);
 frameload_error:
     framedata_free(frame);
     free(preview_filename);

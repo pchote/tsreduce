@@ -72,7 +72,18 @@ int main( int argc, char *argv[] )
     else if ((argc == 3 || argc == 7) && strcmp(argv[1], "plot") == 0)
     {
         if (argc == 3)
-            return plot_fits(argv[2], "5/xs", 9.41, "6/xs", 9.41);
+        {
+#if (defined _WIN32)
+            double size = 10;
+            char *ts_device = "ts.gif/gif";
+            char *dft_device = "dft.gif/gif";
+#else
+            double size = 9.41;
+            char *ts_device = "5/xs";
+            char *dft_device = "6/xs";
+#endif
+            return plot_fits(argv[2], ts_device, size, dft_device, size);
+        }
         else
             return plot_fits(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
     }

@@ -406,6 +406,16 @@ void die(const char * format, ...)
     exit(1);
 }
 
+// Sleep for ms milliseconds
+void millisleep(int ms)
+{
+#if (defined _WIN32 || defined _WIN64)
+    Sleep(ms);
+#else
+    nanosleep(&(struct timespec){ms / 1000, (ms % 1000)*1e6}, NULL);
+#endif
+}
+
 // Run an external process and return the error code.
 // stdout is a pointer to a string which is allocated to hold the output
 int ts_exec_read(const char *cmd, char **output_ptr)
@@ -491,11 +501,7 @@ int init_ds9()
         do
         {
             printf("Waiting...\n");
-#if (defined _WIN32)
-            Sleep(1000);
-#else
-            sleep(1);
-#endif
+            millisleep(1000);
             available = ts_exec_write(test_command, NULL, 0);
         } while (!available);
     }

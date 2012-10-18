@@ -305,7 +305,7 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+int plot_fits_internal(char *dataPath, char *tsDevice, size_t limit, double tsSize, char *dftDevice, double dftSize)
 {
     int plot_colors_max = 8;
     int plot_colors[] = {4,2,8,3,5,6,7,9};
@@ -314,6 +314,10 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file %s", dataPath);
+
+    // Limit the data to the first N observations
+    if (limit > 0 && data->num_obs >= limit)
+        data->num_obs = limit;
 
     // Start time in hours
     struct tm starttime;
@@ -439,8 +443,8 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
         char snr_label[32];
         snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
         cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
-        cpgend();
     }
+    cpgend();
 
     if (num_dft > 0)
     {
@@ -518,6 +522,31 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
     free(raw_time);
     free(raw);
     datafile_free(data);
+    return 0;
+}
+
+int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+{
+    return plot_fits_internal(dataPath, tsDevice, 0, tsSize, dftDevice, dftSize);
+}
+
+int playback_reduction(char *dataPath, int delay, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+{
+    // Count the number of observations
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file %s", dataPath);
+    size_t limit = data->num_obs;
+    datafile_free(data);
+
+    for (size_t i = 1; i < limit; i++)
+    {
+        int ret = plot_fits_internal(dataPath, tsDevice, i, tsSize, dftDevice, dftSize);
+        if (ret)
+            return ret;
+
+        millisleep(delay);
+    }
     return 0;
 }
 

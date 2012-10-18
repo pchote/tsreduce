@@ -68,7 +68,7 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "plot-range") == 0)
         return plot_range(argv[2]);
 
-    // `tsreduce plot ec04207.dat [ts.ps/cps [dft.ps/cps]]
+    // `tsreduce plot ec04207.dat [ts.ps/cps 10 dft.ps/cps 10]
     else if ((argc == 3 || argc == 7) && strcmp(argv[1], "plot") == 0)
     {
         if (argc == 3)
@@ -87,6 +87,27 @@ int main( int argc, char *argv[] )
         else
             return plot_fits(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
     }
+
+    // `tsreduce playback ec04207.dat 100 [ts.ps/cps 10 dft.ps/cps 10]
+    else if ((argc == 4 || argc == 8) && strcmp(argv[1], "playback") == 0)
+    {
+        if (argc == 4)
+        {
+#if (defined _WIN32)
+            double size = 10;
+            char *ts_device = "ts.gif/gif";
+            char *dft_device = "dft.gif/gif";
+#else
+            double size = 9.41;
+            char *ts_device = "5/xs";
+            char *dft_device = "6/xs";
+#endif
+            return playback_reduction(argv[2], atoi(argv[3]), ts_device, size, dft_device, size);
+        }
+        else
+            return playback_reduction(argv[2], atoi(argv[3]), argv[4], atof(argv[5]), argv[6], atof(argv[7]));
+    }
+
     // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`
     else if (argc >= 3 && strcmp(argv[1], "create-ts") == 0)
         return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1]);

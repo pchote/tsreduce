@@ -352,30 +352,11 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
     // Cast the double arrays to float, does not allocate any new memory.
     float *raw_time = cast_double_array_to_float(raw_time_d, num_raw);
     float *raw = cast_double_array_to_float(raw_d, num_raw*data->num_targets);
-    float *time = cast_double_array_to_float(time_d, num_filtered);
-    float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
-    float *ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
-    float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
-    float *mma = cast_double_array_to_float(mma_d, num_filtered);
-    float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
-    float *freq = cast_double_array_to_float(freq_d, num_dft);
-    float *ampl = cast_double_array_to_float(ampl_d, num_dft);
 
     float min_mma = mma_mean - 5*mma_std;
     float max_mma = mma_mean + 5*mma_std;
     float min_ratio = ratio_mean - 5*ratio_std;
     float max_ratio = ratio_mean + 5*ratio_std;
-
-    // Determine max dft ampl
-    float max_dft_ampl = 0;
-    float mean_dft_ampl = 0;
-    for (int i = 0; i < num_dft; i++)
-    {
-        max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
-        mean_dft_ampl += ampl[i];
-    }
-    mean_dft_ampl /= num_dft;
-    max_dft_ampl *= 1.1;
 
     if (cpgopen(tsDevice) <= 0)
         return error("Unable to open PGPLOT window");
@@ -386,40 +367,55 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
     cpgsfs(2);
     cpgscf(2);
 
-    // Fitted MMA
-    cpgsvp(0.1, 0.9, 0.75, 0.9);
-    cpgsch(1.25);
-    cpgmtxt("t", 2, 0.5, 0.5, "Time Series Data");
-    cpgsch(1.0);
+    if (num_filtered > 0)
+    {
+        float *time = cast_double_array_to_float(time_d, num_filtered);
+        float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
+        float *ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
+        float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
+        float *mma = cast_double_array_to_float(mma_d, num_filtered);
+        float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
 
-    cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
-    cpgswin(min_time, max_time, min_mma, max_mma);
-    cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
+        // Fitted MMA
+        cpgsvp(0.1, 0.9, 0.75, 0.9);
+        cpgsch(1.25);
+        cpgmtxt("t", 2, 0.5, 0.5, "Time Series Data");
+        cpgsch(1.0);
 
-    cpgswin(0, raw_time[num_raw-1], min_mma, max_mma);
+        cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
+        cpgswin(min_time, max_time, min_mma, max_mma);
+        cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
 
-    if (data->version >= 5)
-        cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
-    else
-        cpgpt(num_filtered, time, mma, 20);
+        cpgswin(0, raw_time[num_raw-1], min_mma, max_mma);
 
-    // Ratio
-    cpgsvp(0.1, 0.9, 0.55, 0.75);
-    cpgmtxt("l", 2.5, 0.5, 0.5, "Ratio");
-    cpgswin(min_time, max_time, min_ratio, max_ratio);
-    cpgbox("bcst", 1, 4, "bcstn", 0, 0);
-    cpgswin(0, raw_time[num_raw-1], min_ratio, max_ratio);
+        if (data->version >= 5)
+            cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
+        else
+            cpgpt(num_filtered, time, mma, 20);
 
-    // Plot error bars if ratio_noise is available (data->version >= 5)
-    if (data->version >= 5)
-        cpgerrb(6, num_filtered, time, ratio, ratio_noise, 0.0);
-    else
-        cpgpt(num_filtered, time, ratio, 20);
+        // Ratio
+        cpgsvp(0.1, 0.9, 0.55, 0.75);
+        cpgmtxt("l", 2.5, 0.5, 0.5, "Ratio");
+        cpgswin(min_time, max_time, min_ratio, max_ratio);
+        cpgbox("bcst", 1, 4, "bcstn", 0, 0);
+        cpgswin(0, raw_time[num_raw-1], min_ratio, max_ratio);
 
-    // Plot the polynomial fit
-    cpgsci(2);
-    cpgline(num_filtered, time, polyfit);
-    cpgsci(1);
+        // Plot error bars if ratio_noise is available (data->version >= 5)
+        if (data->version >= 5)
+            cpgerrb(6, num_filtered, time, ratio, ratio_noise, 0.0);
+        else
+            cpgpt(num_filtered, time, ratio, 20);
+
+        // Plot the polynomial fit
+        cpgsci(2);
+        cpgline(num_filtered, time, polyfit);
+        cpgsci(1);
+
+        free(time);
+        free(ratio);
+        free(polyfit);
+        free(mma);
+    }
 
     // Raw Data
     cpgsvp(0.1, 0.9, 0.075, 0.55);
@@ -435,75 +431,92 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
         cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
     }
 
-    // SNR label
-    cpgswin(0, 1, 0, 1);
-    cpgsci(1);
-    char snr_label[32];
-    snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
-    cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
-    cpgend();
-
-    if (cpgopen(dftDevice) <= 0)
-        return error("Unable to open PGPLOT window");
-    cpgpap(dftSize, 0.6);
-
-    cpgask(0);
-    cpgslw(3);
-    cpgsfs(2);
-    cpgscf(2);
-
-    // DFT
-    cpgsvp(0.1, 0.9, 0.075, 0.87);
-    cpgswin(data->plot_min_uhz, data->plot_max_uhz, 0, 1);
-    cpgbox("bstn", 0, 0, "0", 0, 0);
-
-    // Plot period on top axis
-    cpgsci(1);
-    cpgmove(data->plot_min_uhz, 1);
-    cpgdraw(data->plot_max_uhz, 1);
-    int default_periods[] = {100, 125, 150, 200, 300, 500, 2000};
-    int default_period_count = 7;
-    char buf[20];
-    for (int i = 0; i < default_period_count; i++)
+    if (num_filtered > 0)
     {
-        double freq = 1e6/default_periods[i];
-        if (freq < data->plot_min_uhz || freq > data->plot_max_uhz)
-            continue;
-
-        cpgmove(freq, 1);
-        cpgdraw(freq, 0.98);
-        snprintf(buf, 20, "%d", default_periods[i]);
-        cpgptxt(freq, 1.02, 0, 0.5, buf);
+        // SNR label
+        cpgswin(0, 1, 0, 1);
+        cpgsci(1);
+        char snr_label[32];
+        snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
+        cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
+        cpgend();
     }
 
-    cpgswin(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, 0, max_dft_ampl);
-    cpgbox("0", 0, 0, "bcnst", 5, 5);
+    if (num_dft > 0)
+    {
+        float *freq = cast_double_array_to_float(freq_d, num_dft);
+        float *ampl = cast_double_array_to_float(ampl_d, num_dft);
 
-    cpgsci(12);
-    cpgline(num_dft, freq, ampl);
-    cpgsci(1);
+        // Determine max dft ampl
+        float max_dft_ampl = 0;
+        float mean_dft_ampl = 0;
+        for (int i = 0; i < num_dft; i++)
+        {
+            max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
+            mean_dft_ampl += ampl[i];
+        }
+        mean_dft_ampl /= num_dft;
+        max_dft_ampl *= 1.1;
 
-    cpgswin(0, 1, 0, 1);
-    char ampl_label[32];
-    snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", mean_dft_ampl);
-    cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
+        if (cpgopen(dftDevice) <= 0)
+            return error("Unable to open PGPLOT window");
+        cpgpap(dftSize, 0.6);
 
-    cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
-    cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
-    cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
+        cpgask(0);
+        cpgslw(3);
+        cpgsfs(2);
+        cpgscf(2);
 
-    cpgsch(1.25);
-    cpgmtxt("t", 3.2, 0.5, 0.5, "Fourier Amplitude Spectrum");
-    cpgend();
+        // DFT
+        cpgsvp(0.1, 0.9, 0.075, 0.87);
+        cpgswin(data->plot_min_uhz, data->plot_max_uhz, 0, 1);
+        cpgbox("bstn", 0, 0, "0", 0, 0);
+
+        // Plot period on top axis
+        cpgsci(1);
+        cpgmove(data->plot_min_uhz, 1);
+        cpgdraw(data->plot_max_uhz, 1);
+        int default_periods[] = {100, 125, 150, 200, 300, 500, 2000};
+        int default_period_count = 7;
+        char buf[20];
+        for (int i = 0; i < default_period_count; i++)
+        {
+            double freq = 1e6/default_periods[i];
+            if (freq < data->plot_min_uhz || freq > data->plot_max_uhz)
+                continue;
+
+            cpgmove(freq, 1);
+            cpgdraw(freq, 0.98);
+            snprintf(buf, 20, "%d", default_periods[i]);
+            cpgptxt(freq, 1.02, 0, 0.5, buf);
+        }
+
+        cpgswin(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, 0, max_dft_ampl);
+        cpgbox("0", 0, 0, "bcnst", 5, 5);
+
+        cpgsci(12);
+        cpgline(num_dft, freq, ampl);
+        cpgsci(1);
+
+        cpgswin(0, 1, 0, 1);
+        char ampl_label[32];
+        snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", mean_dft_ampl);
+        cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
+
+        cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
+        cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
+        cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
+
+        cpgsch(1.25);
+        cpgmtxt("t", 3.2, 0.5, 0.5, "Fourier Amplitude Spectrum");
+        cpgend();
+
+        free(freq);
+        free(ampl);
+    }
 
     free(raw_time);
     free(raw);
-    free(time);
-    free(ratio);
-    free(polyfit);
-    free(mma);
-    free(freq);
-    free(ampl);
     datafile_free(data);
     return 0;
 }

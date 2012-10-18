@@ -67,7 +67,7 @@ int generate_photometry_dft_data(datafile *data,
         error_jump(polyfit_alloc_error, ret, "polyfit malloc failed");
 
     // Calculate polynomial fit to the ratio
-    double *coeffs = (double *)malloc((data->plot_fit_degree+1)*sizeof(double));
+    double *coeffs = (double *)calloc(data->plot_fit_degree + 1, sizeof(double));
     if (coeffs == NULL)
         error_jump(coeffs_alloc_error, ret, "coeffs malloc failed");
 
@@ -128,6 +128,19 @@ int generate_photometry_dft_data(datafile *data,
     ratio_std = sqrt(ratio_std/(*num_filtered));
     if (ratio_std_out)
         *ratio_std_out = ratio_std;
+
+    // Only attempt fit if it makes sense
+    if (*num_filtered <= data->plot_fit_degree)
+    {
+        *num_filtered = 0;
+        *mma_mean_out = 0;
+        *mma = NULL;
+        *mma_noise = NULL;
+        *freq = NULL;
+        *ampl = NULL;
+        *num_dft = 0;
+        return 0;
+    }
 
     if (fit_polynomial(*time, *ratio, *ratio_noise, *num_filtered, coeffs, data->plot_fit_degree))
         error_jump(poly_fit_error, ret, "Polynomial fit failed");

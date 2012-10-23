@@ -1,0 +1,21 @@
+Install packaged prerequisites:
+$ sudo apt-get install pgplot5 libxss1
+
+Download the latest ds9 from http://hea-www.harvard.edu/RD/ds9/site/Download.html and install. e.g:
+$ tar xvf ds9.linux.7.1.tar.gz
+$ sudo cp ds9 /usr/local/bin/
+
+Download latest xpa source from http://hea-www.harvard.edu/RD/ds9/site/XPA.html and install. e.g:
+$ tar xvf xpa-2.1.14
+$ cd xpa-2.1.14/
+$ ./configure
+$ make
+$ sudo make install
+
+Clone and build the source code:
+$ git clone https://github.com/pchote/tsreduce
+$ cd tsreduce
+$ make
+
+Add tsreduce to the system path by appending to ~/.bashrc:
+export PATH=<path to tsreduce dir>:$PATH

@@ -151,7 +151,17 @@ char *canonicalize_path(const char *path)
         i[0] = '/';
 #else
     char path_buf[PATH_MAX];
-    realpath(path, path_buf);
+
+    // Expand tilde to home dir
+    if (path[0] == '~')
+    {
+        char *home = getenv("HOME");
+        char temp_buf[PATH_MAX];
+        snprintf(temp_buf, PATH_MAX, "%s%s", home, &path[1]);
+        realpath(temp_buf, path_buf);
+    }
+    else
+        realpath(path, path_buf);
 #endif
     return strdup(path_buf);
 }

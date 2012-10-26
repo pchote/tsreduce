@@ -12,6 +12,9 @@
 #include <dirent.h>
 #include <regex.h>
 #include <math.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+
 #include "helpers.h"
 
 #if (defined _WIN32)
@@ -226,7 +229,10 @@ float *cast_double_array_to_float(double *d_ptr, size_t count)
 
 // versionsort isn't defined on all platforms (e.g osx), so define our own copy
 // Taken from GNU strverscmp.c, licenced under GPLv2 or later
+#ifndef ISDIGIT
 #define ISDIGIT(c) ((unsigned int) (c) - '0' <= 9)
+#endif
+
 #define S_N    0x0
 #define S_I    0x4
 #define S_F    0x8
@@ -510,22 +516,37 @@ int init_ds9()
 
 char *prompt_user_input(char *message, char *fallback)
 {
+    char *prompt = NULL;
     if (fallback)
-        printf("%s [%s]: ", message, fallback);
+    {
+        prompt = malloc(strlen(message) + strlen(fallback) + 6);
+        sprintf(prompt, "%s [%s]: ", message, fallback);
+    }
     else
-        printf("%s: ", message);
+    {
+        prompt = malloc(strlen(message) + 3);
+        sprintf(prompt, "%s: ", message);
+    }
 
-    char buffer[1024];
-    fgets(buffer, 1024, stdin);
+    // Prevent trailing space being added after completion
+	rl_completion_suppress_append = 1;
+    rl_bind_key('\t', rl_complete);
 
-    // Trim trailing newline, or read default
-    size_t len = strlen(buffer);
-    if (len < 2 && fallback)
-        strcpy(buffer, fallback);
-    else if (len > 1)
-        buffer[len - 1] = '\0';
+    char *input = readline(prompt);
 
-    return strdup(buffer);
+    // Encountered EOF
+    if (!input)
+        return strdup(strdup(fallback));
+
+    // Empty string: Return fallback
+    if (strlen(input) == 0)
+    {
+        free(input);
+        return strdup(fallback);
+    }
+
+    add_history(input);
+    return input;
 }
 
 // Calculate the amplitude spectrum of the signal defined by numData points in (time, data)

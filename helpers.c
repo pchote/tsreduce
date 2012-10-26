@@ -12,8 +12,11 @@
 #include <dirent.h>
 #include <regex.h>
 #include <math.h>
+
+#ifdef USE_READLINE
 #include <readline/readline.h>
 #include <readline/history.h>
+#endif
 
 #include "helpers.h"
 
@@ -538,6 +541,7 @@ char *prompt_user_input(char *message, char *fallback)
         sprintf(prompt, "%s: ", message);
     }
 
+#ifdef USE_READLINE
     // Prevent trailing space being added after completion
 	rl_completion_suppress_append = 1;
     rl_bind_key('\t', rl_complete);
@@ -547,6 +551,18 @@ char *prompt_user_input(char *message, char *fallback)
     // Encountered EOF
     if (!input)
         return strdup(strdup(fallback));
+#else
+    char inputbuf[1024];
+    printf("%s", prompt);
+    fgets(inputbuf, 1024, stdin);
+
+    // Strip trailing newline
+    size_t len = strlen(inputbuf);
+    if (len >= 1)
+        inputbuf[len - 1] = '\0';
+
+    char *input = strdup(inputbuf);
+#endif
 
     // Empty string: Return fallback
     if (strlen(input) == 0)
@@ -555,7 +571,9 @@ char *prompt_user_input(char *message, char *fallback)
         return strdup(fallback);
     }
 
+#ifdef USE_READLINE
     add_history(input);
+#endif
     return input;
 }
 

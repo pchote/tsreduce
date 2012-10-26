@@ -70,10 +70,7 @@ cp grfont.dat rgb.txt /usr/local/share/pgplot
 Set PGPLOT_DIR environment variable in ~/.profile by appending the line
 export PGPLOT_DIR=/usr/local/share/pgplot
 
-Return to the home directory and checkout the tsreduce code
+Return to the home directory and checkout and build the tsreduce code
 git clone https://github.com/pchote/tsreduce.git
 cd tsreduce
-make
-
-Every other platform
-TODO
+make USE_READLINE=false

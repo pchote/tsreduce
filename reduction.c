@@ -902,20 +902,22 @@ int create_reduction_file(char *outname)
 
     // Store the current directory so we can return before saving the data file
     char *datadir = getcwd(NULL, 0);
-    char inputbuf[1024];
 
     while (true)
     {
-        prompt_user_input("Enter frame path", ".", inputbuf, 1024);
-        data->frame_dir = canonicalize_path(inputbuf);
+        char *ret = prompt_user_input("Enter frame path", ".");
+        data->frame_dir = canonicalize_path(ret);
         if (!chdir(data->frame_dir))
+        {
+            free(ret);
             break;
-        printf("Invalid frame path: %s\n", inputbuf);
+        }
+        printf("Invalid frame path: %s\n", ret);
         free(data->frame_dir);
+        free(ret);
     }
 
-    prompt_user_input("Enter output master dark filename", "master-dark.fits.gz", inputbuf, 1024);
-    data->dark_template = strdup(inputbuf);
+    data->dark_template = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz");
 
     // Create master-dark if necessary
     if (access(data->dark_template, F_OK) != -1)
@@ -926,8 +928,9 @@ int create_reduction_file(char *outname)
         int num_darks;
         while (true)
         {
-            prompt_user_input("Enter dark prefix", "dark", inputbuf, 1024);
-            snprintf(dark_pattern, 1039, "%s-[0-9]+.fits.gz", inputbuf);
+            char *ret = prompt_user_input("Enter dark prefix", "dark");
+            snprintf(dark_pattern, 1039, "%s-[0-9]+.fits.gz", ret);
+            free(ret);
 
             char **dark_filenames;
             num_darks = get_matching_files(dark_pattern, &dark_filenames);
@@ -945,9 +948,10 @@ int create_reduction_file(char *outname)
         {
             char fallback[32];
             snprintf(fallback, 32, "%d", num_darks/2);
-            prompt_user_input("Enter number of darks around median to average", fallback, inputbuf, 1024);
+            char *ret = prompt_user_input("Enter number of darks around median to average", fallback);
+            int count = atoi(ret);
+            free(ret);
 
-            int count = atoi(inputbuf);
             if (count > 0 && count <= num_darks)
             {
                 minmax = (num_darks - count) / 2;
@@ -961,8 +965,7 @@ int create_reduction_file(char *outname)
             error_jump(create_dark_error, ret, "master dark generation failed");
     }
 
-    prompt_user_input("Enter output master flat filename", "master-flat.fits.gz", inputbuf, 1024);
-    data->flat_template = strdup(inputbuf);
+    data->flat_template = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
     
     // Create master-flat if necessary
     if (access(data->flat_template, F_OK) != -1)
@@ -973,8 +976,9 @@ int create_reduction_file(char *outname)
         int num_flats;
         while (true)
         {
-            prompt_user_input("Enter flat prefix", "flat", inputbuf, 1024);
-            snprintf(flat_pattern, 32, "%s-[0-9]+.fits.gz", inputbuf);
+            char *ret = prompt_user_input("Enter flat prefix", "flat");
+            snprintf(flat_pattern, 32, "%s-[0-9]+.fits.gz", ret);
+            free(ret);
 
             char **flat_filenames;
             num_flats = get_matching_files(flat_pattern, &flat_filenames);
@@ -992,9 +996,10 @@ int create_reduction_file(char *outname)
         {
             char fallback[32];
             snprintf(fallback, 32, "%d", num_flats/2);
-            prompt_user_input("Enter number of flats around median to average", fallback, inputbuf, 1024);
+            char *ret = prompt_user_input("Enter number of flats around median to average", fallback);
+            int count = atoi(ret);
+            free(ret);
 
-            int count = atoi(inputbuf);
             if (count > 0 && count <= num_flats)
             {
                 minmax = (num_flats - count) / 2;
@@ -1012,8 +1017,9 @@ int create_reduction_file(char *outname)
     while (true)
     {
         char namebuf[1039];
-        prompt_user_input("Enter target prefix", NULL, inputbuf, 1024);
-        snprintf(namebuf, 1039, "%s-[0-9]+.fits.gz", inputbuf);
+        char *ret = prompt_user_input("Enter target prefix", NULL);
+        snprintf(namebuf, 1039, "%s-[0-9]+.fits.gz", ret);
+        free(ret);
         data->frame_pattern = strdup(namebuf);
 
         preview_filename = get_first_matching_file(data->frame_pattern);
@@ -1048,8 +1054,9 @@ int create_reduction_file(char *outname)
     {
         while (true)
         {
-            prompt_user_input("Enter CCD Readnoise (ADU):", "3.32", inputbuf, 1024);
-            data->ccd_readnoise = atof(inputbuf);
+            char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32");
+            data->ccd_readnoise = atof(ret);
+            free(ret);
             if (data->ccd_readnoise > 0)
                 break;
 
@@ -1061,8 +1068,10 @@ int create_reduction_file(char *outname)
     {
         while (true)
         {
-            prompt_user_input("Enter CCD Gain (ADU):", "2.00", inputbuf, 1024);
-            data->ccd_gain = atof(inputbuf);
+            char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00");
+            data->ccd_gain = atof(ret);
+            free(ret);
+
             if (data->ccd_gain > 0)
                 break;
 
@@ -1076,8 +1085,10 @@ int create_reduction_file(char *outname)
     float skyradius = 0;
     while (true)
     {
-        prompt_user_input("Enter the sky annulus radius (px):", "5", inputbuf, 1024);
-        skyradius = atof(inputbuf);
+        char *ret = prompt_user_input("Enter the sky annulus radius (px):", "5");
+        skyradius = atof(ret);
+        free(ret);
+
         if (skyradius > 1)
             break;
 
@@ -1223,8 +1234,10 @@ int create_reduction_file(char *outname)
             ts_exec_write(command, NULL, 0);
         }
 
-        prompt_user_input("Are the displayed apertures correct?:", "y", inputbuf, 1024);
-        if (strcmp(inputbuf, "y") == 0)
+        char *ret = prompt_user_input("Are the displayed apertures correct?:", "y");
+        bool done = !strcmp(ret, "y");
+        free(ret);
+        if (done)
             break;
     }
     printf("Set %d targets\n", data->num_targets);

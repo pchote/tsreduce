@@ -508,13 +508,15 @@ int init_ds9()
     return 0;
 }
 
-void prompt_user_input(char *message, char *fallback, char *buffer, size_t buffer_length)
+char *prompt_user_input(char *message, char *fallback)
 {
     if (fallback)
         printf("%s [%s]: ", message, fallback);
     else
         printf("%s: ", message);
-    fgets(buffer, buffer_length, stdin);
+
+    char buffer[1024];
+    fgets(buffer, 1024, stdin);
 
     // Trim trailing newline, or read default
     size_t len = strlen(buffer);
@@ -522,6 +524,8 @@ void prompt_user_input(char *message, char *fallback, char *buffer, size_t buffe
         strcpy(buffer, fallback);
     else if (len > 1)
         buffer[len - 1] = '\0';
+
+    return strdup(buffer);
 }
 
 // Calculate the amplitude spectrum of the signal defined by numData points in (time, data)

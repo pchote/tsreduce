@@ -52,6 +52,6 @@ void ts_gmtime(time_t in, struct tm *out);
 time_t parse_time_t(const char *string);
 struct tm parse_date_time_tm(const char *date, const char *time);
 void serialize_time_t(time_t t, char buf[20]);
-void prompt_user_input(char *message, char *fallback, char *buffer, size_t buffer_length);
+char *prompt_user_input(char *message, char *fallback);
 
 #endif

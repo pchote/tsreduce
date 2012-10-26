@@ -550,7 +550,10 @@ char *prompt_user_input(char *message, char *fallback)
 
     // Encountered EOF
     if (!input)
+    {
+        printf("\n");
         return strdup(strdup(fallback));
+    }
 #else
     char inputbuf[1024];
     printf("%s", prompt);

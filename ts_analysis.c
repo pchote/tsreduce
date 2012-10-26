@@ -422,15 +422,28 @@ int plot_fits_internal(char *dataPath, char *tsDevice, size_t limit, double tsSi
     }
 
     // Raw Data
+    double max_raw = data->plot_max_raw;
+    if (max_raw == 0)
+    {
+        for (int i = 0; i < num_raw; i++)
+            for (int j = 0; j < data->num_targets; j++)
+            {
+                double r = raw[j*num_raw + i];
+                if (r > max_raw)
+                    max_raw = r;
+            }
+        max_raw *= 1.2;
+    }
+
     cpgsvp(0.1, 0.9, 0.075, 0.55);
     cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
     cpgmtxt("b", 2.5, 0.5, 0.5, "UTC Hour");
-    cpgswin(min_time, max_time, 0, data->plot_max_raw);
+    cpgswin(min_time, max_time, 0, max_raw);
     cpgbox("bcstn", 1, 4, "bcstn", 0, 0);
 
     for (int j = 0; j < data->num_targets; j++)
     {
-        cpgswin(0, raw_time[num_raw-1], 0, data->plot_max_raw/data->targets[j].plot_scale);
+        cpgswin(0, raw_time[num_raw-1], 0, max_raw/data->targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
         cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
     }

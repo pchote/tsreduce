@@ -552,7 +552,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
     size_t limit = data->num_obs;
     datafile_free(data);
 
-    for (size_t i = 1; i < limit; i+= step)
+    for (size_t i = 2; i < limit; i+= step)
     {
         int ret = plot_fits_internal(dataPath, tsDevice, i, tsSize, dftDevice, dftSize);
         if (ret)

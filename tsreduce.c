@@ -88,10 +88,10 @@ int main( int argc, char *argv[] )
             return plot_fits(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
     }
 
-    // `tsreduce playback ec04207.dat 100 [ts.ps/cps 10 dft.ps/cps 10]
-    else if ((argc == 4 || argc == 8) && strcmp(argv[1], "playback") == 0)
+    // `tsreduce playback ec04207.dat 100 1 [ts.ps/cps 10 dft.ps/cps 10]
+    else if ((argc == 5 || argc == 9) && strcmp(argv[1], "playback") == 0)
     {
-        if (argc == 4)
+        if (argc == 5)
         {
 #if (defined _WIN32)
             double size = 10;
@@ -102,10 +102,10 @@ int main( int argc, char *argv[] )
             char *ts_device = "5/xs";
             char *dft_device = "6/xs";
 #endif
-            return playback_reduction(argv[2], atoi(argv[3]), ts_device, size, dft_device, size);
+            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), ts_device, size, dft_device, size);
         }
         else
-            return playback_reduction(argv[2], atoi(argv[3]), argv[4], atof(argv[5]), argv[6], atof(argv[7]));
+            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), argv[5], atof(argv[6]), argv[7], atof(argv[8]));
     }
 
     // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`

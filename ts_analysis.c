@@ -543,7 +543,7 @@ int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, do
     return plot_fits_internal(dataPath, tsDevice, 0, tsSize, dftDevice, dftSize);
 }
 
-int playback_reduction(char *dataPath, int delay, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
 {
     // Count the number of observations
     datafile *data = datafile_load(dataPath);
@@ -552,7 +552,7 @@ int playback_reduction(char *dataPath, int delay, char *tsDevice, double tsSize,
     size_t limit = data->num_obs;
     datafile_free(data);
 
-    for (size_t i = 1; i < limit; i++)
+    for (size_t i = 1; i < limit; i+= step)
     {
         int ret = plot_fits_internal(dataPath, tsDevice, i, tsSize, dftDevice, dftSize);
         if (ret)
@@ -560,7 +560,9 @@ int playback_reduction(char *dataPath, int delay, char *tsDevice, double tsSize,
 
         millisleep(delay);
     }
-    return 0;
+
+    // Finish by plotting with all data
+    return plot_fits_internal(dataPath, tsDevice, limit, tsSize, dftDevice, dftSize);
 }
 
 int amplitude_spectrum(char *dataPath)

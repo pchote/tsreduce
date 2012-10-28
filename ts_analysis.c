@@ -553,10 +553,14 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
         // Limit the data to the first N observations
         data->num_obs = i;
 
+        clock_t start = clock();
         if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
             error_jump(plot_error, ret, "Plotting error");
 
-        millisleep(delay);
+        // Attempt to compensate for calculation time
+        int ms = (clock() - start)*1000/CLOCKS_PER_SEC;
+        if (ms < delay)
+            millisleep(delay - ms);
     }
 
     // Finish by plotting with all data

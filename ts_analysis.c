@@ -305,19 +305,10 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-int plot_fits_internal(char *dataPath, char *tsDevice, size_t limit, double tsSize, char *dftDevice, double dftSize)
+int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
 {
     int plot_colors_max = 8;
     int plot_colors[] = {4,2,8,3,5,6,7,9};
-
-    // Read file header
-    datafile *data = datafile_load(dataPath);
-    if (data == NULL)
-        return error("Error opening data file %s", dataPath);
-
-    // Limit the data to the first N observations
-    if (limit > 0 && data->num_obs >= limit)
-        data->num_obs = limit;
 
     // Start time in hours
     struct tm starttime;
@@ -334,7 +325,6 @@ int plot_fits_internal(char *dataPath, char *tsDevice, size_t limit, double tsSi
                                      &ratio_mean, &ratio_std, &mma_mean, &mma_std,
                                      &freq_d, &ampl_d, &num_dft))
     {
-        datafile_free(data);
         return error("Error generating data");
     }
 
@@ -534,35 +524,49 @@ int plot_fits_internal(char *dataPath, char *tsDevice, size_t limit, double tsSi
 
     free(raw_time);
     free(raw);
-    datafile_free(data);
     return 0;
 }
 
 int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
 {
-    return plot_fits_internal(dataPath, tsDevice, 0, tsSize, dftDevice, dftSize);
+    datafile *data = datafile_load(dataPath);
+    if (!data)
+        return error("Error opening data file %s", dataPath);
+
+    int ret = plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize);
+    datafile_free(data);
+    return ret;
 }
 
 int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
 {
+    int ret = 0;
+
     // Count the number of observations
     datafile *data = datafile_load(dataPath);
-    if (data == NULL)
+    if (!data)
         return error("Error opening data file %s", dataPath);
     size_t limit = data->num_obs;
-    datafile_free(data);
 
     for (size_t i = 2; i < limit; i+= step)
     {
-        int ret = plot_fits_internal(dataPath, tsDevice, i, tsSize, dftDevice, dftSize);
-        if (ret)
-            return ret;
+        // Limit the data to the first N observations
+        data->num_obs = i;
+
+        if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
+            error_jump(plot_error, ret, "Plotting error");
 
         millisleep(delay);
     }
 
     // Finish by plotting with all data
-    return plot_fits_internal(dataPath, tsDevice, limit, tsSize, dftDevice, dftSize);
+    data->num_obs = limit;
+    if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
+        error_jump(plot_error, ret, "Plotting error");
+
+plot_error:
+    datafile_free(data);
+    return ret;
 }
 
 int amplitude_spectrum(char *dataPath)

@@ -110,7 +110,7 @@ int generate_photometry_dft_data(datafile *data,
             (*ratio)[*num_filtered] = comparison > 0 ? target/comparison : 0;
 
             // Read noise from data file if available
-            (*ratio_noise)[*num_filtered] = (data->version >= 5) ? data->obs[i].ratio_noise : 1;
+            (*ratio_noise)[*num_filtered] = (data->version >= 5 && data->dark_template) ? data->obs[i].ratio_noise : 0;
 
             ratio_mean += (*ratio)[*num_filtered];
             (*num_filtered)++;
@@ -142,7 +142,8 @@ int generate_photometry_dft_data(datafile *data,
         return 0;
     }
 
-    if (fit_polynomial(*time, *ratio, *ratio_noise, *num_filtered, coeffs, data->plot_fit_degree))
+    double *fit_noise = (data->version >= 5 && data->dark_template) ? *ratio_noise : NULL;
+    if (fit_polynomial(*time, *ratio, fit_noise, *num_filtered, coeffs, data->plot_fit_degree))
         error_jump(poly_fit_error, ret, "Polynomial fit failed");
 
     *mma = (double *)malloc(*num_filtered*sizeof(double));
@@ -166,14 +167,14 @@ int generate_photometry_dft_data(datafile *data,
         }
         (*mma)[i] = 1000*((*ratio)[i] - (*polyfit)[i])/(*polyfit)[i];
 
-        if (data->version >= 5)
+        if (data->version >= 5 && data->dark_template)
         {
             double numer_error = fabs((*ratio_noise)[i]/((*ratio)[i] - (*polyfit)[i]));
             double denom_error = fabs((*ratio_noise)[i]/(*ratio)[i]);
             (*mma_noise)[i] = (numer_error + denom_error)*fabs((*mma)[i]);
         }
         else
-            (*mma_noise)[i] = 1;
+            (*mma_noise)[i] = 0;
 
         mma_mean += (*mma)[i];
     }
@@ -735,26 +736,26 @@ int update_reduction(char *dataPath)
     if (chdir(data->frame_dir))
         error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
 
-    framedata *flat = framedata_load(data->flat_template);
-    if (!flat)
-        error_jump(data_error, ret, "Error loading frame %s", data->flat_template);
+    double readnoise = 0, gain = 1;
+    framedata *flat = NULL;
 
-    double readnoise, gain;
-    if (framedata_get_header_dbl(flat, "CCD-READ", &readnoise))
-        readnoise = data->ccd_readnoise;
+    if (data->flat_template)
+    {
+        flat = framedata_load(data->flat_template);
+        if (framedata_get_header_dbl(flat, "CCD-READ", &readnoise))
+            readnoise = data->ccd_readnoise;
 
-    if (readnoise <= 0)
-        error_jump(flat_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
+        if (readnoise <= 0)
+            error_jump(flat_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
 
-    if (framedata_get_header_dbl(flat, "CCD-GAIN", &gain))
-        gain = data->ccd_gain;
+        if (framedata_get_header_dbl(flat, "CCD-GAIN", &gain))
+            gain = data->ccd_gain;
 
-    if (gain <= 0)
-        error_jump(flat_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
+        if (gain <= 0)
+            error_jump(flat_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
+    }
 
-    framedata *dark = framedata_load(data->dark_template);
-    if (!dark)
-        error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
+    framedata *dark = data->dark_template ? framedata_load(data->dark_template) : NULL;
 
     // Iterate through the files in the directory
     char **frame_paths;
@@ -796,8 +797,10 @@ int update_reduction(char *dataPath)
 
         // Process frame
         subtract_bias(frame);
-        framedata_subtract(frame, dark);
-        framedata_divide(frame, flat);
+        if (dark)
+            framedata_subtract(frame, dark);
+        if (flat)
+            framedata_divide(frame, flat);
 
         // Observation start time
         fprintf(data->file, "%.1f ", starttime);
@@ -835,7 +838,13 @@ int update_reduction(char *dataPath)
                 // Integrate sky over the aperture and normalize per unit time
                 sky *= M_PI*t.r*t.r / exptime;
 
-                integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
+                if (dark)
+                    integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
+                else
+                {
+                    intensity = integrate_aperture(xy, t.r, frame);
+                    noise = 0;
+                }
                 intensity = intensity/exptime - sky;
                 noise /= exptime;
             }
@@ -862,7 +871,7 @@ int update_reduction(char *dataPath)
 
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-        double ratioNoise = ratio ? (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio : 1;
+        double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
         data->obs[data->num_obs].ratio = ratio;
 
         fprintf(data->file, "%.3e ", ratio);
@@ -881,9 +890,11 @@ int update_reduction(char *dataPath)
 
 process_error:
     free_2d_array(frame_paths, num_frames);
-    framedata_free(dark);
+    if (dark)
+        framedata_free(dark);
 flat_error:
-    framedata_free(flat);
+    if (flat)
+        framedata_free(flat);
 data_error:
     datafile_free(data);
     return ret;

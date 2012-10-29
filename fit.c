@@ -136,7 +136,7 @@ static int fit(double *x, double *y, double *e, int n, double *params, size_t nu
         evaluate_basis(x[i], basis, rows, user);
 
         // Estimated variance in y
-        double var = e[i]*e[i];
+        double var = e ? e[i]*e[i] : 1.0;
 
         for (size_t j = 0; j < rows; j++)
         {

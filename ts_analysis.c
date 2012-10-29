@@ -96,6 +96,55 @@ int display_targets(char *dataPath, int obsIndex)
     return 0;
 }
 
+int display_tracer(char *dataPath)
+{
+    // Read file header
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    if (chdir(data->frame_dir))
+    {
+        datafile_free(data);
+        return error("Invalid frame path: %s", data->frame_dir);
+    }
+
+    if (init_ds9())
+        return error("Unable to launch ds9");
+
+    char command[1024];
+    snprintf(command, 1024, "xpaset tsreduce file %s/%s", data->frame_dir, data->obs[data->num_obs-1].filename);
+    ts_exec_write(command, NULL, 0);
+
+    // Set scaling mode
+    ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0);
+
+    // Flip X axis
+    ts_exec_write("xpaset tsreduce orient x", NULL, 0);
+
+    // Display results in ds9 - errors are non-fatal
+    ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
+
+    for (int j = 1; j < data->num_obs; j++)
+        for (int i = 0; i < data->num_targets; i++)
+        {
+            snprintf(command, 1024, "xpaset tsreduce regions command '{line %f %f %f %f # line= 0 0 color=red select=0}'",
+                     data->obs[j-1].pos[i].x + 1, data->obs[j-1].pos[i].y + 1, data->obs[j].pos[i].x + 1, data->obs[j].pos[i].y + 1);
+            ts_exec_write(command, NULL, 0);
+
+            if (j == data->num_obs - 1)
+            {
+                snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'",
+                     data->obs[j].pos[i].x + 1, data->obs[j].pos[i].y + 1, data->targets[i].r);
+                ts_exec_write(command, NULL, 0);
+            }
+            ts_exec_write(command, NULL, 0);
+        }
+    ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
+    datafile_free(data);
+    return 0;
+}
+
 // Output radial profile information for the given targetIndex, obsIndex in
 // the reduction file at dataPath
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex)

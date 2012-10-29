@@ -10,6 +10,7 @@
 #define TS_ANALYSIS_H
 
 int display_targets(char *dataPath, int obsIndex);
+int display_tracer(char *dataPath);
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);
 int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize);

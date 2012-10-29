@@ -40,6 +40,9 @@ int main( int argc, char *argv[] )
         return display_targets(argv[2], obs);
     }
 
+    else if (argc == 3 && strcmp(argv[1], "tracer") == 0)
+        return display_tracer(argv[2]);
+
     // `tsreduce model july2011_run2.ts dftfreq.dat 0.0678829 6.3125 0.0001 fit.dat [residuals.dat]`
     else if ((argc == 8 || argc == 9) && strcmp(argv[1], "model") == 0)
         return model_fit(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], (argc == 9) ? argv[8] : NULL);

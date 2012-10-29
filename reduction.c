@@ -1407,6 +1407,10 @@ int update_preview(char *preview_filename, char *ds9_title)
              ds9_title, frame->cols/2.0, frame->rows + 10/zoom, frame_date, frame_end);
     ts_exec_write(ds9_command_buf, NULL, 0);
 
+    // Force the display to update
+    snprintf(ds9_command_buf, 1024, "xpaset -p %s update now", ds9_title);
+    ts_exec_write(ds9_command_buf, NULL, 0);
+
 region_error:
     framedata_free(frame);
 frame_error:

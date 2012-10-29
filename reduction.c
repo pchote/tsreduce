@@ -1383,6 +1383,10 @@ int update_preview(char *preview_filename, char *ds9_title)
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG: %.0f ADU/px\"}'",
                  ds9_title, t.x + 1, t.y + 1 - t.s2 - 40/zoom, sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
+
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{box %f %f %f %f #color=black select=0 width=%d}'",
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, 115/zoom, 25/zoom, 25);
+        ts_exec_write(ds9_command_buf, NULL, 0);
     }
 
     // Display frame time

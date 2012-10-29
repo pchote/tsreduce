@@ -928,100 +928,112 @@ int create_reduction_file(char *outname)
         free(ret);
     }
 
-    data->dark_template = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz");
+    char *input = prompt_user_input("Use calibration frames", "y");
+    bool use_calibration = !strcmp(input, "y");
+    free(input);
 
-    // Create master-dark if necessary
-    if (access(data->dark_template, F_OK) != -1)
-        printf("Skipping master dark creation - file already exists\n");
-    else
+    if (use_calibration)
     {
-        char dark_pattern[1039];
-        int num_darks;
-        while (true)
-        {
-            char *ret = prompt_user_input("Enter dark prefix", "dark");
-            snprintf(dark_pattern, 1039, "%s-[0-9]+.fits.gz", ret);
-            free(ret);
+        data->dark_template = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz");
 
-            char **dark_filenames;
-            num_darks = get_matching_files(dark_pattern, &dark_filenames);
-            if (num_darks > 0)
+        // Create master-dark if necessary
+        if (access(data->dark_template, F_OK) != -1)
+            printf("Skipping master dark creation - file already exists\n");
+        else
+        {
+            char dark_pattern[1039];
+            int num_darks;
+            while (true)
             {
-                free_2d_array(dark_filenames, num_darks);
-                break;
+                char *ret = prompt_user_input("Enter dark prefix", "dark");
+                snprintf(dark_pattern, 1039, "%s-[0-9]+.fits.gz", ret);
+                free(ret);
+
+                char **dark_filenames;
+                num_darks = get_matching_files(dark_pattern, &dark_filenames);
+                if (num_darks > 0)
+                {
+                    free_2d_array(dark_filenames, num_darks);
+                    break;
+                }
+
+                printf("No files found matching pattern: %s/%s\n", data->frame_dir, dark_pattern);
             }
 
-            printf("No files found matching pattern: %s/%s\n", data->frame_dir, dark_pattern);
-        }
-
-        int minmax = 0;
-        while (true)
-        {
-            char fallback[32];
-            snprintf(fallback, 32, "%d", num_darks/2);
-            char *ret = prompt_user_input("Enter number of darks around median to average", fallback);
-            int count = atoi(ret);
-            free(ret);
-
-            if (count > 0 && count <= num_darks)
+            int minmax = 0;
+            while (true)
             {
-                minmax = (num_darks - count) / 2;
-                break;
+                char fallback[32];
+                snprintf(fallback, 32, "%d", num_darks/2);
+                char *ret = prompt_user_input("Enter number of darks around median to average", fallback);
+                int count = atoi(ret);
+                free(ret);
+
+                if (count > 0 && count <= num_darks)
+                {
+                    minmax = (num_darks - count) / 2;
+                    break;
+                }
+                printf("Number must be between 0 and %d\n", num_darks);
             }
-            printf("Number must be between 0 and %d\n", num_darks);
+
+            int failed = create_dark(dark_pattern, minmax, data->dark_template);
+            if (failed)
+                error_jump(create_dark_error, ret, "master dark generation failed");
         }
 
-        int failed = create_dark(dark_pattern, minmax, data->dark_template);
-        if (failed)
-            error_jump(create_dark_error, ret, "master dark generation failed");
-    }
-
-    data->flat_template = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
+        data->flat_template = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
     
-    // Create master-flat if necessary
-    if (access(data->flat_template, F_OK) != -1)
-        printf("Skipping master flat creation - file already exists\n");
+        // Create master-flat if necessary
+        if (access(data->flat_template, F_OK) != -1)
+            printf("Skipping master flat creation - file already exists\n");
+        else
+        {
+            char flat_pattern[1039];
+            int num_flats;
+            while (true)
+            {
+                char *ret = prompt_user_input("Enter flat prefix", "flat");
+                snprintf(flat_pattern, 32, "%s-[0-9]+.fits.gz", ret);
+                free(ret);
+
+                char **flat_filenames;
+                num_flats = get_matching_files(flat_pattern, &flat_filenames);
+                if (num_flats > 0)
+                {
+                    free_2d_array(flat_filenames, num_flats);
+                    break;
+                }
+
+                printf("No files found matching pattern: %s/%s\n", data->frame_dir, flat_pattern);
+            }
+
+            int minmax = 0;
+            while (true)
+            {
+                char fallback[32];
+                snprintf(fallback, 32, "%d", num_flats/2);
+                char *ret = prompt_user_input("Enter number of flats around median to average", fallback);
+                int count = atoi(ret);
+                free(ret);
+
+                if (count > 0 && count <= num_flats)
+                {
+                    minmax = (num_flats - count) / 2;
+                    break;
+                }
+                printf("Number must be between 0 and %d\n", num_flats);
+            }
+
+            int failed = create_flat(flat_pattern, minmax, data->dark_template, data->flat_template);
+            if (failed)
+                error_jump(create_flat_error, ret, "master flat generation failed");
+        }
+    }
     else
     {
-        char flat_pattern[1039];
-        int num_flats;
-        while (true)
-        {
-            char *ret = prompt_user_input("Enter flat prefix", "flat");
-            snprintf(flat_pattern, 32, "%s-[0-9]+.fits.gz", ret);
-            free(ret);
-
-            char **flat_filenames;
-            num_flats = get_matching_files(flat_pattern, &flat_filenames);
-            if (num_flats > 0)
-            {
-                free_2d_array(flat_filenames, num_flats);
-                break;
-            }
-
-            printf("No files found matching pattern: %s/%s\n", data->frame_dir, flat_pattern);
-        }
-
-        int minmax = 0;
-        while (true)
-        {
-            char fallback[32];
-            snprintf(fallback, 32, "%d", num_flats/2);
-            char *ret = prompt_user_input("Enter number of flats around median to average", fallback);
-            int count = atoi(ret);
-            free(ret);
-
-            if (count > 0 && count <= num_flats)
-            {
-                minmax = (num_flats - count) / 2;
-                break;
-            }
-            printf("Number must be between 0 and %d\n", num_flats);
-        }
-
-        int failed = create_flat(flat_pattern, minmax, data->dark_template, data->flat_template);
-        if (failed)
-            error_jump(create_flat_error, ret, "master flat generation failed");
+        data->dark_template = NULL;
+        data->flat_template = NULL;
     }
 
     char *preview_filename;
@@ -1050,48 +1062,54 @@ int create_reduction_file(char *outname)
     subtract_bias(frame);
     data->reference_time = get_frame_time(frame);
 
-    framedata *dark = framedata_load(data->dark_template);
-    if (!dark)
-        error_jump(frameload_error, ret, "Error loading frame %s", data->dark_template);
-
-    framedata_subtract(frame, dark);
-    framedata_free(dark);
-
-    framedata *flat = framedata_load(data->flat_template);
-    if (!flat)
-        error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
-
-    if (framedata_get_header_dbl(flat, "CCD-READ", (double[]){0}))
+    if (data->dark_template)
     {
-        while (true)
-        {
-            char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32");
-            data->ccd_readnoise = atof(ret);
-            free(ret);
-            if (data->ccd_readnoise > 0)
-                break;
+        framedata *dark = framedata_load(data->dark_template);
+        if (!dark)
+            error_jump(frameload_error, ret, "Error loading frame %s", data->dark_template);
 
-            printf("Number must be greater than 0\n");
-        }
+        framedata_subtract(frame, dark);
+        framedata_free(dark);
     }
 
-    if (framedata_get_header_dbl(flat, "CCD-GAIN", (double[]){0}))
+    if (data->flat_template)
     {
-        while (true)
+        framedata *flat = framedata_load(data->flat_template);
+        if (!flat)
+            error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
+
+        if (framedata_get_header_dbl(flat, "CCD-READ", (double[]){0}))
         {
-            char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00");
-            data->ccd_gain = atof(ret);
-            free(ret);
+            while (true)
+            {
+                char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32");
+                data->ccd_readnoise = atof(ret);
+                free(ret);
+                if (data->ccd_readnoise > 0)
+                    break;
 
-            if (data->ccd_gain > 0)
-                break;
-
-            printf("Number must be greater than 0\n");
+                printf("Number must be greater than 0\n");
+            }
         }
-    }
 
-    framedata_divide(frame, flat);
-    framedata_free(flat);
+        if (framedata_get_header_dbl(flat, "CCD-GAIN", (double[]){0}))
+        {
+            while (true)
+            {
+                char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00");
+                data->ccd_gain = atof(ret);
+                free(ret);
+
+                if (data->ccd_gain > 0)
+                    break;
+
+                printf("Number must be greater than 0\n");
+            }
+        }
+
+        framedata_divide(frame, flat);
+        framedata_free(flat);
+    }
 
     while (true)
     {

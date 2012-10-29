@@ -1212,6 +1212,7 @@ int create_reduction_file(char *outname)
         {
             double x = data->targets[i].x + 1;
             double y = data->targets[i].y + 1;
+            double s2 = data->targets[i].s2;
             char command[1024];
             snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red}'", x, y, data->targets[i].r);
             ts_exec_write(command, NULL, 0);
@@ -1228,11 +1229,16 @@ int create_reduction_file(char *outname)
 
             double intensity = frame->data[frame->cols*((size_t)data->targets[i].y) + (size_t)data->targets[i].x] - sky[i];
 
-            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - data->targets[i].s2 - 10/zoom, msg);
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - s2 - 10/zoom, msg);
             ts_exec_write(command, NULL, 0);
-            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%.0f ADU\"}'", x, y - data->targets[i].s2 - 25/zoom, intensity);
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%.0f ADU\"}'", x, y - s2 - 25/zoom, intensity);
+            ts_exec_write(command, NULL, 0);
+
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{box %f %f %f %f #color=black select=0 width=%d}'",
+                     x, y - s2 - 17.5/zoom, 115/zoom, 17.5/zoom, 18);
             ts_exec_write(command, NULL, 0);
         }
+        ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
 
         char *ret = prompt_user_input("Are the displayed apertures correct?:", "y");
         bool done = !strcmp(ret, "y");

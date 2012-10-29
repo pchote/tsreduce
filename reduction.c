@@ -1081,19 +1081,6 @@ int create_reduction_file(char *outname)
 
     framedata_divide(frame, flat);
     framedata_free(flat);
-    
-    float skyradius = 0;
-    while (true)
-    {
-        char *ret = prompt_user_input("Enter the sky annulus radius (px):", "5");
-        skyradius = atof(ret);
-        free(ret);
-
-        if (skyradius > 1)
-            break;
-
-        printf("Radius must be greater than 0\n");
-    }
 
     while (true)
     {
@@ -1115,6 +1102,10 @@ int create_reduction_file(char *outname)
         if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
             error_jump(frameload_error, ret, "ds9 command failed");
 
+        // Set region mode to annulus
+        if (ts_exec_write("xpaset tsreduce regions shape annulus", NULL, 0))
+            error_jump(frameload_error, ret, "ds9 command failed");
+
         printf("Circle the target stars and surrounding sky in ds9\nPress enter in this terminal to continue...");
         getchar();
 
@@ -1134,7 +1125,7 @@ int create_reduction_file(char *outname)
         char *cur = ds9buf;
         double largest_aperture = 0;
         double sky[MAX_TARGETS];
-        for (; (cur = strstr(cur, "circle")) != NULL; cur++)
+        for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
         {
             if (data->num_targets == MAX_TARGETS)
             {
@@ -1144,14 +1135,11 @@ int create_reduction_file(char *outname)
 
             // Read aperture coords
             target t;
-            sscanf(cur, "circle(%lf,%lf,%lf)", &t.x, &t.y, &t.s2);
+            sscanf(cur, "annulus(%lf,%lf,%lf,%lf)", &t.x, &t.y, &t.s1, &t.s2);
 
             // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
             t.x -= 1;
             t.y -= 1;
-
-            // Set outer sky radius to selected radius, inner to outer - 5
-            t.s1 = t.s2 - skyradius;
 
             // Estimate initial aperture size as inner sky radius
             t.r = t.s1;
@@ -1212,13 +1200,14 @@ int create_reduction_file(char *outname)
         {
             double x = data->targets[i].x + 1;
             double y = data->targets[i].y + 1;
+            double r = data->targets[i].r;
+            double s1 = data->targets[i].s1;
             double s2 = data->targets[i].s2;
+
             char command[1024];
-            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red}'", x, y, data->targets[i].r);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", x, y, r);
             ts_exec_write(command, NULL, 0);
-            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s1);
-            ts_exec_write(command, NULL, 0);
-            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #background}'", x, y, data->targets[i].s2);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #background select=0}'", x, y, s1, s2);
             ts_exec_write(command, NULL, 0);
 
             char msg[16];
@@ -1304,21 +1293,18 @@ int update_preview(char *preview_filename, char *ds9_title)
 
     // Parse the region definitions
     char *cur = ds9_regions;
-    for (; (cur = strstr(cur, "circle")) != NULL; cur++)
+    for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
     {
         // Read aperture coords
         target t;
         int select = 1;
-        sscanf(cur, "circle(%lf,%lf,%lf) # color=red select=%d", &t.x, &t.y, &t.s2, &select);
+        sscanf(cur, "annulus(%lf,%lf,%lf,%lf) # color=red select=%d", &t.x, &t.y, &t.s1, &t.s2, &select);
         if (!select)
             continue;
 
         // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
         t.x -= 1;
         t.y -= 1;
-
-        // Set outer sky radius to selected radius, inner to outer - 5
-        t.s1 = t.s2 - 5;
 
         // Estimate initial aperture size as inner sky radius
         t.r = t.s1;
@@ -1366,13 +1352,10 @@ int update_preview(char *preview_filename, char *ds9_title)
             printf("Invalid fwhm. Removing target\n");
             continue;
         }
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f}'", ds9_title, t.x + 1, t.y + 1, t.s2);
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f}'", ds9_title, t.x + 1, t.y + 1, t.s1, t.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s1);
-        ts_exec_write(ds9_command_buf, NULL, 0);
-
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s2);
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s1, t.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'", ds9_title, t.x + 1, t.y + 1, fwhm);

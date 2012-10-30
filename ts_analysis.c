@@ -363,6 +363,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     struct tm starttime;
     ts_gmtime(data->reference_time, &starttime);
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
+    float min_seconds = 0;
 
     double *raw_time_d, *raw_d, *mean_sky_d, *time_d, *ratio_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
     double ratio_mean, ratio_std, mma_mean, mma_std;
@@ -378,6 +379,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
 
     float max_time = min_time + raw_time_d[num_raw-1]/3600;
+    float max_seconds = min_seconds + raw_time_d[num_raw-1];
 
     double snr_ratio = 0;
     if (data->version >= 5)
@@ -421,14 +423,19 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
 
         // Fitted MMA
-        cpgsvp(0.1, 0.9, 0.75, 0.95);
+        cpgsvp(0.1, 0.9, 0.75, 0.93);
         cpgsch(1.0);
 
-        cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
+        // Top axis in UTC Hour
         cpgswin(min_time, max_time, min_mma, max_mma);
-        cpgbox("bcstm", 1, 4, "bcstn", 0, 0);
+        cpgbox("cstm", 1, 4, "bcstn", 0, 0);
 
-        cpgswin(0, raw_time[num_raw-1], min_mma, max_mma);
+        // Bottom axis in seconds
+        cpgswin(min_seconds, max_seconds, min_mma, max_mma);
+        cpgbox("bst", 0, 0, "0", 0, 0);
+
+        cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Hour");
+        cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
 
         if (data->version >= 5)
             cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
@@ -438,9 +445,14 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         // Ratio
         cpgsvp(0.1, 0.9, 0.55, 0.75);
         cpgmtxt("l", 2.5, 0.5, 0.5, "Ratio");
+
+        // Top axis in UTC Hour
         cpgswin(min_time, max_time, min_ratio, max_ratio);
-        cpgbox("bcst", 1, 4, "bcstn", 0, 0);
-        cpgswin(0, raw_time[num_raw-1], min_ratio, max_ratio);
+        cpgbox("cst", 1, 4, "bcstn", 0, 0);
+
+        // Bottom axis in seconds
+        cpgswin(min_seconds, max_seconds, min_ratio, max_ratio);
+        cpgbox("bst", 0, 0, "0", 0, 0);
 
         // Plot error bars if ratio_noise is available (data->version >= 5)
         if (data->version >= 5)
@@ -476,14 +488,21 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
 
     cpgsvp(0.1, 0.9, 0.075, 0.55);
-    cpgmtxt("l", 2.5, 0.5, 0.5, "Scaled Count Rate (ADU/s)");
-    cpgmtxt("b", 2.5, 0.5, 0.5, "UTC Hour");
+
+    // Top axis in UTC Hour
     cpgswin(min_time, max_time, 0, max_raw);
-    cpgbox("bcstn", 1, 4, "bcstn", 0, 0);
+    cpgbox("cst", 1, 4, "bcstn", 0, 0);
+
+    // Bottom axis in seconds
+    cpgswin(min_seconds, max_seconds, 0, max_raw);
+    cpgbox("bstn", 0, 0, "0", 0, 0);
+
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Scaled Count Rate (ADU/s)");
+    cpgmtxt("b", 2.5, 0.5, 0.5, "Run Time (s)");
 
     for (int j = 0; j < data->num_targets; j++)
     {
-        cpgswin(0, raw_time[num_raw-1], 0, max_raw/data->targets[j].plot_scale);
+        cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
         cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
     }
@@ -496,7 +515,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgsci(1);
         char snr_label[32];
         snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
-        cpgmtxt("b", 2.5, 1.0, 1.0, snr_label);
+        cpgmtxt("b", 3.0, 0.95, 1.0, snr_label);
     }
 
     // Type labels

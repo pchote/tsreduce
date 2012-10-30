@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <string.h>
+#include <float.h>
 #include <cpgplot.h>
 
 #include "reduction.h"
@@ -365,12 +366,12 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
     float min_seconds = 0;
 
-    double *raw_time_d, *raw_d, *mean_sky_d, *time_d, *ratio_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
+    double *raw_time_d, *raw_d, *mean_sky_d, *time_d, *ratio_d, *fwhm_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
     double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
                                      &raw_time_d, &raw_d, &mean_sky_d, &num_raw,
-                                     &time_d, &ratio_d, &polyfit_d, &mma_d, &num_filtered,
+                                     &time_d, &ratio_d, &polyfit_d, &mma_d, &fwhm_d, &num_filtered,
                                      &ratio_noise_d, &mma_noise_d,
                                      &ratio_mean, &ratio_std, &mma_mean, &mma_std,
                                      &freq_d, &ampl_d, &num_dft))
@@ -413,29 +414,33 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     cpgsfs(2);
     cpgscf(2);
 
+    double mean_fwhm = 0;
     if (num_filtered > 0)
     {
         float *time = cast_double_array_to_float(time_d, num_filtered);
         float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
         float *ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
+        float *fwhm = cast_double_array_to_float(fwhm_d, num_filtered);
         float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
         float *mma = cast_double_array_to_float(mma_d, num_filtered);
         float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
 
         // Fitted MMA
-        cpgsvp(0.1, 0.9, 0.75, 0.93);
+        cpgsvp(0.1, 0.9, 0.8, 0.93);
         cpgsch(1.0);
 
         // Top axis in UTC Hour
         cpgswin(min_time, max_time, min_mma, max_mma);
-        cpgbox("cstm", 1, 4, "bcstn", 0, 0);
+        cpgsch(0.7);
+        cpgbox("cstm", 1, 4, "bcstnv", 0, 0);
 
         // Bottom axis in seconds
         cpgswin(min_seconds, max_seconds, min_mma, max_mma);
         cpgbox("bst", 0, 0, "0", 0, 0);
+        cpgsch(1.0);
 
-        cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Hour");
-        cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
+        cpgmtxt("t", 1.75, 0.5, 0.5, "UTC Hour");
+        cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
 
         if (data->version >= 5)
             cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
@@ -443,32 +448,66 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
             cpgpt(num_filtered, time, mma, 20);
 
         // Ratio
-        cpgsvp(0.1, 0.9, 0.55, 0.75);
-        cpgmtxt("l", 2.5, 0.5, 0.5, "Ratio");
+        cpgsvp(0.1, 0.9, 0.67, 0.8);
+        cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
 
         // Top axis in UTC Hour
         cpgswin(min_time, max_time, min_ratio, max_ratio);
-        cpgbox("cst", 1, 4, "bcstn", 0, 0);
+        cpgsch(0.7);
+        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
 
         // Bottom axis in seconds
         cpgswin(min_seconds, max_seconds, min_ratio, max_ratio);
         cpgbox("bst", 0, 0, "0", 0, 0);
+        cpgsch(1.0);
 
         // Plot error bars if ratio_noise is available (data->version >= 5)
         if (data->version >= 5)
             cpgerrb(6, num_filtered, time, ratio, ratio_noise, 0.0);
         else
-            cpgpt(num_filtered, time, ratio, 20);
+            cpgpt(num_filtered, time, ratio, 229);
 
         // Plot the polynomial fit
         cpgsci(2);
         cpgline(num_filtered, time, polyfit);
         cpgsci(1);
 
+        // FWHM
+        if (data->version >= 6)
+        {
+            float min_fwhm = FLT_MAX;
+            float max_fwhm = -FLT_MAX;
+            for (int i = 0; i < num_filtered; i++)
+            {
+                min_fwhm = fmin(min_fwhm, fwhm[i]);
+                max_fwhm = fmax(max_fwhm, fwhm[i]);
+                mean_fwhm += fwhm[i]/num_filtered;
+            }
+            float mid_fwhm = (max_fwhm + min_fwhm)/2;
+            float fwhm_range = (max_fwhm - min_fwhm)/2;
+            min_fwhm = mid_fwhm - 1.2*fwhm_range;
+            max_fwhm = mid_fwhm + 1.2*fwhm_range;
+
+            cpgsvp(0.1, 0.9, 0.54, 0.67);
+            cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
+
+            // Top axis in UTC Hour
+            cpgswin(min_time, max_time, min_fwhm, max_fwhm);
+            cpgsch(0.7);
+            cpgbox("cst", 1, 4, "bcstnv", 0, 0);
+
+            // Bottom axis in seconds
+            cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
+            cpgbox("bst", 0, 0, "0", 0, 0);
+            cpgsch(1.0);
+            cpgpt(num_filtered, time, fwhm, 229);
+        }
+
         free(time);
         free(ratio);
         free(polyfit);
         free(mma);
+        free(fwhm);
     }
 
     // Raw Data
@@ -487,36 +526,46 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         max_raw *= 1.2;
     }
 
-    cpgsvp(0.1, 0.9, 0.075, 0.55);
+    cpgsvp(0.1, 0.9, 0.075, 0.54);
 
     // Top axis in UTC Hour
     cpgswin(min_time, max_time, 0, max_raw);
-    cpgbox("cst", 1, 4, "bcstn", 0, 0);
+    cpgsch(0.7);
+
+    cpgbox("cst", 1, 4, "bcstnv", 0, 0);
 
     // Bottom axis in seconds
     cpgswin(min_seconds, max_seconds, 0, max_raw);
     cpgbox("bstn", 0, 0, "0", 0, 0);
+    cpgsch(1.0);
 
-    cpgmtxt("l", 2.5, 0.5, 0.5, "Scaled Count Rate (ADU/s)");
+    cpgmtxt("l", 2.75, 0.5, 0.5, "Scaled Count Rate (ADU/s)");
     cpgmtxt("b", 2.5, 0.5, 0.5, "Run Time (s)");
 
     for (int j = 0; j < data->num_targets; j++)
     {
         cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
-        cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
+        cpgpt(num_raw, raw_time, &raw[j*num_raw], 229);
     }
 
     cpgsci(15);
     cpgswin(min_seconds, max_seconds, 0, max_raw);
-    cpgpt(num_raw, raw_time, mean_sky, 20);
+    cpgpt(num_raw, raw_time, mean_sky, 229);
 
     if (num_filtered > 0)
     {
+        cpgsvp(0.1, 0.9, 0.015, 0.05);
+        cpgswin(0, 1, 0, 1);
         cpgsci(1);
-        char snr_label[32];
-        snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
-        cpgmtxt("b", 3.0, 0.95, 1.0, snr_label);
+        cpgsch(0.9);
+        char label[32];
+        snprintf(label, 32, "Ratio SNR: %.2f", snr_ratio);
+        cpgptxt(0.95, 0, 0, 1.0, label);
+
+        snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", mean_fwhm, mean_fwhm/data->ccd_platescale);
+        cpgptxt(0.05, 0, 0, 0.0, label);
+        cpgsch(1.0);
     }
 
     // Type labels
@@ -670,11 +719,11 @@ int amplitude_spectrum(char *dataPath)
     if (data == NULL)
         return error("Error opening data file");
 
-    double *raw_time, *raw, *mean_sky, *time, *ratio, *polyfit, *mma, *freq, *ampl;
+    double *raw_time, *raw, *mean_sky, *time, *ratio, *fwhm, *polyfit, *mma, *freq, *ampl;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &mean_sky, &num_raw,
-                                     &time, &ratio, &polyfit, &mma, &num_filtered,
+                                     &time, &ratio, &polyfit, &mma, &fwhm, &num_filtered,
                                      NULL, NULL,
                                      NULL, NULL, NULL, NULL,
                                      &freq, &ampl, &num_dft))
@@ -693,6 +742,7 @@ int amplitude_spectrum(char *dataPath)
     free(ratio);
     free(polyfit);
     free(mma);
+    free(fwhm);
     free(freq);
     free(ampl);
     datafile_free(data);
@@ -802,12 +852,12 @@ int report_time(char *dataPath)
     if (data == NULL)
         return error("Error opening data file %s", dataPath);
 
-    double *raw_time, *raw, *mean_sky, *time, *ratio, *polyfit, *mma, *ratio_noise, *mma_noise;
+    double *raw_time, *raw, *mean_sky, *time, *ratio, *fwhm, *polyfit, *mma, *ratio_noise, *mma_noise;
     double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered;
     if (generate_photometry_dft_data(data,
                                      &raw_time, &raw, &mean_sky, &num_raw,
-                                     &time, &ratio, &polyfit, &mma, &num_filtered,
+                                     &time, &ratio, &polyfit, &mma, &fwhm, &num_filtered,
                                      &ratio_noise, &mma_noise,
                                      &ratio_mean, &ratio_std, &mma_mean, &mma_std,
                                      NULL, NULL, NULL))
@@ -827,6 +877,7 @@ int report_time(char *dataPath)
     free(ratio);
     free(polyfit);
     free(mma);
+    free(fwhm);
     datafile_free(data);
     return 0;
 }

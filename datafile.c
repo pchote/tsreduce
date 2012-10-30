@@ -16,6 +16,7 @@
 #define PLOT_MAX_UHZ_DEFAULT 10000
 #define CCD_GAIN_DEFAULT 0
 #define CCD_READNOISE_DEFAULT 0
+#define CCD_PLATESCALE_DEFAULT 1.0
 
 /*
  * Allocate a datafile on the heap and set default values
@@ -24,7 +25,7 @@ datafile *datafile_alloc()
 {
     datafile *dp = malloc(sizeof(datafile));
     dp->file = NULL;
-    dp->version = 5;
+    dp->version = 6;
     dp->frame_dir = NULL;
     dp->frame_pattern = NULL;
     dp->dark_template = NULL;
@@ -36,6 +37,8 @@ datafile *datafile_alloc()
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
+    dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
+
     dp->coord_ra = NULL;
     dp->coord_dec = NULL;
     dp->coord_epoch = 0;
@@ -128,6 +131,8 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# CCDGain: %lf\n", &dp->ccd_gain);
         else if (!strncmp(linebuf,"# CCDReadNoise:", 15))
             sscanf(linebuf, "# CCDReadNoise: %lf\n", &dp->ccd_readnoise);
+        else if (!strncmp(linebuf,"# CCDPlateScale:", 16))
+            sscanf(linebuf, "# CCDPlateScale: %lf\n", &dp->ccd_platescale);
         else if (!strncmp(linebuf,"# RA:", 5))
         {
             sscanf(linebuf, "# RA: %1024s\n", stringbuf);
@@ -178,6 +183,9 @@ datafile* datafile_load(char *filename)
 
         if (dp->version >= 5)
             dp->obs[dp->num_obs].ratio_noise = atof(strtok(NULL, " "));
+
+        if (dp->version >= 6)
+            dp->obs[dp->num_obs].fwhm = atof(strtok(NULL, " "));
 
         // Filename
         strncpy(dp->obs[dp->num_obs].filename, strtok(NULL, " "),

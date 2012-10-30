@@ -29,7 +29,7 @@ int generate_photometry_dft_data(datafile *data,
     // Raw data, unfiltered by blocked ranges
     double **raw_time, double **raw, double **mean_sky, size_t *num_raw,
     // Filtered data: polynomial fit, ratio, mma
-    double **time, double **ratio, double **polyfit, double **mma, size_t *num_filtered,
+    double **time, double **ratio, double **polyfit, double **mma, double **fwhm, size_t *num_filtered,
     double **ratio_noise, double **mma_noise,
     double *ratio_mean_out, double *ratio_std_out, double *mma_mean_out, double *mma_std_out,
     // Fourier transform; set to NULL to skip calculation
@@ -65,6 +65,10 @@ int generate_photometry_dft_data(datafile *data,
     *ratio_noise = (double *)malloc(data->num_obs*sizeof(double));
     if (*ratio == NULL)
         error_jump(ratio_noise_alloc_error, ret, "ratio malloc failed");
+
+    *fwhm = (double *)malloc(data->num_obs*sizeof(double));
+    if (*fwhm == NULL)
+        error_jump(fwhm_alloc_error, ret, "ratio malloc failed");
 
     *polyfit = (double *)malloc(data->num_obs*sizeof(double));
     if (*polyfit == NULL)
@@ -122,8 +126,9 @@ int generate_photometry_dft_data(datafile *data,
             (*time)[*num_filtered] = data->obs[i].time;
             (*ratio)[*num_filtered] = comparison > 0 ? target/comparison : 0;
 
-            // Read noise from data file if available
+            // Read noise and fwhm from data file if available
             (*ratio_noise)[*num_filtered] = (data->version >= 5 && data->dark_template) ? data->obs[i].ratio_noise : 0;
+            (*fwhm)[*num_filtered] = (data->version >= 6) ? data->obs[i].fwhm : 0;
 
             ratio_mean += (*ratio)[*num_filtered];
             (*num_filtered)++;
@@ -261,7 +266,11 @@ coeffs_alloc_error:
     free(*polyfit);
     *polyfit = NULL;
 polyfit_alloc_error:
+    free(*fwhm);
+    *fwhm = NULL;
+fwhm_alloc_error:
     free(*ratio_noise);
+    *ratio_noise = NULL;
 ratio_noise_alloc_error:
     free(*ratio);
     *ratio = NULL;
@@ -827,6 +836,8 @@ int update_reduction(char *dataPath)
         double targetIntensity = 0;
         double comparisonNoise = 0;
         double targetNoise = 0;
+        double mean_fwhm = 0;
+
         bool failed = false;
         for (int i = 0; i < data->num_targets; i++)
         {
@@ -849,11 +860,12 @@ int update_reduction(char *dataPath)
 
             if (!center_aperture(t, frame, &xy))
             {
-                if (calculate_background(t, frame, &sky, NULL))
-                    sky = 0;
+                double bg = 0;
+                if (calculate_background(t, frame, &bg, NULL))
+                    bg = 0;
 
                 // Integrate sky over the aperture and normalize per unit time
-                sky *= M_PI*t.r*t.r / exptime;
+                sky = bg*M_PI*t.r*t.r / exptime;
 
                 if (dark)
                     integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
@@ -864,6 +876,37 @@ int update_reduction(char *dataPath)
                 }
                 intensity = intensity/exptime - sky;
                 noise /= exptime;
+
+                if (data->version >= 6)
+                {
+                    // Calculate FWHM
+                    double centerProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - bg;
+                    double lastIntensity = 0;
+                    double lastProfile = centerProfile;
+                    int maxRadius = (int)t.s2 + 1;
+
+                    double fwhm = 0;
+                    for (int radius = 1; radius <= maxRadius; radius++)
+                    {
+                        double intensity = integrate_aperture(xy, radius, frame) - bg*M_PI*radius*radius;
+                        double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+
+                        if (profile < centerProfile/2)
+                        {
+                            double lastRadius = radius - 1;
+                            fwhm = 2*(lastRadius + (radius - lastRadius)*(centerProfile/2 - lastProfile)/(profile - lastProfile));
+                            break;
+                        }
+
+                        lastIntensity = intensity;
+                        lastProfile = profile;
+                    }
+
+                    if (fwhm == 0)
+                        failed = true;
+
+                    mean_fwhm += fwhm / data->num_targets;
+                }
             }
             else
                 failed = true;
@@ -896,6 +939,9 @@ int update_reduction(char *dataPath)
         fprintf(data->file, "%.3e ", ratio);
         if (data->version >= 5)
             fprintf(data->file, "%.3e ", ratioNoise);
+
+        if (data->version >= 6)
+            fprintf(data->file, "%.3f ", mean_fwhm*data->ccd_platescale);
 
         // Filename
         fprintf(data->file, "%s\n", frame_paths[i]);
@@ -1563,11 +1609,11 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
         double2 start_coords = precess(coords, epoch, tmtoyear(&st));
         printf("%s start BJD: %f\n", filenames[i], jdtobjd(start_jd, start_coords));
 
-        double *raw_time, *raw, *mean_sky, *time, *ratio, *ratio_noise, *polyfit, *mma, *mma_noise;
+        double *raw_time, *raw, *mean_sky, *time, *ratio, *ratio_noise, *fwhm, *polyfit, *mma, *mma_noise;
         size_t num_raw, num_filtered;
         if (generate_photometry_dft_data(datafiles[i],
                                          &raw_time, &raw, &mean_sky, &num_raw,
-                                         &time, &ratio, &polyfit, &mma, &num_filtered,
+                                         &time, &ratio, &polyfit, &mma, &fwhm, &num_filtered,
                                          &ratio_noise, &mma_noise,
                                          NULL, NULL, NULL, NULL,
                                          NULL, NULL, NULL))
@@ -1591,6 +1637,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
         free(polyfit);
         free(mma);
         free(mma_noise);
+        free(fwhm);
     }
     printf("Converted %d observations\n", num_saved);
 

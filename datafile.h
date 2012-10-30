@@ -30,6 +30,7 @@ typedef struct
     double time;
     double ratio;
     double ratio_noise;
+    double fwhm;
     char filename[64];
 } record;
 
@@ -55,6 +56,7 @@ typedef struct
 
     double ccd_gain;
     double ccd_readnoise;
+    double ccd_platescale;
 
     char *coord_ra;
     char *coord_dec;

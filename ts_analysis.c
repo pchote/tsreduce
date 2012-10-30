@@ -508,6 +508,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
 
     cpgsci(15);
+    cpgswin(min_seconds, max_seconds, 0, max_raw);
     cpgpt(num_raw, raw_time, mean_sky, 20);
 
     if (num_filtered > 0)

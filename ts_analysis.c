@@ -364,11 +364,11 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     ts_gmtime(data->reference_time, &starttime);
     float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
 
-    double *raw_time_d, *raw_d, *time_d, *ratio_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
+    double *raw_time_d, *raw_d, *mean_sky_d, *time_d, *ratio_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
     double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
-                                     &raw_time_d, &raw_d, &num_raw,
+                                     &raw_time_d, &raw_d, &mean_sky_d, &num_raw,
                                      &time_d, &ratio_d, &polyfit_d, &mma_d, &num_filtered,
                                      &ratio_noise_d, &mma_noise_d,
                                      &ratio_mean, &ratio_std, &mma_mean, &mma_std,
@@ -395,6 +395,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     // Cast the double arrays to float, does not allocate any new memory.
     float *raw_time = cast_double_array_to_float(raw_time_d, num_raw);
     float *raw = cast_double_array_to_float(raw_d, num_raw*data->num_targets);
+    float *mean_sky = cast_double_array_to_float(mean_sky_d, num_raw);
 
     float min_mma = mma_mean - 5*mma_std;
     float max_mma = mma_mean + 5*mma_std;
@@ -462,6 +463,8 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
 
     // Raw Data
     double max_raw = data->plot_max_raw;
+
+    // Maximum not specified - calculate from data
     if (max_raw == 0)
     {
         for (int i = 0; i < num_raw; i++)
@@ -475,7 +478,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
 
     cpgsvp(0.1, 0.9, 0.075, 0.55);
-    cpgmtxt("l", 2.5, 0.5, 0.5, "Counts Per Second");
+    cpgmtxt("l", 2.5, 0.5, 0.5, "Scaled Count Rate (ADU/s)");
     cpgmtxt("b", 2.5, 0.5, 0.5, "UTC Hour");
     cpgswin(min_time, max_time, 0, max_raw);
     cpgbox("bcstn", 1, 4, "bcstn", 0, 0);
@@ -486,6 +489,9 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgsci(plot_colors[j%plot_colors_max]);
         cpgpt(num_raw, raw_time, &raw[j*num_raw], 20);
     }
+
+    cpgsci(15);
+    cpgpt(num_raw, raw_time, mean_sky, 20);
 
     if (num_filtered > 0)
     {
@@ -573,6 +579,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
 
     free(raw_time);
     free(raw);
+    free(mean_sky);
     return 0;
 }
 
@@ -628,10 +635,10 @@ int amplitude_spectrum(char *dataPath)
     if (data == NULL)
         return error("Error opening data file");
 
-    double *raw_time, *raw, *time, *ratio, *polyfit, *mma, *freq, *ampl;
+    double *raw_time, *raw, *mean_sky, *time, *ratio, *polyfit, *mma, *freq, *ampl;
     size_t num_raw, num_filtered, num_dft;
     if (generate_photometry_dft_data(data,
-                                     &raw_time, &raw, &num_raw,
+                                     &raw_time, &raw, &mean_sky, &num_raw,
                                      &time, &ratio, &polyfit, &mma, &num_filtered,
                                      NULL, NULL,
                                      NULL, NULL, NULL, NULL,
@@ -646,6 +653,7 @@ int amplitude_spectrum(char *dataPath)
 
     free(raw_time);
     free(raw);
+    free(mean_sky);
     free(time);
     free(ratio);
     free(polyfit);
@@ -759,11 +767,11 @@ int report_time(char *dataPath)
     if (data == NULL)
         return error("Error opening data file %s", dataPath);
 
-    double *raw_time, *raw, *time, *ratio, *polyfit, *mma, *ratio_noise, *mma_noise;
+    double *raw_time, *raw, *mean_sky, *time, *ratio, *polyfit, *mma, *ratio_noise, *mma_noise;
     double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered;
     if (generate_photometry_dft_data(data,
-                                     &raw_time, &raw, &num_raw,
+                                     &raw_time, &raw, &mean_sky, &num_raw,
                                      &time, &ratio, &polyfit, &mma, &num_filtered,
                                      &ratio_noise, &mma_noise,
                                      &ratio_mean, &ratio_std, &mma_mean, &mma_std,
@@ -779,6 +787,7 @@ int report_time(char *dataPath)
 
     free(raw_time);
     free(raw);
+    free(mean_sky);
     free(time);
     free(ratio);
     free(polyfit);

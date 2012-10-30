@@ -27,7 +27,7 @@ extern int verbosity;
 
 int generate_photometry_dft_data(datafile *data,
     // Raw data, unfiltered by blocked ranges
-    double **raw_time, double **raw, size_t *num_raw,
+    double **raw_time, double **raw, double **mean_sky, size_t *num_raw,
     // Filtered data: polynomial fit, ratio, mma
     double **time, double **ratio, double **polyfit, double **mma, size_t *num_filtered,
     double **ratio_noise, double **mma_noise,
@@ -47,8 +47,12 @@ int generate_photometry_dft_data(datafile *data,
         error_jump(raw_time_alloc_error, ret, "raw_time malloc failed");
 
     *raw = (double *)malloc(data->num_obs*data->num_targets*sizeof(double));
-    if (raw == NULL)
+    if (*raw == NULL)
         error_jump(raw_alloc_error, ret, "raw malloc failed");
+
+    *mean_sky = (double *)malloc(data->num_obs*sizeof(double));
+    if (*mean_sky == NULL)
+        error_jump(mean_sky_alloc_error, ret, "mean_sky malloc failed");
 
     *time = (double *)malloc(data->num_obs*sizeof(double));
     if (*time == NULL)
@@ -79,7 +83,10 @@ int generate_photometry_dft_data(datafile *data,
         (*raw_time)[i] = data->obs[i].time;
 
         for (int j = 0; j < data->num_targets; j++)
+        {
             (*raw)[j*data->num_obs + i] = data->obs[i].star[j];
+            (*mean_sky)[i] += data->obs[i].sky[j]/data->num_targets;
+        }
 
         // Filter bad observations
         bool skip = false;
@@ -262,6 +269,9 @@ ratio_alloc_error:
     free(*time);
     *time = NULL;
 time_alloc_error:
+    free(*mean_sky);
+    *mean_sky = NULL;
+mean_sky_alloc_error:
     free(*raw);
     *raw = NULL;
 raw_alloc_error:
@@ -1553,10 +1563,10 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
         double2 start_coords = precess(coords, epoch, tmtoyear(&st));
         printf("%s start BJD: %f\n", filenames[i], jdtobjd(start_jd, start_coords));
 
-        double *raw_time, *raw, *time, *ratio, *ratio_noise, *polyfit, *mma, *mma_noise;
+        double *raw_time, *raw, *mean_sky, *time, *ratio, *ratio_noise, *polyfit, *mma, *mma_noise;
         size_t num_raw, num_filtered;
         if (generate_photometry_dft_data(datafiles[i],
-                                         &raw_time, &raw, &num_raw,
+                                         &raw_time, &raw, &mean_sky, &num_raw,
                                          &time, &ratio, &polyfit, &mma, &num_filtered,
                                          &ratio_noise, &mma_noise,
                                          NULL, NULL, NULL, NULL,
@@ -1574,6 +1584,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
 
         free(raw_time);
         free(raw);
+        free(mean_sky);
         free(time);
         free(ratio);
         free(ratio_noise);

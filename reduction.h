@@ -11,7 +11,7 @@
 #define REDUCTION_H
 
 int generate_photometry_dft_data(datafile *data,
-                                 double **raw_time, double **raw, size_t *num_raw,
+                                 double **raw_time, double **raw, double **mean_sky, size_t *num_raw,
                                  double **time, double **ratio, double **polyfit, double **mma, size_t *num_filtered,
                                  double **ratio_noise, double **mma_noise,
                                  double *ratio_mean, double *ratio_std, double *mma_mean, double *mma_std,

@@ -90,6 +90,12 @@ int generate_photometry_dft_data(datafile *data,
                 break;
             }
 
+        // Invalid observations have noise = nan
+        if (isnan(data->obs[i].ratio_noise))
+        {
+            printf("Skipping observation at %f\n", data->obs[i].time);
+            skip = true;
+        }
         if (!skip)
         {
             // Calculate ratio from raw data, ignoring the value in the data file
@@ -811,6 +817,7 @@ int update_reduction(char *dataPath)
         double targetIntensity = 0;
         double comparisonNoise = 0;
         double targetNoise = 0;
+        bool failed = false;
         for (int i = 0; i < data->num_targets; i++)
         {
             // Use the aperture position from the previous frame
@@ -848,6 +855,8 @@ int update_reduction(char *dataPath)
                 intensity = intensity/exptime - sky;
                 noise /= exptime;
             }
+            else
+                failed = true;
 
             fprintf(data->file, "%.2f ", intensity); // intensity (ADU/s)
             fprintf(data->file, "%.2f ", sky); // sky intensity (ADU/s)
@@ -871,7 +880,7 @@ int update_reduction(char *dataPath)
 
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-        double ratioNoise = (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
+        double ratioNoise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
         data->obs[data->num_obs].ratio = ratio;
 
         fprintf(data->file, "%.3e ", ratio);

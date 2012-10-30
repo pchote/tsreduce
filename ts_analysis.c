@@ -421,9 +421,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
 
         // Fitted MMA
-        cpgsvp(0.1, 0.9, 0.75, 0.9);
-        cpgsch(1.25);
-        cpgmtxt("t", 2, 0.5, 0.5, "Time Series Data");
+        cpgsvp(0.1, 0.9, 0.75, 0.95);
         cpgsch(1.0);
 
         cpgmtxt("l", 2.5, 0.5, 0.5, "mma");
@@ -495,12 +493,32 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
 
     if (num_filtered > 0)
     {
-        // SNR label
-        cpgswin(0, 1, 0, 1);
         cpgsci(1);
         char snr_label[32];
         snprintf(snr_label, 32, "Ratio SNR: %.2f", snr_ratio);
-        cpgptxt(0.97, 0.9, 0, 1.0, snr_label);
+        cpgmtxt("b", 2.5, 1.0, 1.0, snr_label);
+    }
+
+    // Type labels
+    cpgsvp(0.1, 0.9, 0.45, 0.55);
+    int num_labels = data->num_targets + 1;
+    cpgswin(0, num_labels, 0, 1);
+    for (int j = 0; j < num_labels; j++)
+    {
+        cpgsci(plot_colors[j%plot_colors_max]);
+
+        char label[20];
+        if (j == num_labels - 1)
+        {
+            cpgsci(15);
+            strcpy(label, "Mean Sky");
+        }
+        else if (j == 0)
+            strcpy(label, "Target");
+        else
+            snprintf(label, 20, "Comparison %d", j);
+
+        cpgptxt(j+0.5, 0.5, 0, 0.5, label);
     }
     cpgend();
 
@@ -530,7 +548,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgscf(2);
 
         // DFT
-        cpgsvp(0.1, 0.9, 0.075, 0.87);
+        cpgsvp(0.1, 0.9, 0.075, 0.93);
         cpgswin(data->plot_min_uhz, data->plot_max_uhz, 0, 1);
         cpgbox("bstn", 0, 0, "0", 0, 0);
 
@@ -568,9 +586,6 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
         cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
         cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
-
-        cpgsch(1.25);
-        cpgmtxt("t", 3.2, 0.5, 0.5, "Fourier Amplitude Spectrum");
         cpgend();
 
         free(freq);

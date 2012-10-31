@@ -86,6 +86,7 @@ int generate_photometry_dft_data(datafile *data,
     {
         (*raw_time)[i] = data->obs[i].time;
 
+        (*mean_sky)[i] = 0;
         for (int j = 0; j < data->num_targets; j++)
         {
             (*raw)[j*data->num_obs + i] = data->obs[i].star[j];

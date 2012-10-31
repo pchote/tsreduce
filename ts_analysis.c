@@ -410,7 +410,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     cpgpap(tsSize, 0.6);
 
     cpgask(0);
-    cpgslw(3);
+    cpgslw(1);
     cpgsfs(2);
     cpgscf(2);
 
@@ -630,7 +630,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgpap(dftSize, 0.6);
 
         cpgask(0);
-        cpgslw(3);
+        cpgslw(1);
         cpgsfs(2);
         cpgscf(2);
 

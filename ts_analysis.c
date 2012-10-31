@@ -414,6 +414,19 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     cpgsfs(2);
     cpgscf(2);
 
+    // Plot blocked ranges
+    cpgsvp(0.1, 0.9, 0.075, 0.93);
+    cpgswin(min_seconds, max_seconds, 0, 1);
+    cpgsci(14);
+    for (int j = 0; j < data->num_blocked_ranges; j++)
+    {
+        cpgmove(data->blocked_ranges[j].x, 0);
+        cpgdraw(data->blocked_ranges[j].x, 1);
+        cpgmove(data->blocked_ranges[j].y, 0);
+        cpgdraw(data->blocked_ranges[j].y, 1);
+    }
+    cpgsci(1);
+
     double mean_fwhm = 0;
     if (num_filtered > 0)
     {

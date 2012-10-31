@@ -539,10 +539,13 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         max_raw *= 1.2;
     }
 
+    // Calculate base 10 exponent to reduce label length
+    int exponent = (int)log10(max_raw);
+
     cpgsvp(0.1, 0.9, 0.075, 0.54);
 
     // Top axis in UTC Hour
-    cpgswin(min_time, max_time, 0, max_raw);
+    cpgswin(min_time, max_time, 0, max_raw/pow(10, exponent));
     cpgsch(0.7);
 
     cpgbox("cst", 1, 4, "bcstnv", 0, 0);
@@ -552,7 +555,10 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     cpgbox("bstn", 0, 0, "0", 0, 0);
     cpgsch(1.0);
 
-    cpgmtxt("l", 2.75, 0.5, 0.5, "Scaled Count Rate (ADU/s)");
+    char label[64];
+    snprintf(label, 64, "Count Rate (10\\u%d\\d ADU/s)", exponent);
+
+    cpgmtxt("l", 2.75, 0.5, 0.5, label);
     cpgmtxt("b", 2.5, 0.5, 0.5, "Run Time (s)");
 
     for (int j = 0; j < data->num_targets; j++)
@@ -572,7 +578,6 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgswin(0, 1, 0, 1);
         cpgsci(1);
         cpgsch(0.9);
-        char label[32];
         snprintf(label, 32, "Ratio SNR: %.2f", snr_ratio);
         cpgptxt(0.95, 0, 0, 1.0, label);
 

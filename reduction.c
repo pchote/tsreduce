@@ -1172,6 +1172,13 @@ int create_reduction_file(char *outname)
             }
         }
 
+        if (framedata_get_header_dbl(flat, "IM-SCALE", &data->ccd_platescale))
+        {
+            char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66");
+            data->ccd_platescale = atof(ret);
+            free(ret);
+        }
+
         framedata_divide(frame, flat);
         framedata_free(flat);
     }

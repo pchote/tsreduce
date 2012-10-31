@@ -255,6 +255,8 @@ int datafile_save_header(datafile *data, char *filename)
         fprintf(out, "# CCDGain: %f\n", data->ccd_gain);
     if (data->ccd_readnoise != CCD_READNOISE_DEFAULT)
         fprintf(out, "# CCDReadNoise: %f\n", data->ccd_readnoise);
+    if (data->ccd_platescale != CCD_PLATESCALE_DEFAULT)
+        fprintf(out, "# CCDPlateScale: %f\n", data->ccd_platescale);
 
     if (data->reference_time)
     {

@@ -552,7 +552,7 @@ char *prompt_user_input(char *message, char *fallback)
     if (!input)
     {
         printf("\n");
-        return strdup(strdup(fallback));
+        return strdup(strdup(fallback ? fallback : ""));
     }
 #else
     char inputbuf[1024];
@@ -571,7 +571,7 @@ char *prompt_user_input(char *message, char *fallback)
     if (strlen(input) == 0)
     {
         free(input);
-        return strdup(fallback);
+        return strdup(strdup(fallback ? fallback : ""));
     }
 
 #ifdef USE_READLINE

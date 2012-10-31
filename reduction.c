@@ -1012,7 +1012,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter dark prefix", "dark");
-                snprintf(dark_pattern, 1039, "%s-[0-9]+.fits.gz", ret);
+                snprintf(dark_pattern, 1039, "^%s-[0-9]+.fits.gz", ret);
                 free(ret);
 
                 char **dark_filenames;
@@ -1060,7 +1060,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter flat prefix", "flat");
-                snprintf(flat_pattern, 32, "%s-[0-9]+.fits.gz", ret);
+                snprintf(flat_pattern, 32, "^%s-[0-9]+.fits.gz", ret);
                 free(ret);
 
                 char **flat_filenames;
@@ -1107,7 +1107,7 @@ int create_reduction_file(char *outname)
     {
         char namebuf[1039];
         char *ret = prompt_user_input("Enter target prefix", NULL);
-        snprintf(namebuf, 1039, "%s-[0-9]+.fits.gz", ret);
+        snprintf(namebuf, 1039, "^%s-[0-9]+.fits.gz", ret);
         free(ret);
         data->frame_pattern = strdup(namebuf);
 

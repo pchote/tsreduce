@@ -103,29 +103,10 @@ int generate_photometry_dft_data(datafile *data,
             }
 
         // Invalid observations have noise = nan
-        if (isnan(data->obs[i].ratio_noise))
+        if (!skip && !isnan(data->obs[i].ratio_noise))
         {
-            printf("Skipping observation at %f\n", data->obs[i].time);
-            skip = true;
-        }
-        if (!skip)
-        {
-            // Calculate ratio from raw data, ignoring the value in the data file
-            double target = data->obs[i].star[0];
-            double comparison = 0;
-            for (int j = 1; j < data->num_targets; j++)
-                comparison += data->obs[i].star[j];
-
-            // Skip invalid observations
-            if (target == 0 || comparison == 0)
-            {
-                if (verbosity >= 1)
-                    error("Ignoring bad observation at %f", data->obs[i].time);
-                continue;
-            }
-
             (*time)[*num_filtered] = data->obs[i].time;
-            (*ratio)[*num_filtered] = comparison > 0 ? target/comparison : 0;
+            (*ratio)[*num_filtered] = data->obs[i].ratio;
 
             // Read noise and fwhm from data file if available
             (*ratio_noise)[*num_filtered] = (data->version >= 5 && data->dark_template) ? data->obs[i].ratio_noise : 0;

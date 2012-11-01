@@ -532,7 +532,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         for (int i = 0; i < num_raw; i++)
             for (int j = 0; j < data->num_targets; j++)
             {
-                double r = raw[j*num_raw + i];
+                double r = raw[j*num_raw + i]*data->targets[j].plot_scale;
                 if (r > max_raw)
                     max_raw = r;
             }
@@ -594,17 +594,26 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     {
         cpgsci(plot_colors[j%plot_colors_max]);
 
-        char label[20];
+        char label[30];
         if (j == num_labels - 1)
         {
             cpgsci(15);
             strcpy(label, "Mean Sky");
         }
         else if (j == 0)
-            strcpy(label, "Target");
+        {
+            if (data->targets[j].plot_scale == 1.0)
+                strcpy(label, "Target");
+            else
+                snprintf(label, 30, "%.1f \\x Target", data->targets[j].plot_scale);
+        }
         else
-            snprintf(label, 20, "Comparison %d", j);
-
+        {
+            if (data->targets[j].plot_scale == 1.0)
+                snprintf(label, 30, "Comparison %d", j);
+            else
+                snprintf(label, 30, "%.1f \\x Comparison %d", data->targets[j].plot_scale, j);
+        }
         cpgptxt(j+0.5, 0.5, 0, 0.5, label);
     }
     cpgend();

@@ -918,9 +918,9 @@ int update_reduction(char *dataPath)
         double ratioNoise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
         data->obs[data->num_obs].ratio = ratio;
 
-        fprintf(data->file, "%.3e ", ratio);
+        fprintf(data->file, "%.5e ", ratio);
         if (data->version >= 5)
-            fprintf(data->file, "%.3e ", ratioNoise);
+            fprintf(data->file, "%.5e ", ratioNoise);
 
         if (data->version >= 6)
             fprintf(data->file, "%.3f ", mean_fwhm*data->ccd_platescale);

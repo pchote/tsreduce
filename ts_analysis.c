@@ -643,32 +643,35 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgsfs(2);
         cpgscf(2);
 
+        // Calculate baseline scale
+        char uhzlabel[20];
+        double scale = 1;
+        char *unit = "\\gm";
+
+        if (data->plot_max_uhz > 1.5e10)
+        {
+            scale = 1.0e-9;
+            unit = "k";
+        }
+        else if (data->plot_max_uhz > 1.5e7)
+        {
+            scale = 1.0e-6;
+            unit = "";
+        }
+        else if (data->plot_max_uhz > 1.5e4)
+        {
+            scale = 1.0e-3;
+            unit = "m";
+        }
+        snprintf(uhzlabel, 20, "Frequency (%sHz)", unit);
+
         // DFT
         cpgsvp(0.1, 0.9, 0.075, 0.93);
-        cpgswin(data->plot_min_uhz, data->plot_max_uhz, 0, 1);
-        cpgbox("bstn", 0, 0, "0", 0, 0);
-
-        // Plot period on top axis
-        cpgsci(1);
-        cpgmove(data->plot_min_uhz, 1);
-        cpgdraw(data->plot_max_uhz, 1);
-        int default_periods[] = {100, 125, 150, 200, 300, 500, 2000};
-        int default_period_count = 7;
-        char buf[20];
-        for (int i = 0; i < default_period_count; i++)
-        {
-            double freq = 1e6/default_periods[i];
-            if (freq < data->plot_min_uhz || freq > data->plot_max_uhz)
-                continue;
-
-            cpgmove(freq, 1);
-            cpgdraw(freq, 0.98);
-            snprintf(buf, 20, "%d", default_periods[i]);
-            cpgptxt(freq, 1.02, 0, 0.5, buf);
-        }
+        cpgswin(scale*data->plot_min_uhz, scale*data->plot_max_uhz, 0, 1);
+        cpgbox("bcstn", 0, 0, "0", 0, 0);
 
         cpgswin(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, 0, max_dft_ampl);
-        cpgbox("0", 0, 0, "bcnst", 5, 5);
+        cpgbox("0", 0, 0, "bcnst", 0, 0);
 
         cpgsci(12);
         cpgline(num_dft, freq, ampl);
@@ -677,11 +680,11 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgswin(0, 1, 0, 1);
         char ampl_label[32];
         snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", mean_dft_ampl);
-        cpgptxt(0.97, 0.9, 0, 1.0, ampl_label);
+        cpgptxt(0.97, 0.93, 0, 1.0, ampl_label);
 
-        cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
+        cpgmtxt("b", 2.5, 0.5, 0.5, uhzlabel);
         cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
-        cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
+        //cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
         cpgend();
 
         free(freq);

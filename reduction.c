@@ -9,8 +9,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <math.h>
-#include <sys/time.h>
-#include <time.h>
 #include <string.h>
 #include <dirent.h>
 #include <regex.h>
@@ -22,7 +20,6 @@
 #include "helpers.h"
 #include "aperture.h"
 #include "fit.h"
-#include "astro_convert.h"
 
 extern int verbosity;
 
@@ -273,20 +270,24 @@ raw_time_alloc_error:
     return ret;
 }
 
-static time_t get_frame_time(framedata *frame)
+static ts_time get_frame_time(framedata *frame)
 {
     // Fits strings have a max length of FLEN_VALUE = 71
-    char datebuf[128], timebuf[128], datetimebuf[257];
     if (framedata_has_header_string(frame, "UTC-BEG"))
     {
+        char datebuf[128], timebuf[128];
         framedata_get_header_string(frame, "UTC-DATE", datebuf);
         framedata_get_header_string(frame, "UTC-BEG", timebuf);
-        snprintf(datetimebuf, 257, "%s %s", datebuf, timebuf);
+        return parse_date_time(datebuf, timebuf);
     }
     else if (framedata_has_header_string(frame, "GPSTIME"))
+    {
+        char datetimebuf[257];
         framedata_get_header_string(frame, "GPSTIME", datetimebuf);
+        return parse_time(datetimebuf);
+    }
 
-    return parse_time_t(datetimebuf);
+    die("No known time headers found");
 }
 
 // Prepare a raw flat frame for combining into the master-flat
@@ -792,16 +793,16 @@ int update_reduction(char *dataPath)
             error_jump(process_error, ret, "Error loading frame %s", frame_paths[i]);
         }
 
-        long exptime;
-        if (framedata_get_header_long(frame, "EXPTIME", &exptime))
+        double exptime;
+        if (framedata_get_header_dbl(frame, "EXPTIME", &exptime))
         {
             framedata_free(frame);
             error_jump(process_error, ret, "EXPTIME undefined in %s", frame_paths[i]);
         }
 
         // Calculate time at the start of the exposure relative to ReferenceTime
-        time_t frame_time = get_frame_time(frame);
-        double starttime = difftime(frame_time, data->reference_time);
+        ts_time frame_time = get_frame_time(frame);
+        double starttime = ts_difftime(frame_time, data->reference_time);
 
         // Process frame
         subtract_bias(frame);
@@ -1532,17 +1533,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
     sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
     double dec = (a + b/60 + c/3600)*M_PI/180;
 
-    // Generate a struct tm for our reference time
-    struct tm t = parse_date_time_tm(date, time);
-
-    // Convert from UT to TT
-    t.tm_sec += utcttoffset(&t);
-
-    // Calculate BJD
-    double2 reference_coords = precess((double2){ra, dec}, epoch, tmtoyear(&t));
-    double reference_bjd = jdtobjd(tmtojd(&t), reference_coords);
-    printf("%f\n", reference_bjd);
-
+    printf("%f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec, epoch));
     return 0;
 }
 
@@ -1584,19 +1575,9 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
     // Convert dec from DD:'':"" to radians
     sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
     double dec = (a + b/60 + c/3600)*M_PI/180;
-    double2 coords = {ra, dec};
     double epoch = datafiles[0]->coord_epoch;
 
-    // Generate a struct tm for our reference time
-    struct tm t = parse_date_time_tm(reference_date, reference_time);
-
-    // Convert from UT to TT
-    t.tm_sec += utcttoffset(&t);
-
-    // Calculate BJD
-    double2 reference_coords = precess(coords, epoch, tmtoyear(&t));
-    double reference_bjd = jdtobjd(tmtojd(&t), reference_coords);
-
+    double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec, epoch);
     printf("Reference BJD: %f\n", reference_bjd);
 
     FILE *out = fopen(ts_filename, "w+");
@@ -1614,18 +1595,11 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
     int num_saved = 0;
     for (int i = 0; i < num_datafiles; i++)
     {
-        // Calculate time offset relative to the reference
-        struct tm st;
-        ts_gmtime(datafiles[i]->reference_time, &st);
-
-        // Convert from UT to TT
-        st.tm_sec += utcttoffset(&t);
-        double start_jd = tmtojd(&st);
+        double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec, epoch);
 
         // Calculate precessed RA and DEC at the start of each night
         // This is already far more accurate than we need
-        double2 start_coords = precess(coords, epoch, tmtoyear(&st));
-        printf("%s start BJD: %f\n", filenames[i], jdtobjd(start_jd, start_coords));
+        printf("%s start BJD: %f\n", filenames[i], start_bjd);
 
         double *raw_time, *raw, *mean_sky, *time, *ratio, *ratio_noise, *fwhm, *polyfit, *mma, *mma_noise;
         size_t num_raw, num_filtered;
@@ -1641,8 +1615,10 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
 
         for (int j = 0; j < num_filtered; j++)
         {
-            double bjd = jdtobjd(start_jd + time[j]/86400, start_coords);
-            fprintf(out,"%f %f %f\n", bjd - reference_bjd, mma[j], mma_noise[j]);
+            ts_time obstime = datafiles[i]->reference_time;
+            obstime.time += (time_t)(time[j]);
+            obstime.ms += round(1000*fmod(time[j], 1));
+            fprintf(out,"%f %f %f\n", ts_time_to_bjd(obstime, ra, dec, epoch) - reference_bjd, mma[j], mma_noise[j]);
             num_saved++;
         }
 

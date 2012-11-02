@@ -9,6 +9,7 @@
 #define HELPERS_H
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <time.h>
 
 // M_PI isn't defined on windows
@@ -31,6 +32,12 @@
 
 #define error_jump(label, ret, ...) do { ret = error(__VA_ARGS__); goto label; } while(0)
 
+typedef struct
+{
+    time_t time;
+    uint16_t ms;
+} ts_time;
+
 void free_2d_array(char **array, int len);
 float *cast_double_array_to_float(double *d_ptr, size_t count);
 int get_matching_files(const char *pattern, char ***files);
@@ -47,11 +54,13 @@ void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *d
 void calculate_amplitude_spectrum_float(float fmin, float fmax, float *time, float *data, int numData, float *outFreq, float *outAmpl, int numOut);
 
 char *canonicalize_path(const char *path);
-time_t ts_timegm(struct tm *t);
-void ts_gmtime(time_t in, struct tm *out);
-time_t parse_time_t(const char *string);
-struct tm parse_date_time_tm(const char *date, const char *time);
-void serialize_time_t(time_t t, char buf[20]);
+
+ts_time parse_time(const char *string);
+ts_time parse_date_time(const char *date, const char *time);
+void serialize_time(ts_time t, char buf[24]);
+double ts_time_to_utc_hour(ts_time t);
+double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch);
+double ts_difftime(ts_time a, ts_time b);
 char *prompt_user_input(char *message, char *fallback);
 
 #endif

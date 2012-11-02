@@ -113,7 +113,7 @@ datafile* datafile_load(char *filename)
             }
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
-            dp->reference_time = parse_time_t(linebuf+17);
+            dp->reference_time = parse_time(linebuf+17);
 
         else if (!strncmp(linebuf,"# Version:", 10))
             sscanf(linebuf, "# Version: %d\n", &dp->version);
@@ -258,10 +258,10 @@ int datafile_save_header(datafile *data, char *filename)
     if (data->ccd_platescale != CCD_PLATESCALE_DEFAULT)
         fprintf(out, "# CCDPlateScale: %f\n", data->ccd_platescale);
 
-    if (data->reference_time)
+    if (data->reference_time.time)
     {
-        char datetimebuf[20];
-        serialize_time_t(data->reference_time, datetimebuf);
+        char datetimebuf[24];
+        serialize_time(data->reference_time, datetimebuf);
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
 

@@ -6,6 +6,7 @@
  */
 
 #include "aperture.h"
+#include "helpers.h"
 
 #ifndef DATAFILE_H
 #define DATAFILE_H
@@ -44,7 +45,7 @@ typedef struct
     char *flat_template;
     target targets[MAX_TARGETS];
     int num_targets;
-    time_t reference_time;
+    ts_time reference_time;
     
     record obs[MAX_OBS];
     int num_obs;

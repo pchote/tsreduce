@@ -9,8 +9,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <math.h>
-#include <sys/time.h>
-#include <time.h>
 #include <string.h>
 #include <float.h>
 #include <cpgplot.h>
@@ -374,9 +372,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
 
     // Start time in hours
-    struct tm starttime;
-    ts_gmtime(data->reference_time, &starttime);
-    float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + (starttime.tm_sec + raw_time_d[0]) / 3600.0;
+    float min_time = (float)ts_time_to_utc_hour(data->reference_time) + raw_time_d[0] / 3600;
     float max_time = min_time + (raw_time_d[num_raw-1]-raw_time_d[0])/3600;
     float min_seconds = raw_time_d[0];
     float max_seconds = raw_time_d[num_raw-1];
@@ -901,8 +897,8 @@ int report_time(char *dataPath)
         return error("Error generating data");
     }
 
-    char datetimebuf[20];
-    serialize_time_t(data->reference_time, datetimebuf);
+    char datetimebuf[24];
+    serialize_time(data->reference_time, datetimebuf);
     printf("%s %.2f %zu\n", datetimebuf, (time[num_filtered-1] - time[0])/3600, num_filtered);
 
     free(raw_time);

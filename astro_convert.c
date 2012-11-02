@@ -531,9 +531,8 @@ double tmtoyear(struct tm *t)
  * Calculate the Terrestrial Time offset (in seconds) for a given UTC timestamp
  * TT ~= TAI + 32.184
  */
-double utcttoffset(struct tm *t)
+double utcttoffset(time_t ut)
 {
-    time_t ut = ts_timegm(t);
     size_t total = sizeof(leapseconds)/sizeof(leapseconds[0]);
 
     for (int i = total - 2; i >= 0; i -= 2)

@@ -12,6 +12,8 @@
 #include <dirent.h>
 #include <regex.h>
 #include <math.h>
+#include <time.h>
+#include <sys/time.h>
 
 #ifdef USE_READLINE
 #include <readline/readline.h>
@@ -19,11 +21,11 @@
 #endif
 
 #include "helpers.h"
+#include "astro_convert.h"
 
 #if (defined _WIN32)
 #include <windows.h>
 #include <errno.h>
-#include <sys/time.h>
 #include <sys/stat.h>
 
 // scandir() for win32
@@ -129,18 +131,6 @@ int scandir(const char *dirname,
 
 #endif
 
-// Cross platform equivalent of timegm()
-time_t ts_timegm(struct tm *t)
-{
-#ifdef _WIN64
-    return _mkgmtime(t);
-#elif defined _WIN32
-    return mktime(t);
-#else
-    return timegm(t);
-#endif
-}
-
 // Cross platform equivalent of realpath()
 char *canonicalize_path(const char *path)
 {
@@ -170,55 +160,90 @@ char *canonicalize_path(const char *path)
 }
 
 // Cross platform equivalent of gmtime_r()
-void ts_gmtime(time_t in, struct tm *out)
+static void ts_gmtime(ts_time in, struct tm *out)
 {
 #ifdef _WIN64
-    _gmtime_s(out, &in);
+    _gmtime_s(out, &in.time);
 #elif defined _WIN32
-    *out = *localtime(&in);
+    *out = *localtime(&in.time);
 #else
-    gmtime_r(&in, out);
+    gmtime_r(&in.time, out);
 #endif
 }
 
-// Possibly obsoletes timegm?
-time_t parse_time_t(const char *string)
+// Cross platform equivalent of timegm()
+static ts_time ts_timegm(struct tm *t, uint16_t ms)
 {
-    struct tm t;
-#if (defined _WIN32)
-    sscanf(string, "%d-%d-%d %d:%d:%d", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec);
-    t.tm_year -= 1900;
-    t.tm_mon -= 1;
+    ts_time tt;
+#ifdef _WIN64
+    tt.time = _mkgmtime(t);
+#elif defined _WIN32
+    tt.time = mktime(t);
 #else
-    strptime(string, "%Y-%m-%d %H:%M:%S", &t);
+    tt.time = timegm(t);
 #endif
-    return ts_timegm(&t);
+    tt.ms = ms;
+    return tt;
 }
 
-struct tm parse_date_time_tm(const char *date, const char *time)
+ts_time parse_time(const char *string)
 {
     struct tm t;
-#if (defined _WIN32)
-    sscanf(date, "%d-%d-%d", &t.tm_year, &t.tm_mon, &t.tm_mday);
-    sscanf(time, "%d:%d:%d", &t.tm_hour, &t.tm_min, &t.tm_sec);
+    unsigned int ms = 0;
+    sscanf(string, "%d-%d-%d %d:%d:%d.%u", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec, &ms);
     t.tm_year -= 1900;
     t.tm_mon -= 1;
-#else
+
+    return ts_timegm(&t, ms);
+}
+
+ts_time parse_date_time(const char *date, const char *time)
+{
     size_t datetime_len = strlen(date) + strlen(time) + 2;
+
     char *datetime = malloc(datetime_len*sizeof(char));
     snprintf(datetime, datetime_len, "%s %s", date, time);
-    strptime(datetime, "%Y-%m-%d %H:%M:%S", &t);
+    ts_time ret = parse_time(datetime);
     free(datetime);
-#endif
 
-    return t;
+    return ret;
 }
 
-void serialize_time_t(time_t t, char buf[20])
+void serialize_time(ts_time t, char buf[24])
 {
     struct tm time;
     ts_gmtime(t, &time);
-    strftime(buf, 20, "%Y-%m-%d %H:%M:%S", &time);
+    strftime(buf, 24, "%Y-%m-%d %H:%M:%S", &time);
+    if (t.ms)
+        snprintf(buf+19, 5,".%03d", t.ms);
+}
+
+double ts_time_to_utc_hour(ts_time t)
+{
+    struct tm st;
+    ts_gmtime(t, &st);
+    return st.tm_hour + st.tm_min / 60.0 + st.tm_sec / 3600.0 + t.ms / 3600000.0;
+}
+
+double ts_difftime(ts_time a, ts_time b)
+{
+    double ret = difftime(a.time, b.time);
+    ret += (a.ms - b.ms)/1000.0;
+    return ret;
+}
+
+double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch)
+{
+    struct tm tt;
+    ts_gmtime(t, &tt);
+
+    // Convert from UT to TT
+    tt.tm_sec += utcttoffset(t.time);
+    double jd = tmtojd(&tt) + t.ms/86400000.0;
+
+    // Calculate BJD
+    double2 reference_coords = precess((double2){ra, dec}, epoch, tmtoyear(&tt));
+    return jdtobjd(jd, reference_coords);
 }
 
 // Helper function to free a 2d char array allocated using malloc etc.

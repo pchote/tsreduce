@@ -360,12 +360,6 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     int plot_colors_max = 8;
     int plot_colors[] = {4,2,8,3,5,6,7,9};
 
-    // Start time in hours
-    struct tm starttime;
-    ts_gmtime(data->reference_time, &starttime);
-    float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + starttime.tm_sec / 3600.0;
-    float min_seconds = 0;
-
     double *raw_time_d, *raw_d, *mean_sky_d, *time_d, *ratio_d, *fwhm_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
     double ratio_mean, ratio_std, mma_mean, mma_std;
     size_t num_raw, num_filtered, num_dft;
@@ -379,8 +373,13 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         return error("Error generating data");
     }
 
-    float max_time = min_time + raw_time_d[num_raw-1]/3600;
-    float max_seconds = min_seconds + raw_time_d[num_raw-1];
+    // Start time in hours
+    struct tm starttime;
+    ts_gmtime(data->reference_time, &starttime);
+    float min_time = starttime.tm_hour + starttime.tm_min / 60.0 + (starttime.tm_sec + raw_time_d[0]) / 3600.0;
+    float max_time = min_time + (raw_time_d[num_raw-1]-raw_time_d[0])/3600;
+    float min_seconds = raw_time_d[0];
+    float max_seconds = raw_time_d[num_raw-1];
 
     double snr_ratio = 0;
     if (data->version >= 5)

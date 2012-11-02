@@ -605,14 +605,14 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
             if (data->targets[j].plot_scale == 1.0)
                 strcpy(label, "Target");
             else
-                snprintf(label, 30, "%.1f \\x Target", data->targets[j].plot_scale);
+                snprintf(label, 30, "%g \\x Target", data->targets[j].plot_scale);
         }
         else
         {
             if (data->targets[j].plot_scale == 1.0)
                 snprintf(label, 30, "Comparison %d", j);
             else
-                snprintf(label, 30, "%.1f \\x Comparison %d", data->targets[j].plot_scale, j);
+                snprintf(label, 30, "%g \\x Comparison %d", data->targets[j].plot_scale, j);
         }
         cpgptxt(j+0.5, 0.5, 0, 0.5, label);
     }

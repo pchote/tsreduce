@@ -380,6 +380,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     float max_time = min_time + (raw_time_d[num_raw-1]-raw_time_d[0])/3600;
     float min_seconds = raw_time_d[0];
     float max_seconds = raw_time_d[num_raw-1];
+    int secexp = (int)(log10(max_seconds) / 3)*3;
 
     double snr_ratio = 0;
     if (data->version >= 5)
@@ -539,26 +540,31 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
 
     // Calculate base 10 exponent to reduce label length
-    int exponent = (int)log10(max_raw);
+    int rawexp = (int)log10(max_raw);
 
     cpgsvp(0.1, 0.9, 0.075, 0.54);
 
     // Top axis in UTC Hour
-    cpgswin(min_time, max_time, 0, max_raw/pow(10, exponent));
+    cpgswin(min_time, max_time, 0, max_raw/pow(10, rawexp));
     cpgsch(0.7);
 
     cpgbox("cst", 1, 4, "bcstnv", 0, 0);
 
     // Bottom axis in seconds
-    cpgswin(min_seconds, max_seconds, 0, max_raw);
+    cpgswin(min_seconds/pow(10, secexp), max_seconds/pow(10, secexp), 0, max_raw);
     cpgbox("bstn", 0, 0, "0", 0, 0);
     cpgsch(1.0);
 
     char label[64];
-    snprintf(label, 64, "Count Rate (10\\u%d\\d ADU/s)", exponent);
-
+    snprintf(label, 64, "Count Rate (10\\u%d\\d ADU/s)", rawexp);
     cpgmtxt("l", 2.75, 0.5, 0.5, label);
-    cpgmtxt("b", 2.5, 0.5, 0.5, "Run Time (s)");
+
+    if (secexp == 0)
+        strcpy(label, "Run Time (s)");
+    else
+        snprintf(label, 64, "Run Time (10\\u%d\\d s)", secexp);
+
+    cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
     for (int j = 0; j < data->num_targets; j++)
     {

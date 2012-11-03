@@ -412,7 +412,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
-    cpgscf(2);
+    cpgscf(1);
 
     // Plot blocked ranges
     cpgsvp(0.1, 0.9, 0.075, 0.93);
@@ -646,7 +646,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgask(0);
         cpgslw(1);
         cpgsfs(2);
-        cpgscf(2);
+        cpgscf(1);
 
         // Calculate baseline scale
         char uhzlabel[20];

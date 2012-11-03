@@ -458,7 +458,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         if (data->version >= 5)
             cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
         else
-            cpgpt(num_filtered, time, mma, 20);
+            cpgpt(num_filtered, time, mma, 229);
 
         // Ratio
         cpgsvp(0.1, 0.9, 0.67, 0.8);

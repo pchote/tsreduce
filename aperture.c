@@ -421,4 +421,28 @@ void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framed
     *noise = sqrt(*noise);
 }
 
+double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
+{
+    double center_profile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - bg;
+    double last_intensity = 0;
+    double last_profile = center_profile;
 
+    double fwhm = 0;
+    for (int radius = 1; radius <= (int)max_radius; radius++)
+    {
+        double intensity = integrate_aperture(xy, radius, frame) - bg*M_PI*radius*radius;
+        double profile = (intensity - last_intensity) / (M_PI*(2*radius-1));
+
+        if (profile < center_profile/2)
+        {
+            double last_radius = radius - 1;
+            fwhm = 2*(last_radius + (radius - last_radius)*(center_profile/2 - last_profile)/(profile - last_profile));
+            break;
+        }
+
+        last_intensity = intensity;
+        last_profile = profile;
+    }
+
+    return fwhm;
+}

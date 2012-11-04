@@ -862,30 +862,8 @@ int update_reduction(char *dataPath)
 
                 if (data->version >= 6)
                 {
-                    // Calculate FWHM
-                    double centerProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - bg;
-                    double lastIntensity = 0;
-                    double lastProfile = centerProfile;
-                    int maxRadius = (int)t.s2 + 1;
-
-                    double fwhm = 0;
-                    for (int radius = 1; radius <= maxRadius; radius++)
-                    {
-                        double intensity = integrate_aperture(xy, radius, frame) - bg*M_PI*radius*radius;
-                        double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-
-                        if (profile < centerProfile/2)
-                        {
-                            double lastRadius = radius - 1;
-                            fwhm = 2*(lastRadius + (radius - lastRadius)*(centerProfile/2 - lastProfile)/(profile - lastProfile));
-                            break;
-                        }
-
-                        lastIntensity = intensity;
-                        lastProfile = profile;
-                    }
-
-                    if (fwhm == 0)
+                    double fwhm = estimate_fwhm(frame, xy, bg, t.s1);
+                    if (fwhm < 1)
                         failed = true;
 
                     mean_fwhm += fwhm / data->num_targets;
@@ -1479,33 +1457,13 @@ int update_preview(char *preview_filename, char *ds9_title)
             continue;
         }
 
-        double centerProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
-        double lastIntensity = 0;
-        double lastProfile = centerProfile;
-        int maxRadius = (int)t.s2 + 1;
-
-        double fwhm = 0;
-        for (int radius = 1; radius <= maxRadius; radius++)
-        {
-            double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
-            double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-
-            if (profile < centerProfile/2)
-            {
-                double lastRadius = radius - 1;
-                fwhm = 2*(lastRadius + (radius - lastRadius)*(centerProfile/2 - lastProfile)/(profile - lastProfile));
-                break;
-            }
-
-            lastIntensity = intensity;
-            lastProfile = profile;
-        }
-
-        if (fwhm == 0)
+        double fwhm = estimate_fwhm(frame, xy, sky_intensity, t.s1);
+        if (fwhm < 1)
         {
             printf("Invalid fwhm. Removing target\n");
             continue;
         }
+
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f}'", ds9_title, t.x + 1, t.y + 1, t.s1, t.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
@@ -1520,7 +1478,7 @@ int update_preview(char *preview_filename, char *ds9_title)
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak: %.0f ADU/px\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, centerProfile);
+                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG: %.0f ADU/px\"}'",

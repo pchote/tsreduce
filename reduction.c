@@ -1441,7 +1441,7 @@ int update_preview(char *preview_filename, char *ds9_title)
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s1, t.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'", ds9_title, t.x + 1, t.y + 1, fwhm);
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'", ds9_title, t.x + 1, t.y + 1, fwhm/2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM: %.2f arcsec\"}'",

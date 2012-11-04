@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <regex.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "datafile.h"
 #include "framedata.h"
@@ -1167,6 +1168,34 @@ int create_reduction_file(char *outname)
 
     while (true)
     {
+        uint8_t aperture_type = 0;
+        double aperture_size = 0;
+        while (true)
+        {
+            printf("Aperture types are  0: 5sigma,  1: 3FWHM,  2: Manual\n");
+            char *ret = prompt_user_input("Select aperture type:", "0");
+            aperture_type = atoi(ret);
+            free(ret);
+            if (aperture_type <= 2)
+                break;
+
+            printf("Number must be between 0 and 2\n");
+        }
+
+        if (aperture_type == 2)
+        {
+            while (true)
+            {
+                char *ret = prompt_user_input("Enter aperture radius (px):", "8");
+                aperture_size = atof(ret);
+                free(ret);
+                if (aperture_size > 0)
+                    break;
+
+                printf("Number must be greater than 0\n");
+            }
+        }
+
         if (init_ds9())
             return error("Unable to launch ds9");
 
@@ -1248,23 +1277,63 @@ int create_reduction_file(char *outname)
             }
             sky[data->num_targets] = sky_intensity;
 
-            // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
-            double lastIntensity = 0;
-            double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
-            int maxRadius = (int)t.s2 + 1;
-            for (int radius = 1; radius <= maxRadius; radius++)
+            switch (aperture_type)
             {
-                double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
-                double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-                if (profile < 5*sky_std_dev)
+                case 0: // 5*sky sigma
                 {
-                    // Linear interpolate radii to estimate the radius that gives 5*stddev
-                    t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
-                    largest_aperture = fmax(largest_aperture, t.r);
+                    // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
+                    double lastIntensity = 0;
+                    double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
+                    int maxRadius = (int)t.s2 + 1;
+                    for (int radius = 1; radius <= maxRadius; radius++)
+                    {
+                        double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
+                        double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+                        if (profile < 5*sky_std_dev)
+                        {
+                            // Linear interpolate radii to estimate the radius that gives 5*stddev
+                            t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
+                            largest_aperture = fmax(largest_aperture, t.r);
+                            break;
+                        }
+                        lastIntensity = intensity;
+                        lastProfile = profile;
+                    }
                     break;
                 }
-                lastIntensity = intensity;
-                lastProfile = profile;
+                case 1: // 3*FWHM
+                {
+                    double centerProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
+                    double lastIntensity = 0;
+                    double lastProfile = centerProfile;
+                    int maxRadius = (int)t.s2 + 1;
+
+                    double hwhm = 0;
+                    for (int radius = 1; radius <= maxRadius; radius++)
+                    {
+                        double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
+                        double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
+
+                        if (profile < centerProfile/2)
+                        {
+                            double lastRadius = radius - 1;
+                            hwhm = lastRadius + (radius - lastRadius)*(centerProfile/2 - lastProfile)/(profile - lastProfile);
+                            break;
+                        }
+
+                        lastIntensity = intensity;
+                        lastProfile = profile;
+                    }
+                    t.r = 3*hwhm;
+                    largest_aperture = fmax(largest_aperture, t.r);
+
+                    break;
+                }
+                case 2:
+                default:
+                    t.r = aperture_size;
+                    largest_aperture = aperture_size;
+                    break;
             }
 
             // Set target parameters
@@ -1275,6 +1344,8 @@ int create_reduction_file(char *outname)
         // Set aperture radii to the same size, equal to the largest calculated above
         for (int i = 0; i < data->num_targets; i++)
             data->targets[i].r = largest_aperture;
+
+        printf("Aperture radius: %fpx\n", largest_aperture);
 
         // Display results in ds9 - errors are non-fatal
         ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);

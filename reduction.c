@@ -355,13 +355,13 @@ double prepare_flat(framedata *flat, framedata *dark, double *mean_out)
 // Save the resulting image to the file `outname'
 //
 // Also calculates the readnoise and gain if overscan is available
-int create_flat(const char *pattern, int minmax, const char *masterdark, const char *outname)
+int create_flat(const char *pattern, size_t minmax, const char *masterdark, const char *outname)
 {
     int ret = 0;
 
     // Find the filenames that match the specified pattern
     char **frame_paths;
-    int num_frames = get_matching_files(pattern, &frame_paths);
+    size_t num_frames = get_matching_files(pattern, &frame_paths);
     if (num_frames < 0)
         error_jump(match_error, ret, "Error matching files");
 
@@ -394,7 +394,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
 
     // Load flat field frames into a data cube for the image data, and a cube for the bias data
     // data[0] = flat[0][0,0], data[1] = flat[1][0,0] ... data[num_frames] = flat[0][0,1] etc
-    for(int i = 0; i < num_frames; i++)
+    for(size_t i = 0; i < num_frames; i++)
     {
         if (verbosity >= 1)
             printf("loading `%s`\n", frame_paths[i]);
@@ -430,7 +430,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         }
 
         // Store normalized data in data cube
-        for (int j = 0; j < dark->rows*dark->cols; j++)
+        for (size_t j = 0; j < dark->rows*dark->cols; j++)
             data_cube[num_frames*j+i] = frames[i]->data[j];
     }
 
@@ -458,7 +458,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     if (median_flat == NULL)
         error_jump(median_failed, ret, "median_flat alloc failed");
 
-    for (int j = 0; j < dark->rows*dark->cols; j++)
+    for (size_t j = 0; j < dark->rows*dark->cols; j++)
     {
         qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
 
@@ -480,7 +480,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
         int *ir = dark->regions.image_region;
         double mean_dark = mean_in_region(dark, ir);
 
-        for(int k = 0; k < num_frames; k++)
+        for(size_t k = 0; k < num_frames; k++)
         {
             // Calculate the variance by taking the difference between
             // the (normalized) frame and the (normalized) master-flat
@@ -495,7 +495,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
             gain[k] = (mean_flat[k] + mean_dark) / (var - readnoise*readnoise);
 
             if (verbosity >= 1)
-                printf("%d var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
+                printf("%zu var: %f mean: %f dark: %f gain: %f\n", k, var, mean_flat[k], mean_dark, gain[k]);
         }
     }
 
@@ -513,10 +513,10 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
     if (dark->regions.has_overscan)
     {
         int *br = dark->regions.image_region;
-        for (int k = 0; k < dark->rows*dark->cols; k++)
+        for (size_t k = 0; k < dark->rows*dark->cols; k++)
         {
-            int x = k % dark->cols;
-            int y = k / dark->cols;
+            size_t x = k % dark->cols;
+            size_t y = k / dark->cols;
             bool in_image = x >= br[0] && x < br[1] && y >= br[2] && y < br[3];
             if (!in_image)
                 median_flat[k] = 1;
@@ -559,7 +559,7 @@ int create_flat(const char *pattern, int minmax, const char *masterdark, const c
 gain_failed:
     free(median_flat);
 median_failed:
-    for (int j = 0; j < num_frames; j++)
+    for (size_t j = 0; j < num_frames; j++)
         framedata_free(frames[j]);
 loadflat_failed:
     free(frames);
@@ -578,12 +578,12 @@ match_error:
 // Create a darkframe from the frames listed by the command `darkcmd',
 // rejecting `minmax' highest and lowest pixel values.
 // Save the resulting image to the file `outname'
-int create_dark(const char *pattern, int minmax, const char *outname)
+int create_dark(const char *pattern, size_t minmax, const char *outname)
 {
     int ret = 0;
 
     char **frame_paths;
-    int num_frames = get_matching_files(pattern, &frame_paths);
+    size_t num_frames = get_matching_files(pattern, &frame_paths);
     if (num_frames < 0)
         error_jump(match_error, ret, "Error matching files");
 
@@ -609,10 +609,11 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     if (data_cube == NULL)
         error_jump(datacube_failed, ret, "data_cube alloc failed");
 
-    for (int i = 0; i < num_frames; i++)
+    for (size_t i = 0; i < num_frames; i++)
     {
         if (verbosity >= 1)
             printf("loading `%s`\n", frame_paths[i]);
+
         framedata *f = framedata_load(frame_paths[i]);
         if (!f)
             error_jump(loaddark_failed, ret, "Error loading frame %s", frame_paths[i]);
@@ -633,7 +634,7 @@ int create_dark(const char *pattern, int minmax, const char *outname)
     }
     
     // Loop over the pixels, sorting the values from each image into increasing order
-    for (int j = 0; j < base->rows*base->cols; j++)
+    for (size_t j = 0; j < base->rows*base->cols; j++)
     {
         qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
 
@@ -768,9 +769,9 @@ int update_reduction(char *dataPath)
 
     // Iterate through the files in the directory
     char **frame_paths;
-    int start_obs = data->num_obs;
-    int num_frames = get_matching_files(data->frame_pattern, &frame_paths);
-    for (int i = 0; i < num_frames; i++)
+    size_t start_obs = data->num_obs;
+    size_t num_frames = get_matching_files(data->frame_pattern, &frame_paths);
+    for (size_t i = 0; i < num_frames; i++)
     {
         // Check whether the frame has been processed
         int processed = FALSE;
@@ -913,7 +914,7 @@ int update_reduction(char *dataPath)
         framedata_free(frame);
     }
     
-    printf("Reduced %d observations\n", data->num_obs - start_obs);
+    printf("Reduced %zu observations\n", data->num_obs - start_obs);
 
 process_error:
     free_2d_array(frame_paths, num_frames);
@@ -1309,7 +1310,7 @@ int create_reduction_file(char *outname)
         // Display results in ds9 - errors are non-fatal
         ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
 
-        for (int i = 0; i < data->num_targets; i++)
+        for (size_t i = 0; i < data->num_targets; i++)
         {
             double x = data->targets[i].x + 1;
             double y = data->targets[i].y + 1;
@@ -1327,7 +1328,7 @@ int create_reduction_file(char *outname)
             if (i == 0)
                 strcpy(msg, "Target");
             else
-                snprintf(msg, 16, "Comparison %d", i);
+                snprintf(msg, 16, "Comparison %zu", i);
 
             double intensity = frame->data[frame->cols*((size_t)data->targets[i].y) + (size_t)data->targets[i].x] - sky[i];
 
@@ -1521,7 +1522,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
  * Create a timeseries file from a list of datafiles.
  * Times are converted to BJD after the specified reference
  */
-int create_ts(char *reference_date, char *reference_time, char **filenames, int num_datafiles, char *ts_filename)
+int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename)
 {
     int ret = 0;
     if (num_datafiles < 1)
@@ -1531,7 +1532,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
     if (!datafiles)
         error_jump(datafile_error, ret, "Error allocating datafiles");
 
-    for (int i = 0; i < num_datafiles; i++)
+    for (size_t i = 0; i < num_datafiles; i++)
     {
         datafiles[i] = datafile_load(filenames[i]);
         if (!datafiles[i])
@@ -1542,7 +1543,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
             error_jump(datafile_error, ret, "Error loading datafile %s", filenames[i]);
         }
     }
-    printf("Loaded %d datafiles\n", num_datafiles);
+    printf("Loaded %zu datafiles\n", num_datafiles);
 
     if (!datafiles[0]->coord_ra || !datafiles[0]->coord_dec || datafiles[0]->coord_epoch == 0)
         error_jump(coord_error, ret, "Datafile %s doesn't specify star coordinates", filenames[0]);
@@ -1573,7 +1574,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, int 
 
     // Convert data to BJD relative to the reference time
     int num_saved = 0;
-    for (int i = 0; i < num_datafiles; i++)
+    for (size_t i = 0; i < num_datafiles; i++)
     {
         double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec, epoch);
 
@@ -1619,7 +1620,7 @@ processing_error:
     fclose(out);
 output_error:
 coord_error:
-    for (int i = 0; i < num_datafiles; i++)
+    for (size_t i = 0; i < num_datafiles; i++)
         datafile_free(datafiles[i]);
     free(datafiles);
 datafile_error:

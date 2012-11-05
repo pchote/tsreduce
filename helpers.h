@@ -38,9 +38,9 @@ typedef struct
     uint16_t ms;
 } ts_time;
 
-void free_2d_array(char **array, int len);
+void free_2d_array(char **array, size_t len);
 float *cast_double_array_to_float(double *d_ptr, size_t count);
-int get_matching_files(const char *pattern, char ***files);
+size_t get_matching_files(const char *pattern, char ***files);
 char *get_first_matching_file(char *pattern);
 int compare_double(const void *a, const void *b);
 int error(const char * format, ...);

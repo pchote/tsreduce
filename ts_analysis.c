@@ -820,7 +820,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
 int plot_range(char *datafile_pattern)
 {
     char **datafile_names;
-    int num_files = get_matching_files(datafile_pattern, &datafile_names);
+    size_t num_files = get_matching_files(datafile_pattern, &datafile_names);
     if (num_files < 0)
         return error("Error matching pattern %s", datafile_pattern);
 

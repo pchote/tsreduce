@@ -247,13 +247,12 @@ double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch)
 }
 
 // Helper function to free a 2d char array allocated using malloc etc.
-void free_2d_array(char **array, int len)
+void free_2d_array(char **array, size_t len)
 {
-    for (int i = 0; i < len; i++)
+    for (size_t i = 0; i < len; i++)
         free(array[i]);
     free(array);
 }
-
 
 // Cast an array of doubles to an array of floats reusing the same memory
 float *cast_double_array_to_float(double *d_ptr, size_t count)
@@ -349,7 +348,7 @@ int ts_versionsort(const struct dirent **a, const struct dirent **b)
 // Find files that match the given regex.
 // outList is set to point to an array (which must be later freed by the caller) of filenames
 // Returns the number of files matched or negative on error
-int get_matching_files(const char *pattern, char ***outList)
+size_t get_matching_files(const char *pattern, char ***outList)
 {
     // Compile the pattern into a regex
     regex_t regex;
@@ -380,8 +379,8 @@ int get_matching_files(const char *pattern, char ***outList)
         return -error("Memory allocation for %d filenames failed.", numFiles);
     }
 
-    int numMatched = 0;
-    for (int i = 0; i < numFiles; i++)
+    size_t numMatched = 0;
+    for (size_t i = 0; i < numFiles; i++)
     {
         if (!regexec(&regex, files[i]->d_name, 0, NULL, 0))
         {
@@ -410,7 +409,7 @@ int get_matching_files(const char *pattern, char ***outList)
 char *get_first_matching_file(char *pattern)
 {
     char **frame_paths;
-    int num_frames = get_matching_files(pattern, &frame_paths);
+    size_t num_frames = get_matching_files(pattern, &frame_paths);
     if (num_frames <= 0)
         return NULL;
 

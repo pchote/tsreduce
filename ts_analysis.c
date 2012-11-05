@@ -77,7 +77,7 @@ int display_tracer(char *dataPath)
 
 setup_error:
     datafile_free(data);
-    return 0;
+    return ret;
 }
 
 // Output radial profile information for the given targetIndex, obsIndex in

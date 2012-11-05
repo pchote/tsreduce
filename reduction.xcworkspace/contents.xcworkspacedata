@@ -68,6 +68,12 @@
       <FileRef
          location = "group:random.h">
       </FileRef>
+      <FileRef
+         location = "group:hashmap.c">
+      </FileRef>
+      <FileRef
+         location = "group:hashmap.h">
+      </FileRef>
    </Group>
    <FileRef
       location = "group:tsreduce.c">

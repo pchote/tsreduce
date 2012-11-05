@@ -20,22 +20,21 @@
 
 int display_tracer(char *dataPath)
 {
+    int ret;
+
     // Read file header
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");
 
     if (chdir(data->frame_dir))
-    {
-        datafile_free(data);
-        return error("Invalid frame path: %s", data->frame_dir);
-    }
+        error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
 
     if (init_ds9())
-        return error("Unable to launch ds9");
+        error_jump(setup_error, ret, "Unable to launch ds9");
 
     if (!data->obs_start)
-        return error("No observations to display");
+        error_jump(setup_error, ret, "No observations to display");
 
     char command[1024];
     snprintf(command, 1024, "xpaset tsreduce file %s/%s", data->frame_dir, data->obs_end->filename);
@@ -75,6 +74,8 @@ int display_tracer(char *dataPath)
 
     ts_exec_write(command, NULL, 0);
     ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
+
+setup_error:
     datafile_free(data);
     return 0;
 }

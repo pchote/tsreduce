@@ -1282,28 +1282,8 @@ int create_reduction_file(char *outname)
                 }
                 case 1: // 3*FWHM
                 {
-                    double centerProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
-                    double lastIntensity = 0;
-                    double lastProfile = centerProfile;
-                    int maxRadius = (int)t.s2 + 1;
-
-                    double hwhm = 0;
-                    for (int radius = 1; radius <= maxRadius; radius++)
-                    {
-                        double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
-                        double profile = (intensity - lastIntensity) / (M_PI*(2*radius-1));
-
-                        if (profile < centerProfile/2)
-                        {
-                            double lastRadius = radius - 1;
-                            hwhm = lastRadius + (radius - lastRadius)*(centerProfile/2 - lastProfile)/(profile - lastProfile);
-                            break;
-                        }
-
-                        lastIntensity = intensity;
-                        lastProfile = profile;
-                    }
-                    t.r = 3*hwhm;
+                    double fwhm = estimate_fwhm(frame, xy, sky_intensity, t.s1);
+                    t.r = 3*fwhm/2;
                     largest_aperture = fmax(largest_aperture, t.r);
 
                     break;

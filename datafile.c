@@ -33,6 +33,8 @@ datafile *datafile_alloc()
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
+
+    dp->filename_map = hashmap_new();
     return dp;
 }
 
@@ -211,6 +213,8 @@ void datafile_free(datafile *data)
         free(obs);
     }
 
+    hashmap_free(data->filename_map);
+
     free(data);
 }
 
@@ -225,6 +229,8 @@ void datafile_append_observation(datafile *data, struct observation *obs)
 
     data->obs_end = obs;
     data->obs_count++;
+
+    hashmap_put(data->filename_map, obs->filename, obs);
 }
 
 /*

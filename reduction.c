@@ -20,6 +20,7 @@
 #include "helpers.h"
 #include "aperture.h"
 #include "fit.h"
+#include "hashmap.h"
 
 extern int verbosity;
 
@@ -777,15 +778,9 @@ int update_reduction(char *dataPath)
     size_t num_frames = get_matching_files(data->frame_pattern, &frame_paths);
     for (size_t i = 0; i < num_frames; i++)
     {
-        // Check whether the frame has been processed
-        int processed = FALSE;
-        for (struct observation *obs = data->obs_start; obs; obs = obs->next)
-            if (strcmp(frame_paths[i], obs->filename) == 0)
-            {
-                processed = TRUE;
-                break;
-            }
-        if (processed)
+        // Check if file has been processed
+        struct observation *unused;
+        if (hashmap_get(data->filename_map, frame_paths[i], (void**)(&unused)) != MAP_MISSING)
             continue;
 
         printf("Reducing %s\n", frame_paths[i]);

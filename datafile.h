@@ -6,6 +6,7 @@
  */
 
 #include "aperture.h"
+#include "hashmap.h"
 #include "helpers.h"
 
 #ifndef DATAFILE_H
@@ -50,6 +51,7 @@ typedef struct
     struct observation *obs_start;
     struct observation *obs_end;
     size_t obs_count;
+    map_t filename_map;
 
     int plot_fit_degree;
     double plot_max_raw;

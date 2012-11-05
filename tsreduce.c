@@ -33,13 +33,6 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "update") == 0)
         return update_reduction(argv[2]);
 
-    // `tsreduce display-targets ~/data/20110704/gwlib.dat`
-    else if ((argc == 3 || argc == 4) && strcmp(argv[1], "display-targets") == 0)
-    {
-        int obs = argc == 4 ? atoi(argv[3]) : -1;
-        return display_targets(argv[2], obs);
-    }
-
     else if (argc == 3 && strcmp(argv[1], "tracer") == 0)
         return display_tracer(argv[2]);
 

@@ -9,7 +9,6 @@
 #ifndef TS_ANALYSIS_H
 #define TS_ANALYSIS_H
 
-int display_targets(char *dataPath, int obsIndex);
 int display_tracer(char *dataPath);
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);

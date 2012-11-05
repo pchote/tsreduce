@@ -155,8 +155,13 @@ int display_tracer(char *dataPath)
     // Draw apertures
     for (int i = 0; i < data->num_targets; i++)
     {
-        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'",
-                 data->obs_end->pos[i].x + 1, data->obs_end->pos[i].y + 1, data->targets[i].r);
+        double2 xy = data->obs_end->pos[i];
+        target t = data->targets[i];
+        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t.r);
+        ts_exec_write(command, NULL, 0);
+
+        snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #select=0}'",
+                 xy.x + 1, xy.y + 1, t.s1, t.s2);
         ts_exec_write(command, NULL, 0);
     }
 

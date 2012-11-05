@@ -14,16 +14,13 @@
 // Maximum number of frames to load when creating a flat or dark frame
 #define MAX_FRAMES 100
 
-// Maximum number of observations to process in a single run
-#define MAX_OBS 10000
-
 // Maximum number of targets to track
 #define MAX_TARGETS 10
 
 // Maximum number of ranges to block
 #define MAX_BLOCKED_RANGES 10
 
-typedef struct
+struct observation
 {
     double star[MAX_TARGETS];
     double sky[MAX_TARGETS];
@@ -33,7 +30,10 @@ typedef struct
     double ratio_noise;
     double fwhm;
     char filename[64];
-} record;
+
+    struct observation *next;
+    struct observation *prev;
+};
 
 typedef struct
 {
@@ -46,9 +46,11 @@ typedef struct
     target targets[MAX_TARGETS];
     int num_targets;
     ts_time reference_time;
-    
-    record obs[MAX_OBS];
-    int num_obs;
+
+    struct observation *obs_start;
+    struct observation *obs_end;
+    size_t obs_count;
+
     int plot_fit_degree;
     double plot_max_raw;
     int plot_num_uhz;
@@ -70,6 +72,7 @@ typedef struct
 datafile *datafile_alloc();
 datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
+void datafile_append_observation(datafile *data, struct observation *obs);
 int datafile_save_header(datafile *data, char *filename);
 
 #endif

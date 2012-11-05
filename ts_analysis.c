@@ -30,10 +30,10 @@ int display_targets(char *dataPath, int obsIndex)
     if (data == NULL)
         return error("Error opening data file");
 
-    if (obsIndex >= data->num_obs)
+    if (obsIndex >= data->obs_count)
     {
         datafile_free(data);
-        return error("Requested observation is out of range: max is %d", data->num_obs-1);
+        return error("Requested observation is out of range: max is %d", data->obs_count-1);
     }
 
     if (chdir(data->frame_dir))
@@ -42,7 +42,18 @@ int display_targets(char *dataPath, int obsIndex)
         return error("Invalid frame path: %s", data->frame_dir);
     }
 
-    char *filename = (obsIndex >= 0) ? strdup(data->obs[obsIndex].filename) : get_first_matching_file(data->frame_pattern);
+    char *filename;
+    if (obsIndex >= 0)
+    {
+        struct observation *obs = data->obs_start;
+        for (size_t i = 0; obs && i < obsIndex; i++, obs = obs->next);
+            // Do nothing
+
+        filename = strdup(obs->filename);
+    }
+    else
+        filename = get_first_matching_file(data->frame_pattern);
+
     if (!filename)
     {
         datafile_free(data);
@@ -77,8 +88,12 @@ int display_targets(char *dataPath, int obsIndex)
         // Use the centered observation
         else
         {
-            x = data->obs[obsIndex].pos[i].x + 1;
-            y = data->obs[obsIndex].pos[i].y + 1;
+            struct observation *obs = data->obs_start;
+            for (size_t i = 0; obs && i < obsIndex; i++, obs = obs->next);
+                // Do nothing
+
+            x = obs->pos[i].x + 1;
+            y = obs->pos[i].y + 1;
         }
 
         char command[128];
@@ -111,8 +126,11 @@ int display_tracer(char *dataPath)
     if (init_ds9())
         return error("Unable to launch ds9");
 
+    if (!data->obs_start)
+        return error("No observations to display");
+
     char command[1024];
-    snprintf(command, 1024, "xpaset tsreduce file %s/%s", data->frame_dir, data->obs[data->num_obs-1].filename);
+    snprintf(command, 1024, "xpaset tsreduce file %s/%s", data->frame_dir, data->obs_end->filename);
     ts_exec_write(command, NULL, 0);
 
     // Set scaling mode
@@ -124,21 +142,25 @@ int display_tracer(char *dataPath)
     // Display results in ds9 - errors are non-fatal
     ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
 
-    for (int j = 1; j < data->num_obs; j++)
-        for (int i = 0; i < data->num_targets; i++)
-        {
-            snprintf(command, 1024, "xpaset tsreduce regions command '{line %f %f %f %f # line= 0 0 color=red select=0}'",
-                     data->obs[j-1].pos[i].x + 1, data->obs[j-1].pos[i].y + 1, data->obs[j].pos[i].x + 1, data->obs[j].pos[i].y + 1);
-            ts_exec_write(command, NULL, 0);
-
-            if (j == data->num_obs - 1)
+    if (data->obs_start->next)
+        for (struct observation *obs = data->obs_start->next; obs; obs = obs->next)
+            for (int i = 0; i < data->num_targets; i++)
             {
-                snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'",
-                     data->obs[j].pos[i].x + 1, data->obs[j].pos[i].y + 1, data->targets[i].r);
+                snprintf(command, 1024, "xpaset tsreduce regions command '{line %f %f %f %f # line= 0 0 color=red select=0}'",
+                         obs->prev->pos[i].x + 1, obs->prev->pos[i].y + 1,
+                         obs->pos[i].x + 1, obs->pos[i].y + 1);
                 ts_exec_write(command, NULL, 0);
             }
-            ts_exec_write(command, NULL, 0);
-        }
+
+    // Draw apertures
+    for (int i = 0; i < data->num_targets; i++)
+    {
+        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'",
+                 data->obs_end->pos[i].x + 1, data->obs_end->pos[i].y + 1, data->targets[i].r);
+        ts_exec_write(command, NULL, 0);
+    }
+
+    ts_exec_write(command, NULL, 0);
     ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
     datafile_free(data);
     return 0;
@@ -155,13 +177,24 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     if (data == NULL)
         return error("Error opening data file");
 
-    if (obsIndex >= data->num_obs)
-        error_jump(setup_error, ret, "Requested observation is out of range: max is %d", data->num_obs-1);
+    if (obsIndex >= data->obs_count)
+        error_jump(setup_error, ret, "Requested observation is out of range: max is %d", data->obs_count-1);
 
     if (chdir(data->frame_dir))
         error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
 
-    char *filename = (obsIndex >= 0) ? strdup(data->obs[obsIndex].filename) : get_first_matching_file(data->frame_pattern);
+    char *filename;
+    if (obsIndex >= 0)
+    {
+        struct observation *obs = data->obs_start;
+        for (size_t i = 0; obs && i < obsIndex; i++, obs = obs->next);
+            // Do nothing
+
+        filename = strdup(obs->filename);
+    }
+    else
+        filename = get_first_matching_file(data->frame_pattern);
+
     if (!filename)
         error_jump(setup_error, ret, "No matching files found");
 
@@ -317,25 +350,30 @@ int detect_repeats(char *dataPath)
         return error("Error opening data file");
 
     // No data
-    if (data->num_obs <= 0)
+    if (!data->obs_start)
     {
         datafile_free(data);
         return error("File specifies no observations");
     }
 
-    int last_bad = 0;
-    double last_time = data->obs[0].time;
-    for (int i = 1; i < data->num_obs; i++)
+    if (!data->obs_start->next)
     {
-        double time = data->obs[i].time;
-        if (time - last_time < 0.1f)
-            last_bad = 1;
+        datafile_free(data);
+        return error("File requires at least two observations");
+    }
 
-        if (last_bad)
+    bool bad_range = false;
+    for (struct observation *obs = data->obs_start->next; obs; obs = obs->next)
+    {
+        double time = obs->time;
+        if (obs->time - obs->prev->time < 0.1f)
+            bad_range = true;
+
+        if (bad_range)
         {
-            printf("%s @ %.1f", data->obs[i].filename, time);
+            printf("%s @ %.1f", obs->filename, time);
             for (int j = 0; j < data->num_blocked_ranges; j++)
-                if (time >= data->blocked_ranges[j].x && time <= data->blocked_ranges[j].y)
+                if (obs->time >= data->blocked_ranges[j].x && obs->time <= data->blocked_ranges[j].y)
                 {
                     printf(" blocked");
                     break;
@@ -343,10 +381,8 @@ int detect_repeats(char *dataPath)
             printf("\n");
         }
 
-        if (last_bad && time - last_time >= 0.1f)
-            last_bad = 0;
-
-        last_time = time;
+        if (bad_range && obs->time - obs->prev->time >= 0.1f)
+            bad_range = false;
     }
 
     datafile_free(data);
@@ -717,12 +753,12 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
     datafile *data = datafile_load(dataPath);
     if (!data)
         return error("Error opening data file %s", dataPath);
-    size_t limit = data->num_obs;
 
+    size_t limit = data->obs_count;
     for (size_t i = 2; i < limit; i+= step)
     {
         // Limit the data to the first N observations
-        data->num_obs = i;
+        data->obs_count = i;
 
         clock_t start = clock();
         if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
@@ -735,7 +771,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
     }
 
     // Finish by plotting with all data
-    data->num_obs = limit;
+    data->obs_count = limit;
     if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
         error_jump(plot_error, ret, "Plotting error");
 

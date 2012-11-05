@@ -36,39 +36,39 @@ int generate_photometry_dft_data(datafile *data,
     int ret = 0;
 
     // No data
-    if (data->num_obs <= 0)
+    if (!data->obs_start)
         return error("File specifies no observations");
 
     // Time Series data
-    *raw_time = (double *)malloc(data->num_obs*sizeof(double));
+    *raw_time = (double *)malloc(data->obs_count*sizeof(double));
     if (*raw_time == NULL)
         error_jump(raw_time_alloc_error, ret, "raw_time malloc failed");
 
-    *raw = (double *)malloc(data->num_obs*data->num_targets*sizeof(double));
+    *raw = (double *)malloc(data->obs_count*data->num_targets*sizeof(double));
     if (*raw == NULL)
         error_jump(raw_alloc_error, ret, "raw malloc failed");
 
-    *mean_sky = (double *)malloc(data->num_obs*sizeof(double));
+    *mean_sky = (double *)malloc(data->obs_count*sizeof(double));
     if (*mean_sky == NULL)
         error_jump(mean_sky_alloc_error, ret, "mean_sky malloc failed");
 
-    *time = (double *)malloc(data->num_obs*sizeof(double));
+    *time = (double *)malloc(data->obs_count*sizeof(double));
     if (*time == NULL)
         error_jump(time_alloc_error, ret, "time malloc failed");
 
-    *ratio = (double *)malloc(data->num_obs*sizeof(double));
+    *ratio = (double *)malloc(data->obs_count*sizeof(double));
     if (*ratio == NULL)
         error_jump(ratio_alloc_error, ret, "ratio malloc failed");
 
-    *ratio_noise = (double *)malloc(data->num_obs*sizeof(double));
+    *ratio_noise = (double *)malloc(data->obs_count*sizeof(double));
     if (*ratio == NULL)
         error_jump(ratio_noise_alloc_error, ret, "ratio malloc failed");
 
-    *fwhm = (double *)malloc(data->num_obs*sizeof(double));
+    *fwhm = (double *)malloc(data->obs_count*sizeof(double));
     if (*fwhm == NULL)
         error_jump(fwhm_alloc_error, ret, "ratio malloc failed");
 
-    *polyfit = (double *)malloc(data->num_obs*sizeof(double));
+    *polyfit = (double *)malloc(data->obs_count*sizeof(double));
     if (*polyfit == NULL)
         error_jump(polyfit_alloc_error, ret, "polyfit malloc failed");
 
@@ -79,16 +79,20 @@ int generate_photometry_dft_data(datafile *data,
 
     double ratio_mean = 0;
     *num_filtered = 0;
-    *num_raw = data->num_obs;
-    for (int i = 0; i < data->num_obs; i++)
+    *num_raw = data->obs_count;
+
+    // External code may modify obs_count to restrict data processing,
+    // so both checks are required
+    struct observation *obs = data->obs_start;
+    for (size_t i = 0; obs && i < data->obs_count; obs = obs->next, i++)
     {
-        (*raw_time)[i] = data->obs[i].time;
+        (*raw_time)[i] = obs->time;
 
         (*mean_sky)[i] = 0;
         for (int j = 0; j < data->num_targets; j++)
         {
-            (*raw)[j*data->num_obs + i] = data->obs[i].star[j];
-            (*mean_sky)[i] += data->obs[i].sky[j]/data->num_targets;
+            (*raw)[j*data->obs_count + i] = obs->star[j];
+            (*mean_sky)[i] += obs->sky[j]/data->num_targets;
         }
 
         // Filter bad observations
@@ -101,14 +105,14 @@ int generate_photometry_dft_data(datafile *data,
             }
 
         // Invalid observations have noise = nan
-        if (!skip && !isnan(data->obs[i].ratio_noise))
+        if (!skip && !isnan(obs->ratio_noise))
         {
-            (*time)[*num_filtered] = data->obs[i].time;
-            (*ratio)[*num_filtered] = data->obs[i].ratio;
+            (*time)[*num_filtered] = obs->time;
+            (*ratio)[*num_filtered] = obs->ratio;
 
             // Read noise and fwhm from data file if available
-            (*ratio_noise)[*num_filtered] = (data->version >= 5 && data->dark_template) ? data->obs[i].ratio_noise : 0;
-            (*fwhm)[*num_filtered] = (data->version >= 6) ? data->obs[i].fwhm : 0;
+            (*ratio_noise)[*num_filtered] = (data->version >= 5 && data->dark_template) ? obs->ratio_noise : 0;
+            (*fwhm)[*num_filtered] = (data->version >= 6) ? obs->fwhm : 0;
 
             ratio_mean += (*ratio)[*num_filtered];
             (*num_filtered)++;
@@ -769,19 +773,18 @@ int update_reduction(char *dataPath)
 
     // Iterate through the files in the directory
     char **frame_paths;
-    size_t start_obs = data->num_obs;
+    size_t start_obs = data->obs_count;
     size_t num_frames = get_matching_files(data->frame_pattern, &frame_paths);
     for (size_t i = 0; i < num_frames; i++)
     {
         // Check whether the frame has been processed
         int processed = FALSE;
-        for (int j = 0; j < data->num_obs; j++)
-            if (strcmp(frame_paths[i], data->obs[j].filename) == 0)
+        for (struct observation *obs = data->obs_start; obs; obs = obs->next)
+            if (strcmp(frame_paths[i], obs->filename) == 0)
             {
                 processed = TRUE;
                 break;
             }
-
         if (processed)
             continue;
 
@@ -812,9 +815,13 @@ int update_reduction(char *dataPath)
         if (flat)
             framedata_divide(frame, flat);
 
+        struct observation *obs = malloc(sizeof(struct observation));
+        if (!obs)
+            error_jump(process_error, ret, "Allocation error");
+
         // Observation start time
         fprintf(data->file, "%.1f ", starttime);
-        data->obs[data->num_obs].time = starttime;
+        obs->time = starttime;
 
         // Process frame
         double comparisonIntensity = 0;
@@ -829,9 +836,9 @@ int update_reduction(char *dataPath)
             // Use the aperture position from the previous frame
             // as a starting point if it is valid
             target t = data->targets[i];
-            if (data->num_obs > 0)
+            if (data->obs_end)
             {
-                double2 last = data->obs[data->num_obs-1].pos[i];
+                double2 last = data->obs_end->pos[i];
                 if (last.x > 0 && last.x < frame->cols)
                     t.x = last.x;
                 if (last.y > 0 && last.y < frame->rows)
@@ -878,9 +885,9 @@ int update_reduction(char *dataPath)
             fprintf(data->file, "%.2f ", sky); // sky intensity (ADU/s)
             fprintf(data->file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
 
-            data->obs[data->num_obs].star[i] = intensity;
-            data->obs[data->num_obs].sky[i] = sky;
-            data->obs[data->num_obs].pos[i] = xy;
+            obs->star[i] = intensity;
+            obs->sky[i] = sky;
+            obs->pos[i] = xy;
 
             if (i == 0)
             {
@@ -897,7 +904,7 @@ int update_reduction(char *dataPath)
         // Ratio
         double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
         double ratioNoise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
-        data->obs[data->num_obs].ratio = ratio;
+        obs->ratio = ratio;
 
         fprintf(data->file, "%.5e ", ratio);
         if (data->version >= 5)
@@ -908,13 +915,13 @@ int update_reduction(char *dataPath)
 
         // Filename
         fprintf(data->file, "%s\n", frame_paths[i]);
-        strncpy(data->obs[data->num_obs].filename, frame_paths[i], 64);
-        data->num_obs++;
+        strncpy(obs->filename, frame_paths[i], 64);
 
+        datafile_append_observation(data, obs);
         framedata_free(frame);
     }
     
-    printf("Reduced %zu observations\n", data->num_obs - start_obs);
+    printf("Reduced %zu observations\n", data->obs_count - start_obs);
 
 process_error:
     free_2d_array(frame_paths, num_frames);

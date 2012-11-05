@@ -23,13 +23,8 @@
  */
 datafile *datafile_alloc()
 {
-    datafile *dp = malloc(sizeof(datafile));
-    dp->file = NULL;
+    datafile *dp = calloc(1, sizeof(datafile));
     dp->version = 6;
-    dp->frame_dir = NULL;
-    dp->frame_pattern = NULL;
-    dp->dark_template = NULL;
-    dp->flat_template = NULL;
     dp->plot_fit_degree = PLOT_FIT_DEGREE_DEFAULT;
     dp->plot_max_raw = PLOT_MAX_RAW_DEFAULT;
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
@@ -38,13 +33,6 @@ datafile *datafile_alloc()
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
-
-    dp->coord_ra = NULL;
-    dp->coord_dec = NULL;
-    dp->coord_epoch = 0;
-    dp->num_obs = 0;
-    dp->num_targets = 0;
-    dp->num_blocked_ranges = 0;
     return dp;
 }
 
@@ -165,37 +153,41 @@ datafile* datafile_load(char *filename)
         // Observations
         //
 
+        struct observation *obs = malloc(sizeof(struct observation));
+        if (!obs)
+            return NULL;
+
+        // TODO: Make this safe against malformed lines
+
         // Time
         // Note: strtok_r is unsupported under windows
-        dp->obs[dp->num_obs].time = atof(strtok(linebuf, " "));
+        obs->time = atof(strtok(linebuf, " "));
 
         // Target intensity / sky / aperture x / aperture y
         for (int i = 0; i < dp->num_targets; i++)
         {
-            dp->obs[dp->num_obs].star[i] = atof(strtok(NULL, " "));
-            dp->obs[dp->num_obs].sky[i] = atof(strtok(NULL, " "));
-            dp->obs[dp->num_obs].pos[i].x = atof(strtok(NULL, " "));
-            dp->obs[dp->num_obs].pos[i].y = atof(strtok(NULL, " "));
+            obs->star[i] = atof(strtok(NULL, " "));
+            obs->sky[i] = atof(strtok(NULL, " "));
+            obs->pos[i].x = atof(strtok(NULL, " "));
+            obs->pos[i].y = atof(strtok(NULL, " "));
         }
 
         // Ratio
-        dp->obs[dp->num_obs].ratio = atof(strtok(NULL, " "));
+        obs->ratio = atof(strtok(NULL, " "));
 
         if (dp->version >= 5)
-            dp->obs[dp->num_obs].ratio_noise = atof(strtok(NULL, " "));
+            obs->ratio_noise = atof(strtok(NULL, " "));
 
         if (dp->version >= 6)
-            dp->obs[dp->num_obs].fwhm = atof(strtok(NULL, " "));
+            obs->fwhm = atof(strtok(NULL, " "));
 
         // Filename
-        strncpy(dp->obs[dp->num_obs].filename, strtok(NULL, " "),
-                sizeof(dp->obs[dp->num_obs].filename));
+        strncpy(obs->filename, strtok(NULL, " "), sizeof(obs->filename));
 
         // Strip newline
-        dp->obs[dp->num_obs].filename[strlen(dp->obs[dp->num_obs].filename)-1] = '\0';
+        obs->filename[strlen(obs->filename)-1] = '\0';
 
-        dp->num_obs++;
-
+        datafile_append_observation(dp, obs);
     }
     return dp;
 }
@@ -204,20 +196,35 @@ void datafile_free(datafile *data)
 {
     if (data->file)
         fclose(data->file);
-    if (data->frame_dir)
-        free(data->frame_dir);
-    if (data->frame_pattern)
-        free(data->frame_pattern);
-    if (data->dark_template)
-        free(data->dark_template);
-    if (data->flat_template)
-        free(data->flat_template);
-    if (data->coord_ra)
-        free(data->coord_ra);
-    if (data->coord_dec)
-        free(data->coord_dec);
+
+    free(data->frame_dir);
+    free(data->frame_pattern);
+    free(data->dark_template);
+    free(data->flat_template);
+    free(data->coord_ra);
+    free(data->coord_dec);
+
+    struct observation *obs, *next;
+    for (obs = data->obs_start; obs; obs = next)
+    {
+        next = obs->next;
+        free(obs);
+    }
 
     free(data);
+}
+
+void datafile_append_observation(datafile *data, struct observation *obs)
+{
+    obs->prev = data->obs_end;
+    obs->next = NULL;
+    if (data->obs_end)
+        data->obs_end->next = obs;
+    else
+        data->obs_start = obs;
+
+    data->obs_end = obs;
+    data->obs_count++;
 }
 
 /*

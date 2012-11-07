@@ -5,11 +5,11 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
-#include <time.h>
-#include "aperture.h"
-
 #ifndef ASTRO_CONVERT_H
 #define ASTRO_CONVERT_H
+
+#include <time.h>
+#include "aperture.h"
 
 double jdtobjd(double jd, double2 coords);
 double2 precess(double2 coords, double t0, double t1);

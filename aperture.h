@@ -5,10 +5,10 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
-#include "framedata.h"
-
 #ifndef APERTURE_H
 #define APERTURE_H
+
+#include "framedata.h"
 
 // Compatability tweaks
 #ifndef M_PI

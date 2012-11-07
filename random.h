@@ -5,10 +5,10 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
-#include <stdint.h>
-
 #ifndef RANDOM_H
 #define RANDOM_H
+
+#include <stdint.h>
 
 typedef struct
 {

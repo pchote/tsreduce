@@ -5,7 +5,6 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
-
 #ifndef TS_ANALYSIS_H
 #define TS_ANALYSIS_H
 

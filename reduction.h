@@ -5,10 +5,10 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
-#include "datafile.h"
-
 #ifndef REDUCTION_H
 #define REDUCTION_H
+
+#include "datafile.h"
 
 int generate_photometry_dft_data(datafile *data,
                                  double **raw_time, double **raw, double **mean_sky, size_t *num_raw,

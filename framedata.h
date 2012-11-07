@@ -5,11 +5,11 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
-#include <stdbool.h>
-#include <fitsio.h>
-
 #ifndef FRAMEDATA_H
 #define FRAMEDATA_H
+
+#include <stdbool.h>
+#include <fitsio.h>
 
 typedef struct
 {

@@ -5,7 +5,6 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
-
 #ifndef DFT_ANALYSIS_H
 #define DFT_ANALYSIS_H
 

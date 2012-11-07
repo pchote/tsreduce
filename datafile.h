@@ -5,12 +5,12 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
+#ifndef DATAFILE_H
+#define DATAFILE_H
+
 #include "aperture.h"
 #include "hashmap.h"
 #include "helpers.h"
-
-#ifndef DATAFILE_H
-#define DATAFILE_H
 
 // Maximum number of frames to load when creating a flat or dark frame
 #define MAX_FRAMES 100

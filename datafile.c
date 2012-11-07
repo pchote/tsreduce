@@ -5,7 +5,10 @@
  * published by the Free Software Foundation. For more information, see LICENSE.
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
 #include "datafile.h"
 #include "helpers.h"
 

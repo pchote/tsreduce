@@ -5,6 +5,8 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
+#include <fitsio.h>
+
 #include "framedata.h"
 #include "helpers.h"
 
@@ -31,7 +33,7 @@ framedata *framedata_load(const char *filename)
     }
 
 	int status = 0;
-    if (fits_open_image(&fp->fptr, filename, READONLY, &status))
+    if (fits_open_image((fitsfile **)(&fp->fptr), filename, READONLY, &status))
     {
         char fitserr[128];
         while (fits_read_errmsg(fitserr))

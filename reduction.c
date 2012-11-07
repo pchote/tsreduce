@@ -14,6 +14,7 @@
 #include <regex.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <fitsio.h>
 
 #include "datafile.h"
 #include "framedata.h"

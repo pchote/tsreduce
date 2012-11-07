@@ -9,7 +9,6 @@
 #define FRAMEDATA_H
 
 #include <stdbool.h>
-#include <fitsio.h>
 
 typedef struct
 {
@@ -22,7 +21,7 @@ typedef struct
 
 typedef struct
 {
-    fitsfile *fptr;
+    void *fptr;
     int rows;
     int cols;
     double *data;

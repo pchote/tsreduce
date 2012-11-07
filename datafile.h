@@ -8,6 +8,7 @@
 #ifndef DATAFILE_H
 #define DATAFILE_H
 
+#include <stdio.h>
 #include "aperture.h"
 #include "hashmap.h"
 #include "helpers.h"

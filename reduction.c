@@ -278,19 +278,23 @@ raw_time_alloc_error:
 
 static ts_time get_frame_time(framedata *frame)
 {
-    // Fits strings have a max length of FLEN_VALUE = 71
-    if (framedata_has_header_string(frame, "UTC-BEG"))
+    char *date = framedata_get_header_string(frame, "UTC-DATE");
+    char *time = framedata_get_header_string(frame, "UTC-BEG");
+    if (date && time)
     {
-        char datebuf[128], timebuf[128];
-        framedata_get_header_string(frame, "UTC-DATE", datebuf);
-        framedata_get_header_string(frame, "UTC-BEG", timebuf);
-        return parse_date_time(datebuf, timebuf);
+        ts_time ret = parse_date_time(date, time);
+        free(date);
+        free(time);
+        return ret;
     }
-    else if (framedata_has_header_string(frame, "GPSTIME"))
+
+    // Legacy keywords
+    char *datetime = framedata_get_header_string(frame, "GPSTIME");
+    if (datetime)
     {
-        char datetimebuf[257];
-        framedata_get_header_string(frame, "GPSTIME", datetimebuf);
-        return parse_time(datetimebuf);
+        ts_time ret = parse_time(datetime);
+        free(datetime);
+        return ret;
     }
 
     die("No known time headers found");
@@ -1476,22 +1480,31 @@ int update_preview(char *preview_filename, char *ds9_title)
     }
 
     // Display frame time
-    char frame_end[128], frame_date[128], frame_object[128];
     double frame_exp;
-    framedata_get_header_string(frame, "UTC-END", frame_end);
-    framedata_get_header_string(frame, "UTC-DATE", frame_date);
-    framedata_get_header_string(frame, "OBJECT", frame_object);
+    char *frame_end = framedata_get_header_string(frame, "UTC-END");
+    char *frame_date = framedata_get_header_string(frame, "UTC-DATE");
+    char *frame_object = framedata_get_header_string(frame, "OBJECT");
     framedata_get_header_dbl(frame, "EXPTIME", &frame_exp);
 
-    snprintf(ds9_command_buf, 1024,
-             "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %gs\"}'",
-             ds9_title, frame->cols/2.0, frame->rows + 30/zoom, frame_object, frame_exp);
-    ts_exec_write(ds9_command_buf, NULL, 0);
+    if (frame_object)
+    {
+        snprintf(ds9_command_buf, 1024,
+                 "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s @ %gs\"}'",
+                 ds9_title, frame->cols/2.0, frame->rows + 30/zoom, frame_object, frame_exp);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+    }
 
-    snprintf(ds9_command_buf, 1024,
-             "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Ending: %s %s\"}'",
-             ds9_title, frame->cols/2.0, frame->rows + 10/zoom, frame_date, frame_end);
-    ts_exec_write(ds9_command_buf, NULL, 0);
+    if (frame_date && frame_end)
+    {
+        snprintf(ds9_command_buf, 1024,
+                 "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Ending: %s %s\"}'",
+                 ds9_title, frame->cols/2.0, frame->rows + 10/zoom, frame_date, frame_end);
+        ts_exec_write(ds9_command_buf, NULL, 0);
+    }
+
+    free(frame_object);
+    free(frame_date);
+    free(frame_end);
 
     // Force the display to update
     snprintf(ds9_command_buf, 1024, "xpaset -p %s update now", ds9_title);

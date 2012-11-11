@@ -6,6 +6,7 @@
 */
 
 #include <fitsio.h>
+#include <string.h>
 
 #include "framedata.h"
 #include "helpers.h"
@@ -111,19 +112,15 @@ int framedata_get_header_dbl(framedata *this, const char *key, double *value)
     return 0;
 }
 
-int framedata_has_header_string(framedata *this, const char *key)
+char *framedata_get_header_string(framedata *this, const char *key)
 {
     int status = 0;
-    char buf[128];
+    char buf[FLEN_VALUE];
     fits_read_key(this->fptr, TSTRING, key, &buf, NULL, &status);
-    return status != KEY_NO_EXIST;
-}
+    if (status == KEY_NO_EXIST)
+        return NULL;
 
-void framedata_get_header_string(framedata *this, const char *key, char *ret)
-{
-    int status = 0;
-    if (fits_read_key(this->fptr, TSTRING, key, ret, NULL, &status))
-        die("framedata_get_header_string failed for key %s", key);
+    return strdup(buf);
 }
 
 void framedata_subtract(framedata *this, framedata *other)

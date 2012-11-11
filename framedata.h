@@ -33,9 +33,7 @@ void framedata_free(framedata *frame);
 
 int framedata_get_header_long(framedata *this, const char *key, long *value);
 int framedata_get_header_dbl(framedata *this, const char *key, double *value);
-int framedata_has_header_string(framedata *this, const char *key);
-int framedata_has_header_string(framedata *this, const char *key);
-void framedata_get_header_string(framedata *this, const char *key, char *ret);
+char *framedata_get_header_string(framedata *this, const char *key);
 void framedata_subtract(framedata *this, framedata *other);
 void framedata_add(framedata *this, framedata *other);
 void framedata_subtract(framedata *this, framedata *other);

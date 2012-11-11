@@ -71,19 +71,18 @@ framedata *framedata_load(const char *filename)
     }
 
     // Load image regions
-    // TODO: have acquisition software save regions into a header key
-    fp->regions.has_overscan = (fp->cols != fp->rows);
     int *ir = fp->regions.image_region;
     int *br = fp->regions.bias_region;
+    ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
+    br[0] = br[1] = br[2] = br[3] = 0;
+
+    char *bias_region_str = framedata_get_header_string(fp, "BIAS-RGN");
+    char *image_region_str = framedata_get_header_string(fp, "IMAG-RGN");
+    fp->regions.has_overscan = (bias_region_str && image_region_str);
     if (fp->regions.has_overscan)
     {
-        ir[0] = 0; ir[1] = 512; ir[2] = 0; ir[3] = 512;
-        br[0] = 525; br[1] = 535; br[2] = 5; br[3] = 508;
-    }
-    else
-    {
-        ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
-        br[0] = br[1] = br[2] = br[3] = 0;
+        sscanf(bias_region_str, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
+        sscanf(image_region_str, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
     }
 
     fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);

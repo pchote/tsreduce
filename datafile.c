@@ -166,33 +166,64 @@ datafile* datafile_load(char *filename)
 
         // Time
         // Note: strtok_r is unsupported under windows
-        obs->time = atof(strtok(linebuf, " "));
+        char *token;
+
+        if (!(token = strtok(linebuf, " ")))
+            goto parse_error;
+        obs->time = atof(token);
 
         // Target intensity / sky / aperture x / aperture y
         for (int i = 0; i < dp->num_targets; i++)
         {
-            obs->star[i] = atof(strtok(NULL, " "));
-            obs->sky[i] = atof(strtok(NULL, " "));
-            obs->pos[i].x = atof(strtok(NULL, " "));
-            obs->pos[i].y = atof(strtok(NULL, " "));
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->star[i] = atof(token);
+
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->sky[i] = atof(token);
+
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->pos[i].x = atof(token);
+
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->pos[i].y = atof(token);
         }
 
-        // Ratio
-        obs->ratio = atof(strtok(NULL, " "));
+        if (!(token = strtok(NULL, " ")))
+            goto parse_error;
+        obs->ratio = atof(token);
 
         if (dp->version >= 5)
-            obs->ratio_noise = atof(strtok(NULL, " "));
+        {
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->ratio_noise = atof(token);
+        }
 
         if (dp->version >= 6)
-            obs->fwhm = atof(strtok(NULL, " "));
+        {
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->fwhm = atof(token);
+        }
 
         // Filename
-        strncpy(obs->filename, strtok(NULL, " "), sizeof(obs->filename));
+        if (!(token = strtok(NULL, " ")))
+            goto parse_error;
+        strncpy(obs->filename, token, sizeof(obs->filename));
 
         // Strip newline
         obs->filename[strlen(obs->filename)-1] = '\0';
 
         datafile_append_observation(dp, obs);
+
+        continue;
+    parse_error:
+        error("Skipping malformed observations line");
+        free(obs);
     }
     return dp;
 }

@@ -13,9 +13,6 @@
 #include "hashmap.h"
 #include "helpers.h"
 
-// Maximum number of frames to load when creating a flat or dark frame
-#define MAX_FRAMES 100
-
 // Maximum number of targets to track
 #define MAX_TARGETS 10
 

@@ -585,3 +585,33 @@ void datafile_free_photometry(struct photometry_data *data)
     free(data->fit_coeffs);
     free(data);
 }
+
+struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *pd)
+{
+    struct dft_data *d = calloc(1, sizeof(struct dft_data));
+    if (!d)
+        return NULL;
+
+    d->count = data->plot_num_uhz;
+    d->uhz = calloc(d->count, sizeof(double));
+    d->ampl = calloc(d->count, sizeof(double));
+
+    if (!d->uhz || !d->count)
+    {
+        datafile_free_dft(d);
+        error("Allocation error");
+        return NULL;
+    }
+
+    calculate_amplitude_spectrum(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6,
+                                 pd->time, pd->mma, pd->filtered_count,
+                                 d->uhz, d->ampl, d->count);
+    return d;
+}
+
+void datafile_free_dft(struct dft_data *data)
+{
+    free(data->uhz);
+    free(data->ampl);
+    free(data);
+}

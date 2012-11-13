@@ -100,6 +100,13 @@ struct photometry_data
     size_t fit_coeffs_count;
 };
 
+struct dft_data
+{
+    double *uhz;
+    double *ampl;
+    size_t count;
+};
+
 datafile *datafile_alloc();
 datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
@@ -107,7 +114,11 @@ struct observation *datafile_new_observation(datafile *data);
 void datafile_append_observation(datafile *data, struct observation *obs);
 void datafile_discard_observations(datafile *data);
 int datafile_save(datafile *data, char *filename);
+
 struct photometry_data *datafile_generate_photometry(datafile *data);
 void datafile_free_photometry(struct photometry_data *data);
+
+struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *pd);
+void datafile_free_dft(struct dft_data *data);
 
 #endif

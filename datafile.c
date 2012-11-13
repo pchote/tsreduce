@@ -213,10 +213,14 @@ datafile* datafile_load(char *filename)
         // Filename
         if (!(token = strtok(NULL, " ")))
             goto parse_error;
-        strncpy(obs->filename, token, sizeof(obs->filename));
+        obs->filename = strdup(token);
+
+        size_t len = strlen(obs->filename);
+        if (len < 1)
+            goto parse_error;
 
         // Strip newline
-        obs->filename[strlen(obs->filename)-1] = '\0';
+        obs->filename[len-1] = '\0';
 
         datafile_append_observation(dp, obs);
 
@@ -267,6 +271,7 @@ void datafile_discard_observations(datafile *data)
     for (obs = data->obs_start; obs; obs = next)
     {
         next = obs->next;
+        free(obs->filename);
         free(obs);
     }
     data->obs_start = NULL;

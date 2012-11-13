@@ -31,7 +31,7 @@ struct observation
     double ratio;
     double ratio_noise;
     double fwhm;
-    char filename[64];
+    char *filename;
 
     struct observation *next;
     struct observation *prev;

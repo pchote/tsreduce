@@ -900,7 +900,7 @@ int update_reduction(char *dataPath)
         obs->fwhm = mean_fwhm;
         obs->ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
         obs->ratio_noise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*obs->ratio;
-        strncpy(obs->filename, frame_paths[i], 64);
+        obs->filename = strdup(frame_paths[i]);
 
         datafile_append_observation(data, obs);
         framedata_free(frame);

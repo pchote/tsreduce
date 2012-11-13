@@ -303,7 +303,7 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
 {
     int plot_colors_max = 8;
     int plot_colors[] = {4,2,8,3,5,6,7,9};
@@ -627,13 +627,13 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     return 0;
 }
 
-int plot_fits(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+int online_plot(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
 {
     datafile *data = datafile_load(dataPath);
     if (!data)
         return error("Error opening data file %s", dataPath);
 
-    int ret = plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize);
+    int ret = plot_internal(data, tsDevice, tsSize, dftDevice, dftSize);
     datafile_free(data);
     return ret;
 }
@@ -654,7 +654,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
         data->obs_count = i;
 
         clock_t start = clock();
-        if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
+        if (plot_internal(data, tsDevice, tsSize, dftDevice, dftSize))
             error_jump(plot_error, ret, "Plotting error");
 
         // Attempt to compensate for calculation time
@@ -665,7 +665,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
 
     // Finish by plotting with all data
     data->obs_count = limit;
-    if (plot_fits_internal(data, tsDevice, tsSize, dftDevice, dftSize))
+    if (plot_internal(data, tsDevice, tsSize, dftDevice, dftSize))
         error_jump(plot_error, ret, "Plotting error");
 
 plot_error:
@@ -729,7 +729,7 @@ int plot_range(char *datafile_pattern)
     char c;
     while (true)
     {
-        plot_fits(datafile_names[i], "5/xs", 9.41, "6/xs", 9.41);
+        online_plot(datafile_names[i], "5/xs", 9.41, "6/xs", 9.41);
 
         if (cpgopen("9/xs") <= 0)
         {

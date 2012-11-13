@@ -80,10 +80,10 @@ int main( int argc, char *argv[] )
             char *ts_device = "5/xs";
             char *dft_device = "6/xs";
 #endif
-            return plot_fits(argv[2], ts_device, size, dft_device, size);
+            return online_plot(argv[2], ts_device, size, dft_device, size);
         }
         else
-            return plot_fits(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
+            return online_plot(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
     }
 
     // `tsreduce playback ec04207.dat 100 1 [ts.ps/cps 10 dft.ps/cps 10]

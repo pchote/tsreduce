@@ -13,12 +13,6 @@
 #include "hashmap.h"
 #include "helpers.h"
 
-// Maximum number of targets to track
-#define MAX_TARGETS 10
-
-// Maximum number of ranges to block
-#define MAX_BLOCKED_RANGES 10
-
 struct observation
 {
     struct observation *next;
@@ -47,7 +41,7 @@ typedef struct
     char *frame_pattern;
     char *dark_template;
     char *flat_template;
-    target targets[MAX_TARGETS];
+    target *targets;
     int num_targets;
     ts_time reference_time;
 
@@ -70,7 +64,7 @@ typedef struct
     char *coord_dec;
     double coord_epoch;
 
-    double2 blocked_ranges[MAX_BLOCKED_RANGES];
+    double2 *blocked_ranges;
     int num_blocked_ranges;
 } datafile;
 

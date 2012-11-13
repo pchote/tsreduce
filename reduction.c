@@ -1213,12 +1213,17 @@ int create_reduction_file(char *outname)
         data->num_targets = 0;
         char *cur = ds9buf;
         double largest_aperture = 0;
-        double sky[MAX_TARGETS];
+        // Temporarily hardcode target limit to 10
+        // TODO: Fix this
+        data->targets = malloc(10*sizeof(target));
+        double sky[10];
+
         for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
         {
-            if (data->num_targets == MAX_TARGETS)
+            // TODO: Fix this
+            if (data->num_targets == 10)
             {
-                printf("Limit of %d targets reached. Remaining targets have been ignored", MAX_TARGETS);
+                printf("Limit of %d targets reached. Remaining targets have been ignored", 10);
                 break;
             }
 

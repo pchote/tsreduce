@@ -55,6 +55,27 @@ datafile* datafile_load(char *filename)
 
     char linebuf[1024];
     char stringbuf[1024];
+
+    // Count number of targets and blocked ranges
+    size_t target_count = 0;
+    size_t block_count = 0;
+    while (fgets(linebuf, 1024, input) != NULL)
+    {
+        if (!strncmp(linebuf,"# Target:", 9))
+            target_count++;
+        else if (!strncmp(linebuf,"# BlockRange:", 13))
+            block_count++;
+    }
+
+    dp->targets = malloc(target_count*sizeof(target));
+    dp->blocked_ranges = malloc(block_count*sizeof(double2));
+    if (!dp->targets || !dp->blocked_ranges)
+    {
+        fclose(input);
+        return NULL;
+    }
+
+    rewind(input);
     while (fgets(linebuf, 1024, input) != NULL)
     {
         //
@@ -80,7 +101,8 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# FlatTemplate: %1024s\n", stringbuf);
             dp->flat_template = strdup(stringbuf);
         }
-        else if (!strncmp(linebuf,"# Target:", 9))
+        else if (!strncmp(linebuf,"# Target:", 9) &&
+                 dp->num_targets < target_count)
         {
             if (dp->version == 3)
             {
@@ -138,7 +160,8 @@ datafile* datafile_load(char *filename)
         }
         else if (!strncmp(linebuf,"# Epoch:", 8))
             sscanf(linebuf, "# Epoch: %lf\n", &dp->coord_epoch);
-        else if (!strncmp(linebuf,"# BlockRange:", 13))
+        else if (!strncmp(linebuf,"# BlockRange:", 13) &&
+                 dp->num_blocked_ranges < block_count)
         {
             sscanf(linebuf, "# BlockRange: (%lf, %lf)\n",
                    &dp->blocked_ranges[dp->num_blocked_ranges].x,

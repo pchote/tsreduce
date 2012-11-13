@@ -308,48 +308,47 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     int plot_colors_max = 8;
     int plot_colors[] = {4,2,8,3,5,6,7,9};
 
-    double *raw_time_d, *raw_d, *mean_sky_d, *time_d, *ratio_d, *fwhm_d, *polyfit_d, *mma_d, *ratio_noise_d, *mma_noise_d, *freq_d, *ampl_d;
-    double ratio_mean, ratio_std, mma_mean, mma_std;
-    size_t num_raw, num_filtered, num_dft;
-    if (generate_photometry_dft_data(data,
-                                     &raw_time_d, &raw_d, &mean_sky_d, &num_raw,
-                                     &time_d, &ratio_d, &polyfit_d, &mma_d, &fwhm_d, &num_filtered,
-                                     &ratio_noise_d, &mma_noise_d,
-                                     &ratio_mean, &ratio_std, &mma_mean, &mma_std,
-                                     &freq_d, &ampl_d, &num_dft))
+    struct photometry_data *pd = datafile_generate_photometry(data);
+    if (!pd)
+        return error("Photometry calculation failed");
+
+    struct dft_data *dd = datafile_generate_dft(data, pd);
+    if (!dd)
     {
-        return error("Error generating data");
+        datafile_free_photometry(pd);
+        return error("DFT calculation failed");
     }
 
-    // Start time in hours
-    float min_time = (float)ts_time_to_utc_hour(data->reference_time) + raw_time_d[0] / 3600;
-    float max_time = min_time + (raw_time_d[num_raw-1]-raw_time_d[0])/3600;
-    float min_seconds = raw_time_d[0];
-    float max_seconds = raw_time_d[num_raw-1];
+    float min_seconds = pd->raw_time[0];
+    float max_seconds = pd->raw_time[pd->raw_count - 1];
     int secexp = (int)(log10(max_seconds) / 3)*3;
+
+    // Time in hours
+    float min_time = (float)ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
+    float max_time = min_time + (max_seconds - min_seconds)/3600;
 
     double snr_ratio = 0;
     if (data->version >= 5)
     {
         double total_ratio = 0;
         double total_ratio_noise = 0;
-        for (int i = 0; i < num_filtered; i++)
+        for (int i = 0; i < pd->filtered_count; i++)
         {
-            total_ratio += ratio_d[i];
-            total_ratio_noise += ratio_noise_d[i];
+            total_ratio += pd->ratio[i];
+            total_ratio_noise += pd->ratio_noise[i];
         }
         snr_ratio = total_ratio/total_ratio_noise;
     }
 
     // Cast the double arrays to float, does not allocate any new memory.
-    float *raw_time = cast_double_array_to_float(raw_time_d, num_raw);
-    float *raw = cast_double_array_to_float(raw_d, num_raw*data->num_targets);
-    float *mean_sky = cast_double_array_to_float(mean_sky_d, num_raw);
+    float *raw_time = cast_double_array_to_float(pd->raw_time, pd->raw_count);
+    float *raw = cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
+    float *mean_sky = cast_double_array_to_float(pd->sky, pd->raw_count);
 
-    float min_mma = mma_mean - 5*mma_std;
-    float max_mma = mma_mean + 5*mma_std;
-    float min_ratio = ratio_mean - 5*ratio_std;
-    float max_ratio = ratio_mean + 5*ratio_std;
+    float min_mma = pd->mma_mean - 5*pd->mma_std;
+    float max_mma = pd->mma_mean + 5*pd->mma_std;
+    float min_ratio = pd->ratio_mean - 5*pd->ratio_std;
+    float max_ratio = pd->ratio_mean + 5*pd->ratio_std;
 
     if (cpgopen(tsDevice) <= 0)
         return error("Unable to open PGPLOT window");
@@ -374,15 +373,15 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     cpgsci(1);
 
     double mean_fwhm = 0;
-    if (num_filtered > 0)
+    if (pd->filtered_count > 0)
     {
-        float *time = cast_double_array_to_float(time_d, num_filtered);
-        float *ratio = cast_double_array_to_float(ratio_d, num_filtered);
-        float *ratio_noise = cast_double_array_to_float(ratio_noise_d, num_filtered);
-        float *fwhm = cast_double_array_to_float(fwhm_d, num_filtered);
-        float *polyfit = cast_double_array_to_float(polyfit_d, num_filtered);
-        float *mma = cast_double_array_to_float(mma_d, num_filtered);
-        float *mma_noise = cast_double_array_to_float(mma_noise_d, num_filtered);
+        float *time = cast_double_array_to_float(pd->time, pd->filtered_count);
+        float *ratio = cast_double_array_to_float(pd->ratio, pd->filtered_count);
+        float *ratio_noise = cast_double_array_to_float(pd->ratio_noise, pd->filtered_count);
+        float *fwhm = cast_double_array_to_float(pd->fwhm, pd->filtered_count);
+        float *polyfit = cast_double_array_to_float(pd->ratio_fit, pd->filtered_count);
+        float *mma = cast_double_array_to_float(pd->mma, pd->filtered_count);
+        float *mma_noise = cast_double_array_to_float(pd->mma_noise, pd->filtered_count);
 
         // Fitted MMA
         cpgsvp(0.1, 0.9, 0.8, 0.93);
@@ -402,9 +401,9 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
 
         if (data->version >= 5)
-            cpgerrb(6, num_filtered, time, mma, mma_noise, 0.0);
+            cpgerrb(6, pd->filtered_count, time, mma, mma_noise, 0.0);
         else
-            cpgpt(num_filtered, time, mma, 229);
+            cpgpt(pd->filtered_count, time, mma, 229);
 
         // Ratio
         cpgsvp(0.1, 0.9, 0.67, 0.8);
@@ -421,26 +420,26 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgsch(1.0);
 
         // Plot error bars if ratio_noise is available (data->version >= 5)
-        if (data->version >= 5)
-            cpgerrb(6, num_filtered, time, ratio, ratio_noise, 0.0);
+        if (pd->has_noise)
+            cpgerrb(6, pd->filtered_count, time, ratio, ratio_noise, 0.0);
         else
-            cpgpt(num_filtered, time, ratio, 229);
+            cpgpt(pd->filtered_count, time, ratio, 229);
 
         // Plot the polynomial fit
         cpgsci(2);
-        cpgline(num_filtered, time, polyfit);
+        cpgline(pd->filtered_count, time, polyfit);
         cpgsci(1);
 
         // FWHM
-        if (data->version >= 6)
+        if (pd->has_fwhm)
         {
             float min_fwhm = FLT_MAX;
             float max_fwhm = -FLT_MAX;
-            for (int i = 0; i < num_filtered; i++)
+            for (int i = 0; i < pd->filtered_count; i++)
             {
                 min_fwhm = fmin(min_fwhm, fwhm[i]);
                 max_fwhm = fmax(max_fwhm, fwhm[i]);
-                mean_fwhm += fwhm[i]/num_filtered;
+                mean_fwhm += fwhm[i]/pd->filtered_count;
             }
             float mid_fwhm = (max_fwhm + min_fwhm)/2;
             float fwhm_range = (max_fwhm - min_fwhm)/2;
@@ -459,14 +458,8 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
             cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
             cpgbox("bst", 0, 0, "0", 0, 0);
             cpgsch(1.0);
-            cpgpt(num_filtered, time, fwhm, 229);
+            cpgpt(pd->filtered_count, time, fwhm, 229);
         }
-
-        free(time);
-        free(ratio);
-        free(polyfit);
-        free(mma);
-        free(fwhm);
     }
 
     // Raw Data
@@ -475,10 +468,10 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     // Maximum not specified - calculate from data
     if (max_raw == 0)
     {
-        for (int i = 0; i < num_raw; i++)
+        for (int i = 0; i < pd->raw_count; i++)
             for (int j = 0; j < data->num_targets; j++)
             {
-                double r = raw[j*num_raw + i]*data->targets[j].plot_scale;
+                double r = raw[j*pd->raw_count + i]*data->targets[j].plot_scale;
                 if (r > max_raw)
                     max_raw = r;
             }
@@ -516,14 +509,14 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     {
         cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
-        cpgpt(num_raw, raw_time, &raw[j*num_raw], 229);
+        cpgpt(pd->raw_count, raw_time, &raw[j*pd->raw_count], 229);
     }
 
     cpgsci(15);
     cpgswin(min_seconds, max_seconds, 0, max_raw);
-    cpgpt(num_raw, raw_time, mean_sky, 229);
+    cpgpt(pd->raw_count, raw_time, mean_sky, 229);
 
-    if (num_filtered > 0)
+    if (pd->filtered_count > 0)
     {
         cpgsvp(0.1, 0.9, 0.015, 0.05);
         cpgswin(0, 1, 0, 1);
@@ -569,20 +562,20 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
     }
     cpgend();
 
-    if (num_dft > 0)
+    if (dd->count > 0)
     {
-        float *freq = cast_double_array_to_float(freq_d, num_dft);
-        float *ampl = cast_double_array_to_float(ampl_d, num_dft);
+        float *freq = cast_double_array_to_float(dd->uhz, dd->count);
+        float *ampl = cast_double_array_to_float(dd->ampl, dd->count);
 
         // Determine max dft ampl
         float max_dft_ampl = 0;
         float mean_dft_ampl = 0;
-        for (int i = 0; i < num_dft; i++)
+        for (int i = 0; i < dd->count; i++)
         {
             max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
             mean_dft_ampl += ampl[i];
         }
-        mean_dft_ampl /= num_dft;
+        mean_dft_ampl /= dd->count;
         max_dft_ampl *= 1.1;
 
         if (cpgopen(dftDevice) <= 0)
@@ -625,7 +618,7 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgbox("0", 0, 0, "bcnst", 0, 0);
 
         cpgsci(12);
-        cpgline(num_dft, freq, ampl);
+        cpgline(dd->count, freq, ampl);
         cpgsci(1);
 
         cpgswin(0, 1, 0, 1);
@@ -637,14 +630,11 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
         cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
         //cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
         cpgend();
-
-        free(freq);
-        free(ampl);
     }
 
-    free(raw_time);
-    free(raw);
-    free(mean_sky);
+    datafile_free_dft(dd);
+    datafile_free_photometry(pd);
+
     return 0;
 }
 

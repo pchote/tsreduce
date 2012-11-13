@@ -158,11 +158,9 @@ datafile* datafile_load(char *filename)
         // Observations
         //
 
-        struct observation *obs = malloc(sizeof(struct observation));
+        struct observation *obs = datafile_new_observation(dp);
         if (!obs)
             return NULL;
-
-        // TODO: Make this safe against malformed lines
 
         // Time
         // Note: strtok_r is unsupported under windows
@@ -248,6 +246,24 @@ void datafile_free(datafile *data)
     hashmap_free(data->filename_map);
 
     free(data);
+}
+
+struct observation *datafile_new_observation(datafile *data)
+{
+    size_t star_size = data->num_targets*sizeof(double);
+    size_t sky_size = data->num_targets*sizeof(double);
+    size_t pos_size = data->num_targets*sizeof(double2);
+    size_t s = sizeof(struct observation) - 1 + star_size + sky_size + pos_size;
+
+    struct observation *obs = calloc(1, s);
+    if (!obs)
+        return NULL;
+
+    obs->star = (double *)obs->data;
+    obs->sky = (double *)(obs->star + data->num_targets);
+    obs->pos = (double2 *)(obs->sky + data->num_targets);
+
+    return obs;
 }
 
 void datafile_append_observation(datafile *data, struct observation *obs)

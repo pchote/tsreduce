@@ -21,17 +21,23 @@
 
 struct observation
 {
-    double star[MAX_TARGETS];
-    double sky[MAX_TARGETS];
-    double2 pos[MAX_TARGETS];
+    struct observation *next;
+    struct observation *prev;
+
+    char *filename;
     double time;
     double ratio;
     double ratio_noise;
     double fwhm;
-    char *filename;
 
-    struct observation *next;
-    struct observation *prev;
+    // Pointers inside data array
+    double *star;
+    double *sky;
+    double2 *pos;
+
+    // Dynamically sized by allocating
+    // extra space with malloc
+    char data[1];
 };
 
 typedef struct
@@ -71,6 +77,7 @@ typedef struct
 datafile *datafile_alloc();
 datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
+struct observation *datafile_new_observation(datafile *data);
 void datafile_append_observation(datafile *data, struct observation *obs);
 void datafile_discard_observations(datafile *data);
 int datafile_save(datafile *data, char *filename);

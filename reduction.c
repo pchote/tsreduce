@@ -816,7 +816,7 @@ int update_reduction(char *dataPath)
         if (flat)
             framedata_divide(frame, flat);
 
-        struct observation *obs = malloc(sizeof(struct observation));
+        struct observation *obs = datafile_new_observation(data);
         if (!obs)
             error_jump(process_error, ret, "Allocation error");
 

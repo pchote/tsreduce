@@ -70,6 +70,14 @@ typedef struct
 
 struct photometry_data
 {
+    bool has_noise;
+    bool has_fwhm;
+
+    double ratio_mean;
+    double ratio_std;
+    double mma_mean;
+    double mma_std;
+
     // Raw (unfiltered) photometry
     double *raw_time;
     double *raw;
@@ -81,8 +89,15 @@ struct photometry_data
     double *time;
     double *ratio;
     double *ratio_noise;
+    double *ratio_fit;
+    double *mma;
+    double *mma_noise;
     double *fwhm;
     size_t filtered_count;
+
+    // Polynomial fit coefficients to ratio
+    double *fit_coeffs;
+    size_t fit_coeffs_count;
 };
 
 datafile *datafile_alloc();

@@ -11,6 +11,7 @@
 #include <math.h>
 
 #include "datafile.h"
+#include "fit.h"
 #include "helpers.h"
 
 #define PLOT_FIT_DEGREE_DEFAULT 2
@@ -21,6 +22,8 @@
 #define CCD_GAIN_DEFAULT 0
 #define CCD_READNOISE_DEFAULT 0
 #define CCD_PLATESCALE_DEFAULT 1.0
+
+extern int verbosity;
 
 /*
  * Allocate a datafile on the heap and set default values
@@ -195,7 +198,7 @@ datafile* datafile_load(char *filename)
         obs->time = atof(token);
 
         // Target intensity / sky / aperture x / aperture y
-        for (int i = 0; i < dp->num_targets; i++)
+        for (size_t i = 0; i < dp->num_targets; i++)
         {
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
@@ -360,12 +363,12 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
 
-    for (int i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->num_targets; i++)
         fprintf(out, "# Target: (%f, %f, %f, %f, %f) [1.0]\n",
                 data->targets[i].x, data->targets[i].y,
                 data->targets[i].r, data->targets[i].s1, data->targets[i].s2);
 
-    for (int i = 0; i < data->num_blocked_ranges; i++)
+    for (size_t i = 0; i < data->num_blocked_ranges; i++)
         fprintf(out, "# BlockRange: (%f, %f)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
@@ -396,6 +399,9 @@ int datafile_save(datafile *data, char *filename)
 
 struct photometry_data *datafile_generate_photometry(datafile *data)
 {
+    // TODO: Expose this as a parameter
+    double mma_filter_sigma = 3;
+
     if (!data->obs_start)
         return NULL;
 
@@ -410,18 +416,34 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->time = calloc(data->obs_count, sizeof(double));
     p->ratio = calloc(data->obs_count, sizeof(double));
     p->ratio_noise = calloc(data->obs_count, sizeof(double));
+    p->ratio_fit = calloc(data->obs_count, sizeof(double));
+    p->mma = calloc(data->obs_count, sizeof(double));
+    p->mma_noise = calloc(data->obs_count, sizeof(double));
+
     p->fwhm = calloc(data->obs_count, sizeof(double));
+
+    p->fit_coeffs_count = data->plot_fit_degree + 1;
+    p->fit_coeffs = calloc(p->fit_coeffs_count, sizeof(double));
 
     if (!p->raw_time || !p->raw || !p->sky ||
         !p->time || !p->ratio || !p->ratio_noise ||
-        !p->fwhm)
+        !p->ratio_fit || !p->mma || !p->mma_noise ||
+        !p->fwhm || !p->fit_coeffs)
     {
         datafile_free_photometry(p);
+        error("Allocation error");
         return NULL;
     }
 
+    //
+    // Parse raw data
+    //
+
+    p->has_noise = (data->version >= 5 && data->dark_template);
+    p->has_fwhm = (data->version >= 6);
     p->raw_count = data->obs_count;
     p->filtered_count = 0;
+    p->ratio_mean = 0;
 
     // External code may modify obs_count to restrict data processing,
     // so both checks are required
@@ -431,7 +453,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         p->raw_time[i] = obs->time;
         p->sky[i] = 0;
 
-        for (int j = 0; j < data->num_targets; j++)
+        for (size_t j = 0; j < data->num_targets; j++)
         {
             p->raw[j*data->obs_count + i] = obs->star[j];
             p->sky[i] += obs->sky[j]/data->num_targets;
@@ -452,13 +474,98 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
 
         p->time[p->filtered_count] = obs->time;
         p->ratio[p->filtered_count] = obs->ratio;
+        p->ratio_mean += obs->ratio;
 
         // Read noise and fwhm from data file if available
-        p->ratio_noise[p->filtered_count] = (data->version >= 5 && data->dark_template) ? obs->ratio_noise : 0;
-        p->fwhm[p->filtered_count] = (data->version >= 6) ? obs->fwhm : 0;
+        if (p->has_noise)
+            p->ratio_noise[p->filtered_count] = obs->ratio_noise;
+
+        if (p->has_fwhm)
+            p->fwhm[p->filtered_count] = obs->fwhm;
 
         p->filtered_count++;
     }
+
+    p->ratio_mean /= p->filtered_count;
+
+    // Ratio standard deviation
+    p->ratio_std = 0;
+    for (size_t i = 0; i < p->filtered_count; i++)
+        p->ratio_std += (p->ratio[i] - p->ratio_mean)*(p->ratio[i] - p->ratio_mean);
+    p->ratio_std = sqrt(p->ratio_std/p->filtered_count);
+
+    //
+    // Calculate polynomial fit
+    //
+    if (p->filtered_count < p->fit_coeffs_count)
+    {
+        datafile_free_photometry(p);
+        error("Insufficient data for polynomial fit");
+        return NULL;
+    }
+
+    if (fit_polynomial(p->time, p->ratio, p->has_noise ? p->ratio_noise : NULL, p->filtered_count, p->fit_coeffs, data->plot_fit_degree))
+    {
+        datafile_free_photometry(p);
+        error("Polynomial fit failed");
+        return NULL;
+    }
+
+    //
+    // Calculate mma
+    //
+
+    p->mma_mean = 0;
+    for (size_t i = 0; i < p->filtered_count; i++)
+    {
+        // Subtract polynomial fit and convert to mma
+        p->ratio_fit[i] = 0;
+        double pow = 1;
+        for (size_t j = 0; j < p->fit_coeffs_count; j++)
+        {
+            p->ratio_fit[i] += pow*p->fit_coeffs[j];
+            pow *= p->time[i];
+        }
+        p->mma[i] = 1000*(p->ratio[i] - p->ratio_fit[i])/p->ratio_fit[i];
+
+        if (p->has_noise)
+        {
+            double numer_error = fabs(p->ratio_noise[i]/(p->ratio[i] - p->ratio_fit[i]));
+            double denom_error = fabs(p->ratio_noise[i]/p->ratio[i]);
+            p->mma_noise[i] = (numer_error + denom_error)*fabs(p->mma[i]);
+        }
+
+        p->mma_mean += p->mma[i];
+    }
+    p->mma_mean /= p->filtered_count;
+
+    // mma standard deviation
+    p->mma_std = 0;
+    for (size_t i = 0; i < p->filtered_count; i++)
+        p->mma_std += (p->mma[i] - p->mma_mean)*(p->mma[i] - p->mma_mean);
+    p->mma_std = sqrt(p->mma_std/p->filtered_count);
+
+    double mma_corrected_mean = 0;
+    size_t mma_corrected_count = 0;
+
+    // Discard outliers and recalculate mean
+    for (size_t i = 0; i < p->filtered_count; i++)
+    {
+        if (fabs(p->mma[i] - p->mma_mean) > mma_filter_sigma*p->mma_std)
+        {
+            if (verbosity >= 1)
+                error("%f is an outlier, setting to 0", p->time[i]);
+            p->mma[i] = 0;
+        }
+        else
+        {
+            mma_corrected_mean += p->mma[i];
+            mma_corrected_count++;
+        }
+    }
+
+    mma_corrected_mean /= mma_corrected_count;
+    p->mma_mean = mma_corrected_mean;
 
     return p;
 }
@@ -471,6 +578,10 @@ void datafile_free_photometry(struct photometry_data *data)
     free(data->time);
     free(data->ratio);
     free(data->ratio_noise);
+    free(data->ratio_fit);
+    free(data->mma);
+    free(data->mma_noise);
     free(data->fwhm);
+    free(data->fit_coeffs);
     free(data);
 }

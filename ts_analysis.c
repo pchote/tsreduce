@@ -673,42 +673,6 @@ plot_error:
     return ret;
 }
 
-int amplitude_spectrum(char *dataPath)
-{
-    datafile *data = datafile_load(dataPath);
-    if (data == NULL)
-        return error("Error opening data file");
-
-    double *raw_time, *raw, *mean_sky, *time, *ratio, *fwhm, *polyfit, *mma, *freq, *ampl;
-    size_t num_raw, num_filtered, num_dft;
-    if (generate_photometry_dft_data(data,
-                                     &raw_time, &raw, &mean_sky, &num_raw,
-                                     &time, &ratio, &polyfit, &mma, &fwhm, &num_filtered,
-                                     NULL, NULL,
-                                     NULL, NULL, NULL, NULL,
-                                     &freq, &ampl, &num_dft))
-    {
-        datafile_free(data);
-        return error("Error generating data");
-    }
-
-    for (int i = 0; i < num_dft; i++)
-        printf("%f %f\n", freq[i], ampl[i]);
-
-    free(raw_time);
-    free(raw);
-    free(mean_sky);
-    free(time);
-    free(ratio);
-    free(polyfit);
-    free(mma);
-    free(fwhm);
-    free(freq);
-    free(ampl);
-    datafile_free(data);
-    return 0;
-}
-
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix)
 {
     int ret = 0;

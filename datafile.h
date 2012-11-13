@@ -68,6 +68,23 @@ typedef struct
     int num_blocked_ranges;
 } datafile;
 
+struct photometry_data
+{
+    // Raw (unfiltered) photometry
+    double *raw_time;
+    double *raw;
+    double *sky;
+    size_t raw_count;
+
+    // Processed photometry
+    // Filtered by blocked ranges and NaN ratio
+    double *time;
+    double *ratio;
+    double *ratio_noise;
+    double *fwhm;
+    size_t filtered_count;
+};
+
 datafile *datafile_alloc();
 datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
@@ -75,5 +92,7 @@ struct observation *datafile_new_observation(datafile *data);
 void datafile_append_observation(datafile *data, struct observation *obs);
 void datafile_discard_observations(datafile *data);
 int datafile_save(datafile *data, char *filename);
+struct photometry_data *datafile_generate_photometry(datafile *data);
+void datafile_free_photometry(struct photometry_data *data);
 
 #endif

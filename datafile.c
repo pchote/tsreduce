@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "datafile.h"
 #include "helpers.h"
@@ -391,4 +392,85 @@ int datafile_save(datafile *data, char *filename)
 
     fclose(out);
     return 0;
+}
+
+struct photometry_data *datafile_generate_photometry(datafile *data)
+{
+    if (!data->obs_start)
+        return NULL;
+
+    struct photometry_data *p = malloc(sizeof(struct photometry_data));
+    if (!p)
+        return NULL;
+
+    p->raw_time = calloc(data->obs_count, sizeof(double));
+    p->raw = calloc(data->obs_count*data->num_targets, sizeof(double));
+    p->sky = calloc(data->obs_count, sizeof(double));
+
+    p->time = calloc(data->obs_count, sizeof(double));
+    p->ratio = calloc(data->obs_count, sizeof(double));
+    p->ratio_noise = calloc(data->obs_count, sizeof(double));
+    p->fwhm = calloc(data->obs_count, sizeof(double));
+
+    if (!p->raw_time || !p->raw || !p->sky ||
+        !p->time || !p->ratio || !p->ratio_noise ||
+        !p->fwhm)
+    {
+        datafile_free_photometry(p);
+        return NULL;
+    }
+
+    p->raw_count = data->obs_count;
+    p->filtered_count = 0;
+
+    // External code may modify obs_count to restrict data processing,
+    // so both checks are required
+    struct observation *obs = data->obs_start;
+    for (size_t i = 0; obs && i < data->obs_count; obs = obs->next, i++)
+    {
+        p->raw_time[i] = obs->time;
+        p->sky[i] = 0;
+
+        for (int j = 0; j < data->num_targets; j++)
+        {
+            p->raw[j*data->obs_count + i] = obs->star[j];
+            p->sky[i] += obs->sky[j]/data->num_targets;
+        }
+
+        // Filter bad observations
+        bool skip = false;
+        for (size_t j = 0; j < data->num_blocked_ranges; j++)
+            if (p->raw_time[i] >= data->blocked_ranges[j].x && p->raw_time[i] <= data->blocked_ranges[j].y)
+            {
+                skip = true;
+                break;
+            }
+
+        // Invalid observations have noise = nan
+        if (skip || isnan(obs->ratio_noise))
+            continue;
+
+        p->time[p->filtered_count] = obs->time;
+        p->ratio[p->filtered_count] = obs->ratio;
+
+        // Read noise and fwhm from data file if available
+        p->ratio_noise[p->filtered_count] = (data->version >= 5 && data->dark_template) ? obs->ratio_noise : 0;
+        p->fwhm[p->filtered_count] = (data->version >= 6) ? obs->fwhm : 0;
+
+        p->filtered_count++;
+    }
+
+    return p;
+}
+
+void datafile_free_photometry(struct photometry_data *data)
+{
+    free(data->raw_time);
+    free(data->raw);
+    free(data->sky);
+    free(data->time);
+    free(data->ratio);
+    free(data->ratio_noise);
+    free(data->fwhm);
+    free(data);
 }

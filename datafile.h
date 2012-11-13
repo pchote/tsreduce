@@ -39,7 +39,6 @@ struct observation
 
 typedef struct
 {
-    FILE *file;
     int version;
     char *frame_dir;
     char *frame_pattern;
@@ -76,6 +75,7 @@ datafile *datafile_alloc();
 datafile *datafile_load(char *dataFile);
 void datafile_free(datafile *data);
 void datafile_append_observation(datafile *data, struct observation *obs);
-int datafile_save_header(datafile *data, char *filename);
+void datafile_discard_observations(datafile *data);
+int datafile_save(datafile *data, char *filename);
 
 #endif

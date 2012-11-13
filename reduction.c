@@ -753,6 +753,7 @@ int update_reduction(char *dataPath)
     if (data->version < 3)
         error_jump(data_error, ret, "Invalid data file version `%d'. Requires version >= 3", data->version);
 
+    char *datadir = getcwd(NULL, 0);
     if (chdir(data->frame_dir))
         error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
 
@@ -820,7 +821,6 @@ int update_reduction(char *dataPath)
             error_jump(process_error, ret, "Allocation error");
 
         // Observation start time
-        fprintf(data->file, "%.1f ", starttime);
         obs->time = starttime;
 
         // Process frame
@@ -881,10 +881,6 @@ int update_reduction(char *dataPath)
             else
                 failed = true;
 
-            fprintf(data->file, "%.2f ", intensity); // intensity (ADU/s)
-            fprintf(data->file, "%.2f ", sky); // sky intensity (ADU/s)
-            fprintf(data->file, "%.2f %.2f ", xy.x, xy.y); // Aperture center
-
             obs->star[i] = intensity;
             obs->sky[i] = sky;
             obs->pos[i] = xy;
@@ -901,26 +897,20 @@ int update_reduction(char *dataPath)
             }
         }
 
-        // Ratio
-        double ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-        double ratioNoise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*ratio;
-        obs->ratio = ratio;
-
-        fprintf(data->file, "%.5e ", ratio);
-        if (data->version >= 5)
-            fprintf(data->file, "%.5e ", ratioNoise);
-
-        if (data->version >= 6)
-            fprintf(data->file, "%.3f ", mean_fwhm*data->ccd_platescale);
-
-        // Filename
-        fprintf(data->file, "%s\n", frame_paths[i]);
+        obs->fwhm = mean_fwhm;
+        obs->ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
+        obs->ratio_noise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*obs->ratio;
         strncpy(obs->filename, frame_paths[i], 64);
 
         datafile_append_observation(data, obs);
         framedata_free(frame);
     }
     
+    if (chdir(datadir))
+        error_jump(process_error, ret, "Invalid data path: %s", datadir);
+
+    datafile_save(data, dataPath);
+
     printf("Reduced %zu observations\n", data->obs_count - start_obs);
 
 process_error:
@@ -1362,7 +1352,7 @@ int create_reduction_file(char *outname)
     if (chdir(datadir))
         error_jump(frameload_error, ret, "Invalid data path: %s", datadir);
 
-    datafile_save_header(data, outname);
+    datafile_save(data, outname);
     printf("Saved to %s\n", outname);
     printf("Run `tsreduce update %s` to reduce existing files\n", outname);
     printf("Run `tsreduce plot %s` to preview reduced data\n", outname);

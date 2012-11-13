@@ -49,13 +49,13 @@ datafile* datafile_load(char *filename)
     datafile *dp = datafile_alloc();
 
     // Open the data file (created with `tsreduce init`)
-    dp->file = fopen(filename, "r+");
-    if (dp->file == NULL)
+    FILE *input = fopen(filename, "r+");
+    if (!input)
         return NULL;
 
     char linebuf[1024];
     char stringbuf[1024];
-    while (fgets(linebuf, 1024, dp->file) != NULL)
+    while (fgets(linebuf, 1024, input) != NULL)
     {
         //
         // Header
@@ -225,14 +225,13 @@ datafile* datafile_load(char *filename)
         error("Skipping malformed observations line");
         free(obs);
     }
+
+    fclose(input);
     return dp;
 }
 
 void datafile_free(datafile *data)
 {
-    if (data->file)
-        fclose(data->file);
-
     free(data->frame_dir);
     free(data->frame_pattern);
     free(data->dark_template);
@@ -240,12 +239,7 @@ void datafile_free(datafile *data)
     free(data->coord_ra);
     free(data->coord_dec);
 
-    struct observation *obs, *next;
-    for (obs = data->obs_start; obs; obs = next)
-    {
-        next = obs->next;
-        free(obs);
-    }
+    datafile_discard_observations(data);
 
     hashmap_free(data->filename_map);
 
@@ -267,14 +261,23 @@ void datafile_append_observation(datafile *data, struct observation *obs)
     hashmap_put(data->filename_map, obs->filename, obs);
 }
 
-/*
- * Save the header (but not data) from a struct datafile
- */
-int datafile_save_header(datafile *data, char *filename)
+void datafile_discard_observations(datafile *data)
+{
+    struct observation *obs, *next;
+    for (obs = data->obs_start; obs; obs = next)
+    {
+        next = obs->next;
+        free(obs);
+    }
+    data->obs_start = NULL;
+    data->obs_end = NULL;
+}
+
+int datafile_save(datafile *data, char *filename)
 {
     // data->file may point at a different file, so
     // create a new output
-    FILE *out = fopen(filename, "w+");
+    FILE *out = fopen(filename, "w");
     if (!out)
         return error("Error opening file %s", filename);
 
@@ -320,6 +323,27 @@ int datafile_save_header(datafile *data, char *filename)
     for (int i = 0; i < data->num_blocked_ranges; i++)
         fprintf(out, "# BlockRange: (%f, %f)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
+
+    struct observation *obs;
+    for (obs = data->obs_start; obs; obs = obs->next)
+    {
+        fprintf(out, "%.1f ", obs->time);
+        for (size_t i = 0; i < data->num_targets; i++)
+        {
+            fprintf(out, "%.2f ", obs->star[i]);
+            fprintf(out, "%.2f ", obs->sky[i]);
+            fprintf(out, "%.2f %.2f ", obs->pos[i].x, obs->pos[i].y);
+        }
+
+        fprintf(out, "%.5e ", obs->ratio);
+        if (data->version >= 5)
+            fprintf(out, "%.5e ", obs->ratio_noise);
+
+        if (data->version >= 6)
+            fprintf(out, "%.3f ", obs->fwhm*data->ccd_platescale);
+
+        fprintf(out, "%s\n", obs->filename);
+    }
 
     fclose(out);
     return 0;

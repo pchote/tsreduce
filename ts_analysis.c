@@ -737,6 +737,8 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     if (data == NULL)
         return error("Error opening data file");
 
+    datafile_discard_observations(data);
+
     // Force at least version 5 to include noise calculation
     if (data->version < 5)
         data->version = 5;
@@ -755,7 +757,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
 
         chdir(dir);
         // Errors are non-fatal -> proceeed to the next file
-        if (!datafile_save_header(data, filename))
+        if (!datafile_save(data, filename))
             update_reduction(filename);
 
         free(filename);

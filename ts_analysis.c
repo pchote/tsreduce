@@ -564,71 +564,60 @@ int plot_fits_internal(datafile *data, char *tsDevice, double tsSize, char *dftD
 
     if (dd->count > 0)
     {
-        float *freq = cast_double_array_to_float(dd->uhz, dd->count);
-        float *ampl = cast_double_array_to_float(dd->ampl, dd->count);
+        // Calculate baseline scale
+        char uhzlabel[20];
+        double scale = 1e6;
+        char *unit = "\\gm";
 
-        // Determine max dft ampl
-        float max_dft_ampl = 0;
-        float mean_dft_ampl = 0;
-        for (int i = 0; i < dd->count; i++)
+        if (dd->max_freq > 1.5e4)
         {
-            max_dft_ampl = fmax(max_dft_ampl, ampl[i]);
-            mean_dft_ampl += ampl[i];
+            scale = 1.0e-3;
+            unit = "k";
         }
-        mean_dft_ampl /= dd->count;
-        max_dft_ampl *= 1.1;
+        else if (dd->max_freq > 1.5e1)
+        {
+            scale = 1.0;
+            unit = "";
+        }
+        else if (dd->max_freq > 1.5e-2)
+        {
+            scale = 1.0e3;
+            unit = "m";
+        }
+        snprintf(uhzlabel, 20, "Frequency (%sHz)", unit);
 
+        char ampl_label[32];
+        snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", dd->mean_ampl);
+
+        // Convert DFT data to float arrays for plotting
+        cast_double_array_to_float(dd->freq, dd->count);
+        cast_double_array_to_float(dd->ampl, dd->count);
+
+        // Draw plot
         if (cpgopen(dftDevice) <= 0)
             return error("Unable to open PGPLOT window");
-        cpgpap(dftSize, 0.6);
 
+        cpgpap(dftSize, 0.6);
         cpgask(0);
         cpgslw(1);
         cpgsfs(2);
         cpgscf(1);
 
-        // Calculate baseline scale
-        char uhzlabel[20];
-        double scale = 1;
-        char *unit = "\\gm";
-
-        if (data->plot_max_uhz > 1.5e10)
-        {
-            scale = 1.0e-9;
-            unit = "k";
-        }
-        else if (data->plot_max_uhz > 1.5e7)
-        {
-            scale = 1.0e-6;
-            unit = "";
-        }
-        else if (data->plot_max_uhz > 1.5e4)
-        {
-            scale = 1.0e-3;
-            unit = "m";
-        }
-        snprintf(uhzlabel, 20, "Frequency (%sHz)", unit);
-
         // DFT
         cpgsvp(0.1, 0.9, 0.075, 0.93);
-        cpgswin(scale*data->plot_min_uhz, scale*data->plot_max_uhz, 0, 1);
+        cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
         cpgbox("bcstn", 0, 0, "0", 0, 0);
-
-        cpgswin(data->plot_min_uhz*1e-6, data->plot_max_uhz*1e-6, 0, max_dft_ampl);
+        cpgswin(dd->min_freq, dd->max_freq, 0, 1.1*dd->max_ampl);
         cpgbox("0", 0, 0, "bcnst", 0, 0);
 
         cpgsci(12);
-        cpgline(dd->count, freq, ampl);
+        cpgline(dd->count, (float *)dd->freq, (float *)dd->ampl);
         cpgsci(1);
 
         cpgswin(0, 1, 0, 1);
-        char ampl_label[32];
-        snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", mean_dft_ampl);
         cpgptxt(0.97, 0.93, 0, 1.0, ampl_label);
-
         cpgmtxt("b", 2.5, 0.5, 0.5, uhzlabel);
         cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
-        //cpgmtxt("t", 2, 0.5, 0.5, "Period (s)");
         cpgend();
     }
 

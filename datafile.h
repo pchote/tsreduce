@@ -102,9 +102,15 @@ struct photometry_data
 
 struct dft_data
 {
-    double *uhz;
+    double *freq;
     double *ampl;
     size_t count;
+
+    double max_ampl;
+    double mean_ampl;
+
+    double min_freq;
+    double max_freq;
 };
 
 datafile *datafile_alloc();

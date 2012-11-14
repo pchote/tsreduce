@@ -364,20 +364,22 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     // Plot raw data
     //
     {
+        double min_raw = 0;
         double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.2*pd->scaled_raw_max;
-        int rawexp = (int)log10(max_raw);
+        int raw_exp = (int)log10(max_raw);
+        double raw_scale = 1.0/pow(10, raw_exp);
 
         cpgsvp(0.1, 0.9, 0.075, 0.54);
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.7);
-        cpgswin(min_time, max_time, 0, max_raw/pow(10, rawexp));
+        cpgswin(min_time, max_time, raw_scale*min_raw, raw_scale*max_raw);
         cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-        cpgswin(min_seconds/pow(10, secexp), max_seconds/pow(10, secexp), 0, max_raw);
+        cpgswin(min_seconds/pow(10, secexp), max_seconds/pow(10, secexp), min_raw, max_raw);
         cpgbox("bstn", 0, 0, "0", 0, 0);
         cpgsch(1.0);
 
-        snprintf(label, label_len, "Count Rate (10\\u%d\\d ADU/s)", rawexp);
+        snprintf(label, label_len, "Count Rate (10\\u%d\\d ADU/s)", raw_exp);
         cpgmtxt("l", 2.75, 0.5, 0.5, label);
 
         if (secexp == 0)
@@ -391,14 +393,14 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
         for (size_t j = 0; j < data->num_targets; j++)
         {
-            cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
+            cpgswin(min_seconds, max_seconds, min_raw, max_raw/data->targets[j].plot_scale);
             cpgsci(plot_colors[j%plot_colors_max]);
             cpgpt(pd->raw_count, (float *)pd->raw_time, &((float *)pd->raw)[j*pd->raw_count], 229);
         }
 
         // Plot mean sky intensity
         cast_double_array_to_float(pd->sky, pd->raw_count);
-        cpgswin(min_seconds, max_seconds, 0, max_raw);
+        cpgswin(min_seconds, max_seconds, min_raw, max_raw);
         cpgsci(15);
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->sky, 229);
         cpgsci(1);

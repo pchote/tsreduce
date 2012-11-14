@@ -414,6 +414,80 @@ match_error:
     return ret;
 }
 
+
+int display_frame(char *data_path, char *frame_name)
+{
+    int ret = 0;
+
+    datafile *data = datafile_load(data_path);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    struct observation *obs;
+    if (hashmap_get(data->filename_map, frame_name, (void**)(&obs)) == MAP_MISSING)
+        error_jump(setup_error, ret, "%s doesn't match any observation in the reduction file", frame_name);
+
+    if (chdir(data->frame_dir))
+        error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
+
+    framedata *frame = framedata_load(obs->filename);
+    if (!frame)
+        error_jump(setup_error, ret, "Error loading frame %s", obs->filename);
+
+    subtract_bias(frame);
+
+    if (data->dark_template)
+    {
+        framedata *dark = framedata_load(data->dark_template);
+        if (!dark)
+            error_jump(process_error, ret, "Error loading frame %s", data->dark_template);
+
+        framedata_subtract(frame, dark);
+        framedata_free(dark);
+    }
+
+    if (data->flat_template)
+    {
+        framedata *flat = framedata_load(data->flat_template);
+        if (!flat)
+            error_jump(process_error, ret, "Error loading frame %s", data->flat_template);
+
+        framedata_divide(frame, flat);
+        framedata_free(flat);
+    }
+
+    if (init_ds9())
+        error_jump(setup_error, ret, "Unable to launch ds9");
+
+    char command[1024];
+    snprintf(command, 1024, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+    if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
+        error_jump(process_error, ret, "ds9 command failed: %s", command);
+
+    ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0);
+    ts_exec_write("xpaset tsreduce orient x", NULL, 0);
+    ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
+
+    for (size_t i = 0; i < data->num_targets; i++)
+    {
+
+        double2 xy = obs->pos[i];
+        target t = data->targets[i];
+        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t.r);
+        ts_exec_write(command, NULL, 0);
+
+        snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #select=0}'",
+                 xy.x + 1, xy.y + 1, t.s1, t.s2);
+        ts_exec_write(command, NULL, 0);
+    }
+
+process_error:
+    framedata_free(frame);
+setup_error:
+    datafile_free(data);
+    return ret;
+}
+
 // Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {

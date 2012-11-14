@@ -20,9 +20,7 @@
 
 int display_tracer(char *dataPath)
 {
-    int ret;
-
-    // Read file header
+    int ret = 0;
     datafile *data = datafile_load(dataPath);
     if (data == NULL)
         return error("Error opening data file");

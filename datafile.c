@@ -444,6 +444,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->raw_count = data->obs_count;
     p->filtered_count = 0;
     p->ratio_mean = 0;
+    p->fwhm_mean = 0;
 
     double total_ratio = 0;
     double total_ratio_noise = 0;
@@ -490,21 +491,28 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         }
 
         if (p->has_fwhm)
+        {
             p->fwhm[p->filtered_count] = obs->fwhm;
-
+            p->fwhm_mean += obs->fwhm;
+        }
         p->filtered_count++;
     }
 
     p->ratio_mean /= p->filtered_count;
+    p->fwhm_mean /= p->filtered_count;
 
     if (p->has_noise)
         p->ratio_snr = total_ratio/total_ratio_noise;
 
-    // Ratio standard deviation
+    // Ratio and fwhm standard deviation
     p->ratio_std = 0;
     for (size_t i = 0; i < p->filtered_count; i++)
+    {
         p->ratio_std += (p->ratio[i] - p->ratio_mean)*(p->ratio[i] - p->ratio_mean);
+        p->fwhm_std += (p->fwhm[i] - p->fwhm_mean)*(p->fwhm[i] - p->fwhm_mean);
+    }
     p->ratio_std = sqrt(p->ratio_std/p->filtered_count);
+    p->fwhm_std = sqrt(p->fwhm_std/p->filtered_count);
 
     //
     // Calculate polynomial fit

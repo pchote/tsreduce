@@ -73,11 +73,13 @@ struct photometry_data
     bool has_noise;
     bool has_fwhm;
 
+    double ratio_snr;
     double ratio_mean;
     double ratio_std;
-    double ratio_snr;
     double mma_mean;
     double mma_std;
+    double fwhm_mean;
+    double fwhm_std;
 
     // Raw (unfiltered) photometry
     double *raw_time;

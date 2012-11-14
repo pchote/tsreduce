@@ -359,13 +359,11 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
     }
     cpgsci(1);
 
-    double mean_fwhm = 0;
     if (pd->filtered_count > 0)
     {
         float *time = cast_double_array_to_float(pd->time, pd->filtered_count);
         float *ratio = cast_double_array_to_float(pd->ratio, pd->filtered_count);
         float *ratio_noise = cast_double_array_to_float(pd->ratio_noise, pd->filtered_count);
-        float *fwhm = cast_double_array_to_float(pd->fwhm, pd->filtered_count);
         float *polyfit = cast_double_array_to_float(pd->ratio_fit, pd->filtered_count);
         float *mma = cast_double_array_to_float(pd->mma, pd->filtered_count);
         float *mma_noise = cast_double_array_to_float(pd->mma_noise, pd->filtered_count);
@@ -420,18 +418,9 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
         // FWHM
         if (pd->has_fwhm)
         {
-            float min_fwhm = FLT_MAX;
-            float max_fwhm = -FLT_MAX;
-            for (int i = 0; i < pd->filtered_count; i++)
-            {
-                min_fwhm = fmin(min_fwhm, fwhm[i]);
-                max_fwhm = fmax(max_fwhm, fwhm[i]);
-                mean_fwhm += fwhm[i]/pd->filtered_count;
-            }
-            float mid_fwhm = (max_fwhm + min_fwhm)/2;
-            float fwhm_range = (max_fwhm - min_fwhm)/2;
-            min_fwhm = mid_fwhm - 1.2*fwhm_range;
-            max_fwhm = mid_fwhm + 1.2*fwhm_range;
+            float min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
+            float max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
+            float *fwhm = cast_double_array_to_float(pd->fwhm, pd->filtered_count);
 
             cpgsvp(0.1, 0.9, 0.54, 0.67);
             cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
@@ -519,8 +508,11 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
             cpgptxt(0.95, 0, 0, 1.0, label);
         }
 
-        snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", mean_fwhm, mean_fwhm/data->ccd_platescale);
-        cpgptxt(0.05, 0, 0, 0.0, label);
+        if (pd->has_fwhm)
+        {
+            snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean, pd->fwhm_mean/data->ccd_platescale);
+            cpgptxt(0.05, 0, 0, 0.0, label);
+        }
         cpgsch(1.0);
     }
 

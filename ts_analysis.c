@@ -322,15 +322,11 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     double min_seconds = pd->raw_time[0];
     double max_seconds = pd->raw_time[pd->raw_count - 1];
     int secexp = (int)(log10(max_seconds) / 3)*3;
+    double sec_scale = 1.0/pow(10, secexp);
 
     // Time in hours
     double min_time = ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
     double max_time = min_time + (max_seconds - min_seconds)/3600;
-
-    double min_mma = pd->mma_mean - 5*pd->mma_std;
-    double max_mma = pd->mma_mean + 5*pd->mma_std;
-    double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
-    double max_ratio = pd->ratio_mean + 5*pd->ratio_std;
 
     if (cpgopen(tsDevice) <= 0)
         return error("Unable to open PGPLOT window");
@@ -375,7 +371,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsch(0.7);
         cpgswin(min_time, max_time, raw_scale*min_raw, raw_scale*max_raw);
         cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-        cpgswin(min_seconds/pow(10, secexp), max_seconds/pow(10, secexp), min_raw, max_raw);
+        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_raw, max_raw);
         cpgbox("bstn", 0, 0, "0", 0, 0);
         cpgsch(1.0);
 
@@ -388,7 +384,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             snprintf(label, label_len, "Run Time (10\\u%d\\d s)", secexp);
         cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
-        // Plot raw intensities
+        // Raw intensities
         cast_double_array_to_float(pd->raw_time, pd->raw_count);
         cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
         for (size_t j = 0; j < data->num_targets; j++)
@@ -398,94 +394,135 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             cpgpt(pd->raw_count, (float *)pd->raw_time, &((float *)pd->raw)[j*pd->raw_count], 229);
         }
 
-        // Plot mean sky intensity
+        // Mean sky intensity
         cast_double_array_to_float(pd->sky, pd->raw_count);
         cpgswin(min_seconds, max_seconds, min_raw, max_raw);
         cpgsci(15);
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->sky, 229);
+
+        // Labels
+        cpgsvp(0.1, 0.9, 0.45, 0.55);
+        cpgswin(0, data->num_targets + 1, 0, 1);
+        for (size_t j = 0; j <= data->num_targets; j++)
+        {
+            cpgsci(plot_colors[j%plot_colors_max]);
+
+            if (j == data->num_targets)
+            {
+                cpgsci(15);
+                strncpy(label, "Mean Sky", label_len);
+            }
+            else if (j == 0)
+            {
+                if (data->targets[j].plot_scale == 1.0)
+                    strncpy(label, "Target", label_len);
+                else
+                    snprintf(label, label_len, "%g \\x Target", data->targets[j].plot_scale);
+            }
+            else
+            {
+                if (data->targets[j].plot_scale == 1.0)
+                    snprintf(label, label_len, "Comparison %zu", j);
+                else
+                    snprintf(label, label_len, "%g \\x Comparison %zu", data->targets[j].plot_scale, j);
+            }
+            cpgptxt(j+0.5, 0.5, 0, 0.5, label);
+        }
         cpgsci(1);
     }
 
-    if (pd->filtered_count > 0)
-    {
-        float *time = cast_double_array_to_float(pd->time, pd->filtered_count);
-        float *ratio = cast_double_array_to_float(pd->ratio, pd->filtered_count);
-        float *ratio_noise = cast_double_array_to_float(pd->ratio_noise, pd->filtered_count);
-        float *polyfit = cast_double_array_to_float(pd->ratio_fit, pd->filtered_count);
-        float *mma = cast_double_array_to_float(pd->mma, pd->filtered_count);
-        float *mma_noise = cast_double_array_to_float(pd->mma_noise, pd->filtered_count);
+    //
+    // Plot FWHM
+    //
+    cast_double_array_to_float(pd->time, pd->filtered_count);
 
-        // Fitted MMA
-        cpgsvp(0.1, 0.9, 0.8, 0.93);
+    if (pd->has_fwhm)
+    {
+        double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
+        double max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
+        cast_double_array_to_float(pd->fwhm, pd->filtered_count);
+
+        cpgsvp(0.1, 0.9, 0.54, 0.67);
+        cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
+
+        // Plot top axis markers in UTC hour, bottom axis markers in seconds
+        cpgsch(0.7);
+        cpgswin(min_time, max_time, min_fwhm, max_fwhm);
+        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
+        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_fwhm, max_fwhm);
+        cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
 
-        // Top axis in UTC Hour
-        cpgswin(min_time, max_time, min_mma, max_mma);
-        cpgsch(0.7);
-        cpgbox("cstm", 1, 4, "bcstnv", 0, 0);
+        cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
+        cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->fwhm, 229);
+    }
 
-        // Bottom axis in seconds
-        cpgswin(min_seconds, max_seconds, min_mma, max_mma);
+    //
+    // Plot Ratio
+    //
+    {
+        double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
+        double max_ratio = pd->ratio_mean + 5*pd->ratio_std;
+        cast_double_array_to_float(pd->ratio, pd->filtered_count);
+        cast_double_array_to_float(pd->ratio_noise, pd->filtered_count);
+        cast_double_array_to_float(pd->ratio_fit, pd->filtered_count);
+
+        cpgsvp(0.1, 0.9, 0.67, 0.8);
+        cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
+
+        // Plot top axis markers in UTC hour, bottom axis markers in seconds
+        cpgsch(0.7);
+        cpgswin(min_time, max_time, min_ratio, max_ratio);
+        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
+        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_ratio, max_ratio);
         cpgbox("bst", 0, 0, "0", 0, 0);
+        cpgsch(1.0);
+
+        cpgswin(min_seconds, max_seconds, min_ratio, max_ratio);
+        if (pd->has_noise)
+            cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->ratio, (float *)pd->ratio_noise, 0.0);
+        else
+            cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->ratio, 229);
+
+        // Plot the polynomial fit
+        cpgsci(2);
+        cpgline(pd->filtered_count, (float *)pd->time, (float *)pd->ratio_fit);
+        cpgsci(1);
+    }
+
+    //
+    // Plot mma
+    //
+    {
+        double min_mma = pd->mma_mean - 5*pd->mma_std;
+        double max_mma = pd->mma_mean + 5*pd->mma_std;
+        cast_double_array_to_float(pd->mma, pd->filtered_count);
+        cast_double_array_to_float(pd->mma_noise, pd->filtered_count);
+
+        cpgsvp(0.1, 0.9, 0.8, 0.93);
         cpgsch(1.0);
 
         cpgmtxt("t", 1.75, 0.5, 0.5, "UTC Hour");
         cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
 
-        if (data->version >= 5)
-            cpgerrb(6, pd->filtered_count, time, mma, mma_noise, 0.0);
-        else
-            cpgpt(pd->filtered_count, time, mma, 229);
-
-        // Ratio
-        cpgsvp(0.1, 0.9, 0.67, 0.8);
-        cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
-
-        // Top axis in UTC Hour
-        cpgswin(min_time, max_time, min_ratio, max_ratio);
+        // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.7);
-        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-
-        // Bottom axis in seconds
-        cpgswin(min_seconds, max_seconds, min_ratio, max_ratio);
+        cpgswin(min_time, max_time, min_mma, max_mma);
+        cpgbox("cstm", 1, 4, "bcstnv", 0, 0);
+        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_mma, max_mma);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
-
-        // Plot error bars if ratio_noise is available (data->version >= 5)
+        
+        cpgswin(min_seconds, max_seconds, min_mma, max_mma);
         if (pd->has_noise)
-            cpgerrb(6, pd->filtered_count, time, ratio, ratio_noise, 0.0);
+            cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->mma, (float *)pd->mma_noise, 0.0);
         else
-            cpgpt(pd->filtered_count, time, ratio, 229);
-
-        // Plot the polynomial fit
-        cpgsci(2);
-        cpgline(pd->filtered_count, time, polyfit);
-        cpgsci(1);
-
-        // FWHM
-        if (pd->has_fwhm)
-        {
-            double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
-            double max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
-            float *fwhm = cast_double_array_to_float(pd->fwhm, pd->filtered_count);
-
-            cpgsvp(0.1, 0.9, 0.54, 0.67);
-            cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
-
-            // Top axis in UTC Hour
-            cpgswin(min_time, max_time, min_fwhm, max_fwhm);
-            cpgsch(0.7);
-            cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-
-            // Bottom axis in seconds
-            cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
-            cpgbox("bst", 0, 0, "0", 0, 0);
-            cpgsch(1.0);
-            cpgpt(pd->filtered_count, time, fwhm, 229);
-        }
+            cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->mma, 229);
     }
 
-    if (pd->filtered_count > 0)
+    //
+    // Plot mean FWHM / SNR labels
+    //
     {
         cpgsvp(0.1, 0.9, 0.015, 0.05);
         cpgswin(0, 1, 0, 1);
@@ -505,96 +542,62 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         }
         cpgsch(1.0);
     }
-
-    // Type labels
-    cpgsvp(0.1, 0.9, 0.45, 0.55);
-    cpgswin(0, data->num_targets + 1, 0, 1);
-    for (size_t j = 0; j <= data->num_targets; j++)
-    {
-        cpgsci(plot_colors[j%plot_colors_max]);
-
-        char label[30];
-        if (j == data->num_targets)
-        {
-            cpgsci(15);
-            strcpy(label, "Mean Sky");
-        }
-        else if (j == 0)
-        {
-            if (data->targets[j].plot_scale == 1.0)
-                strcpy(label, "Target");
-            else
-                snprintf(label, 30, "%g \\x Target", data->targets[j].plot_scale);
-        }
-        else
-        {
-            if (data->targets[j].plot_scale == 1.0)
-                snprintf(label, 30, "Comparison %zu", j);
-            else
-                snprintf(label, 30, "%g \\x Comparison %zu", data->targets[j].plot_scale, j);
-        }
-        cpgptxt(j+0.5, 0.5, 0, 0.5, label);
-    }
     cpgend();
 
-    if (dd->count > 0)
+    //
+    // Plot DFT
+    //
+    if (cpgopen(dftDevice) <= 0)
+        return error("Unable to open PGPLOT window");
+
+    cpgpap(dftSize, 0.6);
+    cpgask(0);
+    cpgslw(1);
+    cpgsfs(2);
+    cpgscf(1);
+    // Calculate baseline scale
+    double scale = 1e6;
+    char *unit = "\\gm";
+
+    if (dd->max_freq > 1.5e4)
     {
-        // Calculate baseline scale
-        char uhzlabel[20];
-        double scale = 1e6;
-        char *unit = "\\gm";
-
-        if (dd->max_freq > 1.5e4)
-        {
-            scale = 1.0e-3;
-            unit = "k";
-        }
-        else if (dd->max_freq > 1.5e1)
-        {
-            scale = 1.0;
-            unit = "";
-        }
-        else if (dd->max_freq > 1.5e-2)
-        {
-            scale = 1.0e3;
-            unit = "m";
-        }
-        snprintf(uhzlabel, 20, "Frequency (%sHz)", unit);
-
-        char ampl_label[32];
-        snprintf(ampl_label, 32, "Mean amplitude: %.2f mma", dd->mean_ampl);
-
-        // Convert DFT data to float arrays for plotting
-        cast_double_array_to_float(dd->freq, dd->count);
-        cast_double_array_to_float(dd->ampl, dd->count);
-
-        // Draw plot
-        if (cpgopen(dftDevice) <= 0)
-            return error("Unable to open PGPLOT window");
-
-        cpgpap(dftSize, 0.6);
-        cpgask(0);
-        cpgslw(1);
-        cpgsfs(2);
-        cpgscf(1);
-
-        // DFT
-        cpgsvp(0.1, 0.9, 0.075, 0.93);
-        cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
-        cpgbox("bcstn", 0, 0, "0", 0, 0);
-        cpgswin(dd->min_freq, dd->max_freq, 0, 1.1*dd->max_ampl);
-        cpgbox("0", 0, 0, "bcnst", 0, 0);
-
-        cpgsci(12);
-        cpgline(dd->count, (float *)dd->freq, (float *)dd->ampl);
-        cpgsci(1);
-
-        cpgswin(0, 1, 0, 1);
-        cpgptxt(0.97, 0.93, 0, 1.0, ampl_label);
-        cpgmtxt("b", 2.5, 0.5, 0.5, uhzlabel);
-        cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
-        cpgend();
+        scale = 1.0e-3;
+        unit = "k";
     }
+    else if (dd->max_freq > 1.5e1)
+    {
+        scale = 1.0;
+        unit = "";
+    }
+    else if (dd->max_freq > 1.5e-2)
+    {
+        scale = 1.0e3;
+        unit = "m";
+    }
+
+    // DFT
+    cpgsvp(0.1, 0.9, 0.075, 0.93);
+    cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
+    cpgbox("bcstn", 0, 0, "0", 0, 0);
+    cpgswin(dd->min_freq, dd->max_freq, 0, 1.1*dd->max_ampl);
+    cpgbox("0", 0, 0, "bcnst", 0, 0);
+
+    cpgsci(12);
+    cast_double_array_to_float(dd->freq, dd->count);
+    cast_double_array_to_float(dd->ampl, dd->count);
+    cpgline(dd->count, (float *)dd->freq, (float *)dd->ampl);
+    cpgsci(1);
+
+    snprintf(label, label_len, "Frequency (%sHz)", unit);
+    cpgmtxt("b", 2.5, 0.5, 0.5, label);
+
+    cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
+
+    cpgswin(0, 1, 0, 1);
+    snprintf(label, label_len, "Mean amplitude: %.2f mma", dd->mean_ampl);
+    cpgptxt(0.97, 0.93, 0, 1.0, label);
+
+    cpgend();
 
     datafile_free_dft(dd);
     datafile_free_photometry(pd);

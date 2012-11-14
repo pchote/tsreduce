@@ -1580,11 +1580,11 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     fprintf(out, "# tsreduce create-ts output file\n");
     fprintf(out, "# Reference time: %s %s UTC; %f BJD\n", reference_date, reference_time, reference_bjd);
     fprintf(out, "# Files:\n");
-    for (int i = 0; i < num_datafiles; i++)
+    for (size_t i = 0; i < num_datafiles; i++)
         fprintf(out, "#   %s\n", filenames[i]);
 
     // Convert data to BJD relative to the reference time
-    int num_saved = 0;
+    size_t num_saved = 0;
     for (size_t i = 0; i < num_datafiles; i++)
     {
         double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec, epoch);
@@ -1593,39 +1593,22 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
         // This is already far more accurate than we need
         printf("%s start BJD: %f\n", filenames[i], start_bjd);
 
-        double *raw_time, *raw, *mean_sky, *time, *ratio, *ratio_noise, *fwhm, *polyfit, *mma, *mma_noise;
-        size_t num_raw, num_filtered;
-        if (generate_photometry_dft_data(datafiles[i],
-                                         &raw_time, &raw, &mean_sky, &num_raw,
-                                         &time, &ratio, &polyfit, &mma, &fwhm, &num_filtered,
-                                         &ratio_noise, &mma_noise,
-                                         NULL, NULL, NULL, NULL,
-                                         NULL, NULL, NULL))
-        {
+        struct photometry_data *pd = datafile_generate_photometry(datafiles[i]);
+        if (!pd)
             error_jump(processing_error, ret, "Error generating photometry data for data %s", filenames[i]);
-        }
 
-        for (int j = 0; j < num_filtered; j++)
+        for (size_t j = 0; j < pd->filtered_count; j++)
         {
             ts_time obstime = datafiles[i]->reference_time;
-            obstime.time += (time_t)(time[j]);
-            obstime.ms += round(1000*fmod(time[j], 1));
-            fprintf(out,"%f %f %f\n", ts_time_to_bjd(obstime, ra, dec, epoch) - reference_bjd, mma[j], mma_noise[j]);
+            obstime.time += (time_t)(pd->time[j]);
+            obstime.ms += round(1000*fmod(pd->time[j], 1));
+            fprintf(out,"%f %f %f\n", ts_time_to_bjd(obstime, ra, dec, epoch) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
             num_saved++;
         }
 
-        free(raw_time);
-        free(raw);
-        free(mean_sky);
-        free(time);
-        free(ratio);
-        free(ratio_noise);
-        free(polyfit);
-        free(mma);
-        free(mma_noise);
-        free(fwhm);
+        datafile_free_photometry(pd);
     }
-    printf("Converted %d observations\n", num_saved);
+    printf("Converted %zu observations\n", num_saved);
 
 processing_error:
     fclose(out);

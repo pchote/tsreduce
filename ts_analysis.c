@@ -455,13 +455,16 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
     // Maximum not specified - calculate from data
     if (max_raw == 0)
     {
-        for (int i = 0; i < pd->raw_count; i++)
-            for (int j = 0; j < data->num_targets; j++)
+        for (int j = 0; j < data->num_targets; j++)
+        {
+            double s = data->targets[j].plot_scale;
+            for (int i = 0; i < pd->raw_count; i++)
             {
-                double r = raw[j*pd->raw_count + i]*data->targets[j].plot_scale;
+                double r = raw[j*pd->raw_count + i]*s;
                 if (r > max_raw)
                     max_raw = r;
             }
+        }
         max_raw *= 1.2;
     }
 

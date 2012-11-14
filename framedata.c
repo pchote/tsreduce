@@ -173,6 +173,30 @@ void framedata_free(framedata *frame)
     free(frame);
 }
 
+ts_time framedata_start_time(framedata *frame)
+{
+    char *date = framedata_get_header_string(frame, "UTC-DATE");
+    char *time = framedata_get_header_string(frame, "UTC-BEG");
+    if (date && time)
+    {
+        ts_time ret = parse_date_time(date, time);
+        free(date);
+        free(time);
+        return ret;
+    }
+
+    // Legacy keywords
+    char *datetime = framedata_get_header_string(frame, "GPSTIME");
+    if (datetime)
+    {
+        ts_time ret = parse_time(datetime);
+        free(datetime);
+        return ret;
+    }
+
+    die("No known time headers found");
+}
+
 // Convenience function for calculating the mean signal in a sub-region of a frame
 // Assumes that the frame type is double, and that the region is inside the frame
 double mean_in_region(framedata *frame, int rgn[4])

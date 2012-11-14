@@ -9,6 +9,7 @@
 #define FRAMEDATA_H
 
 #include <stdbool.h>
+#include "helpers.h"
 
 typedef struct
 {
@@ -40,6 +41,7 @@ void framedata_subtract(framedata *this, framedata *other);
 void framedata_multiply(framedata *this, int div);
 void framedata_divide_const(framedata *this, int div);
 void framedata_divide(framedata *this, framedata *div);
+ts_time framedata_start_time(framedata *frame);
 
 double mean_in_region(framedata *frame, int rgn[4]);
 void subtract_bias(framedata *frame);

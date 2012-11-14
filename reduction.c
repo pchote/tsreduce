@@ -25,30 +25,6 @@
 
 extern int verbosity;
 
-static ts_time get_frame_time(framedata *frame)
-{
-    char *date = framedata_get_header_string(frame, "UTC-DATE");
-    char *time = framedata_get_header_string(frame, "UTC-BEG");
-    if (date && time)
-    {
-        ts_time ret = parse_date_time(date, time);
-        free(date);
-        free(time);
-        return ret;
-    }
-
-    // Legacy keywords
-    char *datetime = framedata_get_header_string(frame, "GPSTIME");
-    if (datetime)
-    {
-        ts_time ret = parse_time(datetime);
-        free(datetime);
-        return ret;
-    }
-
-    die("No known time headers found");
-}
-
 // Prepare a raw flat frame for combining into the master-flat
 // Frame is dark (and bias if overscanned) subtracted, and normalized so the mean count is 1
 //
@@ -555,7 +531,7 @@ int update_reduction(char *dataPath)
         }
 
         // Calculate time at the start of the exposure relative to ReferenceTime
-        ts_time frame_time = get_frame_time(frame);
+        ts_time frame_time = framedata_start_time(frame);
         double starttime = ts_difftime(frame_time, data->reference_time);
 
         // Process frame
@@ -834,7 +810,7 @@ int create_reduction_file(char *outname)
         error_jump(frameload_error, ret, "Error loading frame %s", preview_filename);
 
     subtract_bias(frame);
-    data->reference_time = get_frame_time(frame);
+    data->reference_time = framedata_start_time(frame);
 
     if (data->dark_template)
     {

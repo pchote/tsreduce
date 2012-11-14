@@ -75,6 +75,7 @@ struct photometry_data
 
     double ratio_mean;
     double ratio_std;
+    double ratio_snr;
     double mma_mean;
     double mma_std;
 

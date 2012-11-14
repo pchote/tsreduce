@@ -327,19 +327,6 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
     float min_time = (float)ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
     float max_time = min_time + (max_seconds - min_seconds)/3600;
 
-    double snr_ratio = 0;
-    if (data->version >= 5)
-    {
-        double total_ratio = 0;
-        double total_ratio_noise = 0;
-        for (int i = 0; i < pd->filtered_count; i++)
-        {
-            total_ratio += pd->ratio[i];
-            total_ratio_noise += pd->ratio_noise[i];
-        }
-        snr_ratio = total_ratio/total_ratio_noise;
-    }
-
     // Cast the double arrays to float, does not allocate any new memory.
     float *raw_time = cast_double_array_to_float(pd->raw_time, pd->raw_count);
     float *raw = cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
@@ -522,8 +509,12 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
         cpgswin(0, 1, 0, 1);
         cpgsci(1);
         cpgsch(0.9);
-        snprintf(label, 32, "Ratio SNR: %.2f", snr_ratio);
-        cpgptxt(0.95, 0, 0, 1.0, label);
+
+        if (pd->has_noise)
+        {
+            snprintf(label, 32, "Ratio SNR: %.2f", pd->ratio_snr);
+            cpgptxt(0.95, 0, 0, 1.0, label);
+        }
 
         snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", mean_fwhm, mean_fwhm/data->ccd_platescale);
         cpgptxt(0.05, 0, 0, 0.0, label);

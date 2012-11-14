@@ -445,6 +445,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->filtered_count = 0;
     p->ratio_mean = 0;
 
+    double total_ratio = 0;
+    double total_ratio_noise = 0;
+
     // External code may modify obs_count to restrict data processing,
     // so both checks are required
     struct observation *obs = data->obs_start;
@@ -478,7 +481,13 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
 
         // Read noise and fwhm from data file if available
         if (p->has_noise)
+        {
             p->ratio_noise[p->filtered_count] = obs->ratio_noise;
+            total_ratio += p->ratio[p->filtered_count];
+
+            // TODO: This is wrong - should add in quadrature(?)
+            total_ratio_noise += p->ratio_noise[p->filtered_count];
+        }
 
         if (p->has_fwhm)
             p->fwhm[p->filtered_count] = obs->fwhm;
@@ -487,6 +496,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     }
 
     p->ratio_mean /= p->filtered_count;
+
+    if (p->has_noise)
+        p->ratio_snr = total_ratio/total_ratio_noise;
 
     // Ratio standard deviation
     p->ratio_std = 0;

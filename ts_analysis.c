@@ -303,10 +303,10 @@ int detect_repeats(char *dataPath)
     return 0;
 }
 
-static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+static int plot_internal(datafile *data, const char *tsDevice, double tsSize, const char *dftDevice, double dftSize)
 {
-    int plot_colors_max = 8;
-    int plot_colors[] = {4,2,8,3,5,6,7,9};
+    size_t plot_colors_max = 8;
+    uint8_t plot_colors[] = {4,2,8,3,5,6,7,9};
 
     struct photometry_data *pd = datafile_generate_photometry(data);
     if (!pd)
@@ -319,28 +319,28 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
         return error("DFT calculation failed");
     }
 
-    float min_seconds = pd->raw_time[0];
-    float max_seconds = pd->raw_time[pd->raw_count - 1];
+    double min_seconds = pd->raw_time[0];
+    double max_seconds = pd->raw_time[pd->raw_count - 1];
     int secexp = (int)(log10(max_seconds) / 3)*3;
 
     // Time in hours
-    float min_time = (float)ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
-    float max_time = min_time + (max_seconds - min_seconds)/3600;
+    double min_time = ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
+    double max_time = min_time + (max_seconds - min_seconds)/3600;
 
     // Cast the double arrays to float, does not allocate any new memory.
     float *raw_time = cast_double_array_to_float(pd->raw_time, pd->raw_count);
     float *raw = cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
     float *mean_sky = cast_double_array_to_float(pd->sky, pd->raw_count);
 
-    float min_mma = pd->mma_mean - 5*pd->mma_std;
-    float max_mma = pd->mma_mean + 5*pd->mma_std;
-    float min_ratio = pd->ratio_mean - 5*pd->ratio_std;
-    float max_ratio = pd->ratio_mean + 5*pd->ratio_std;
+    double min_mma = pd->mma_mean - 5*pd->mma_std;
+    double max_mma = pd->mma_mean + 5*pd->mma_std;
+    double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
+    double max_ratio = pd->ratio_mean + 5*pd->ratio_std;
 
     if (cpgopen(tsDevice) <= 0)
         return error("Unable to open PGPLOT window");
-    cpgpap(tsSize, 0.6);
 
+    cpgpap(tsSize, 0.6);
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
@@ -350,7 +350,7 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
     cpgsvp(0.1, 0.9, 0.075, 0.93);
     cpgswin(min_seconds, max_seconds, 0, 1);
     cpgsci(14);
-    for (int j = 0; j < data->num_blocked_ranges; j++)
+    for (size_t j = 0; j < data->num_blocked_ranges; j++)
     {
         cpgmove(data->blocked_ranges[j].x, 0);
         cpgdraw(data->blocked_ranges[j].x, 1);
@@ -418,8 +418,8 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
         // FWHM
         if (pd->has_fwhm)
         {
-            float min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
-            float max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
+            double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
+            double max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
             float *fwhm = cast_double_array_to_float(pd->fwhm, pd->filtered_count);
 
             cpgsvp(0.1, 0.9, 0.54, 0.67);
@@ -447,7 +447,7 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
         for (int j = 0; j < data->num_targets; j++)
         {
             double s = data->targets[j].plot_scale;
-            for (int i = 0; i < pd->raw_count; i++)
+            for (size_t i = 0; i < pd->raw_count; i++)
             {
                 double r = raw[j*pd->raw_count + i]*s;
                 if (r > max_raw)
@@ -484,7 +484,7 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
 
     cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
-    for (int j = 0; j < data->num_targets; j++)
+    for (size_t j = 0; j < data->num_targets; j++)
     {
         cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
         cpgsci(plot_colors[j%plot_colors_max]);
@@ -518,14 +518,13 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
 
     // Type labels
     cpgsvp(0.1, 0.9, 0.45, 0.55);
-    int num_labels = data->num_targets + 1;
-    cpgswin(0, num_labels, 0, 1);
-    for (int j = 0; j < num_labels; j++)
+    cpgswin(0, data->num_targets + 1, 0, 1);
+    for (size_t j = 0; j <= data->num_targets; j++)
     {
         cpgsci(plot_colors[j%plot_colors_max]);
 
         char label[30];
-        if (j == num_labels - 1)
+        if (j == data->num_targets)
         {
             cpgsci(15);
             strcpy(label, "Mean Sky");
@@ -540,9 +539,9 @@ static int plot_internal(datafile *data, char *tsDevice, double tsSize, char *df
         else
         {
             if (data->targets[j].plot_scale == 1.0)
-                snprintf(label, 30, "Comparison %d", j);
+                snprintf(label, 30, "Comparison %zu", j);
             else
-                snprintf(label, 30, "%g \\x Comparison %d", data->targets[j].plot_scale, j);
+                snprintf(label, 30, "%g \\x Comparison %zu", data->targets[j].plot_scale, j);
         }
         cpgptxt(j+0.5, 0.5, 0, 0.5, label);
     }

@@ -27,10 +27,6 @@ int main( int argc, char *argv[] )
     else if (argc == 5 && strcmp(argv[1], "create-dark") == 0)
         return create_dark(argv[2], atoi(argv[3]), argv[4]);
 
-    // `tsreduce reduce rawframe.fits.gz master-dark.fits.gz master-flat.fits.gz reduced.fits.gz`
-    else if (argc == 6 && strcmp(argv[1], "reduce") == 0)
-        return reduce_single_frame(argv[2], argv[3], argv[4], argv[5]);
-
     // `tsreduce update ~/data/20110704/gwlib.dat`
     else if (argc == 3 && strcmp(argv[1], "update") == 0)
         return update_reduction(argv[2]);

@@ -13,7 +13,6 @@
 int create_flat(const char *pattern, size_t minmax, const char *masterdark, const char *outname);
 int create_dark(const char *pattern, size_t minmax, const char *outname);
 
-int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath);
 int update_reduction(char *dataPath);
 int create_reduction_file(char *filePath);
 int update_preview(char *preview_filename, char *ds9_title);

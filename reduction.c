@@ -414,57 +414,6 @@ match_error:
     return ret;
 }
 
-// Dark-subtract and flatfield the frame at `framePath' using the dark
-// at `darkPath' and the flatfield at `flatPath'.
-// Save the resulting image as a (double) floating-point fits file `outname'
-int reduce_single_frame(char *framePath, char *darkPath, char *flatPath, char *outPath)
-{
-    int ret = 0;
-
-    framedata *base = framedata_load(framePath);
-    if (!base)
-        error_jump(load_error, ret, "Error loading frame %s", framePath);
-
-    framedata *dark = framedata_load(darkPath);
-    if (!dark)
-        error_jump(load_error, ret, "Error loading frame %s", darkPath);
-
-    framedata *flat = framedata_load(flatPath);
-    if (!flat)
-        error_jump(load_error, ret, "Error loading frame %s", flatPath);
-
-    // Process frame
-    subtract_bias(base);
-    framedata_subtract(base, dark);
-    framedata_divide(base, flat);
-
-    // Create a new fits file
-    fitsfile *out;
-    int status = 0;
-
-    size_t filename_len = strlen(outPath) + 2;
-    char *filename = malloc(filename_len*sizeof(char));
-    snprintf(filename, filename_len, "!%s", outPath);
-    fits_create_file(&out, filename, &status);
-    free(filename);
-
-    // Create the primary array image
-    fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
-
-    // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, base->data, &status))
-        error_jump(write_error, ret, "fits_write_img failed with status %d", status);
-
-write_error:
-    fits_close_file(out, &status);
-
-load_error:
-    framedata_free(flat);
-    framedata_free(dark);
-    framedata_free(base);
-    return ret;
-}
-
 // Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {

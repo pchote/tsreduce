@@ -626,7 +626,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
         return error("Error opening data file %s", dataPath);
 
     size_t limit = data->obs_count;
-    for (size_t i = 2; i < limit; i+= step)
+    for (size_t i = data->plot_fit_degree+1; i < limit; i+= step)
     {
         // Limit the data to the first N observations
         data->obs_count = i;

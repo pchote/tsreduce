@@ -327,11 +327,6 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     double min_time = ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
     double max_time = min_time + (max_seconds - min_seconds)/3600;
 
-    // Cast the double arrays to float, does not allocate any new memory.
-    float *raw_time = cast_double_array_to_float(pd->raw_time, pd->raw_count);
-    float *raw = cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
-    float *mean_sky = cast_double_array_to_float(pd->sky, pd->raw_count);
-
     double min_mma = pd->mma_mean - 5*pd->mma_std;
     double max_mma = pd->mma_mean + 5*pd->mma_std;
     double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
@@ -346,7 +341,9 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cpgsfs(2);
     cpgscf(1);
 
+    //
     // Plot blocked ranges
+    //
     cpgsvp(0.1, 0.9, 0.075, 0.93);
     cpgswin(min_seconds, max_seconds, 0, 1);
     cpgsci(14);
@@ -358,6 +355,70 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgdraw(data->blocked_ranges[j].y, 1);
     }
     cpgsci(1);
+
+    // Generic label buffer for passing data to pgplot
+    char label[64];
+    const size_t label_len = 64;
+
+    //
+    // Plot raw data
+    //
+    {
+        double max_raw = data->plot_max_raw;
+
+        // Maximum not specified - calculate from data
+        if (max_raw == 0)
+        {
+            for (int j = 0; j < data->num_targets; j++)
+            {
+                double s = data->targets[j].plot_scale;
+                for (size_t i = 0; i < pd->raw_count; i++)
+                {
+                    double r = pd->raw[j*pd->raw_count + i]*s;
+                    if (r > max_raw)
+                        max_raw = r;
+                }
+            }
+            max_raw *= 1.2;
+        }
+        int rawexp = (int)log10(max_raw);
+
+        cpgsvp(0.1, 0.9, 0.075, 0.54);
+
+        // Plot top axis markers in UTC hour, bottom axis markers in seconds
+        cpgsch(0.7);
+        cpgswin(min_time, max_time, 0, max_raw/pow(10, rawexp));
+        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
+        cpgswin(min_seconds/pow(10, secexp), max_seconds/pow(10, secexp), 0, max_raw);
+        cpgbox("bstn", 0, 0, "0", 0, 0);
+        cpgsch(1.0);
+
+        snprintf(label, label_len, "Count Rate (10\\u%d\\d ADU/s)", rawexp);
+        cpgmtxt("l", 2.75, 0.5, 0.5, label);
+
+        if (secexp == 0)
+            strncpy(label, "Run Time (s)", label_len);
+        else
+            snprintf(label, label_len, "Run Time (10\\u%d\\d s)", secexp);
+        cpgmtxt("b", 2.5, 0.5, 0.5, label);
+
+        // Plot raw intensities
+        cast_double_array_to_float(pd->raw_time, pd->raw_count);
+        cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
+        for (size_t j = 0; j < data->num_targets; j++)
+        {
+            cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
+            cpgsci(plot_colors[j%plot_colors_max]);
+            cpgpt(pd->raw_count, (float *)pd->raw_time, &((float *)pd->raw)[j*pd->raw_count], 229);
+        }
+
+        // Plot mean sky intensity
+        cast_double_array_to_float(pd->sky, pd->raw_count);
+        cpgswin(min_seconds, max_seconds, 0, max_raw);
+        cpgsci(15);
+        cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->sky, 229);
+        cpgsci(1);
+    }
 
     if (pd->filtered_count > 0)
     {
@@ -437,63 +498,6 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             cpgpt(pd->filtered_count, time, fwhm, 229);
         }
     }
-
-    // Raw Data
-    double max_raw = data->plot_max_raw;
-
-    // Maximum not specified - calculate from data
-    if (max_raw == 0)
-    {
-        for (int j = 0; j < data->num_targets; j++)
-        {
-            double s = data->targets[j].plot_scale;
-            for (size_t i = 0; i < pd->raw_count; i++)
-            {
-                double r = raw[j*pd->raw_count + i]*s;
-                if (r > max_raw)
-                    max_raw = r;
-            }
-        }
-        max_raw *= 1.2;
-    }
-
-    // Calculate base 10 exponent to reduce label length
-    int rawexp = (int)log10(max_raw);
-
-    cpgsvp(0.1, 0.9, 0.075, 0.54);
-
-    // Top axis in UTC Hour
-    cpgswin(min_time, max_time, 0, max_raw/pow(10, rawexp));
-    cpgsch(0.7);
-
-    cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-
-    // Bottom axis in seconds
-    cpgswin(min_seconds/pow(10, secexp), max_seconds/pow(10, secexp), 0, max_raw);
-    cpgbox("bstn", 0, 0, "0", 0, 0);
-    cpgsch(1.0);
-
-    char label[64];
-    snprintf(label, 64, "Count Rate (10\\u%d\\d ADU/s)", rawexp);
-    cpgmtxt("l", 2.75, 0.5, 0.5, label);
-
-    if (secexp == 0)
-        strcpy(label, "Run Time (s)");
-    else
-        snprintf(label, 64, "Run Time (10\\u%d\\d s)", secexp);
-
-    cpgmtxt("b", 2.5, 0.5, 0.5, label);
-
-    for (size_t j = 0; j < data->num_targets; j++)
-    {
-        cpgswin(min_seconds, max_seconds, 0, max_raw/data->targets[j].plot_scale);
-        cpgsci(plot_colors[j%plot_colors_max]);
-        cpgpt(pd->raw_count, raw_time, &raw[j*pd->raw_count], 229);
-    }
-
-    cpgsci(15);
-    cpgswin(min_seconds, max_seconds, 0, max_raw);
-    cpgpt(pd->raw_count, raw_time, mean_sky, 229);
 
     if (pd->filtered_count > 0)
     {

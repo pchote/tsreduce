@@ -442,6 +442,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->has_noise = (data->version >= 5 && data->dark_template);
     p->has_fwhm = (data->version >= 6);
     p->raw_count = data->obs_count;
+    p->scaled_raw_max = 0;
     p->filtered_count = 0;
     p->ratio_mean = 0;
     p->fwhm_mean = 0;
@@ -461,6 +462,10 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         {
             p->raw[j*data->obs_count + i] = obs->star[j];
             p->sky[i] += obs->sky[j]/data->num_targets;
+
+            double r = obs->star[j]*data->targets[j].plot_scale;
+            if (r > p->scaled_raw_max)
+                p->scaled_raw_max = r;
         }
 
         // Filter bad observations

@@ -64,6 +64,7 @@ typedef struct
     char *coord_dec;
     double coord_epoch;
 
+    bool show_error_bars;
     double2 *blocked_ranges;
     int num_blocked_ranges;
 } datafile;

@@ -477,7 +477,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsch(1.0);
 
         cpgswin(min_seconds, max_seconds, min_ratio, max_ratio);
-        if (pd->has_noise)
+        if (pd->has_noise && data->show_error_bars)
             cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->ratio, (float *)pd->ratio_noise, 0.0);
         else
             cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->ratio, 229);
@@ -512,7 +512,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsch(1.0);
         
         cpgswin(min_seconds, max_seconds, min_mma, max_mma);
-        if (pd->has_noise)
+        if (pd->has_noise && data->show_error_bars)
             cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->mma, (float *)pd->mma_noise, 0.0);
         else
             cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->mma, 229);

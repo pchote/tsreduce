@@ -22,6 +22,7 @@
 #define CCD_GAIN_DEFAULT 0
 #define CCD_READNOISE_DEFAULT 0
 #define CCD_PLATESCALE_DEFAULT 1.0
+#define SHOW_ERROR_BARS_DEFAULT false
 
 extern int verbosity;
 
@@ -40,6 +41,7 @@ datafile *datafile_alloc()
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
+    dp->show_error_bars = SHOW_ERROR_BARS_DEFAULT;
 
     dp->filename_map = hashmap_new();
     return dp;
@@ -172,7 +174,12 @@ datafile* datafile_load(char *filename)
                    &dp->blocked_ranges[dp->num_blocked_ranges].y);
             dp->num_blocked_ranges++;
         }
-
+        else if (!strncmp(linebuf,"# ShowErrorBars:", 16))
+        {
+            uint8_t temp;
+            sscanf(linebuf, "# ShowErrorBars: %hhu\n", &temp);
+            dp->show_error_bars = temp;
+        }
         // Skip header / comment lines
         if (linebuf[0] == '#')
             continue;
@@ -355,6 +362,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# CCDReadNoise: %f\n", data->ccd_readnoise);
     if (data->ccd_platescale != CCD_PLATESCALE_DEFAULT)
         fprintf(out, "# CCDPlateScale: %f\n", data->ccd_platescale);
+    if (data->show_error_bars != SHOW_ERROR_BARS_DEFAULT)
+        fprintf(out, "# ShowErrorBars: %d\n", data->show_error_bars);
 
     if (data->reference_time.time)
     {

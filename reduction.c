@@ -893,21 +893,21 @@ int create_reduction_file(char *outname)
 
     while (true)
     {
-        uint8_t aperture_type = 0;
+        uint8_t aperture_type = 1;
         double aperture_size = 0;
         while (true)
         {
-            printf("Aperture types are  0: 5sigma,  1: 3FWHM,  2: Manual\n");
-            char *ret = prompt_user_input("Select aperture type:", "0");
+            printf("Aperture types are  1: 5sigma,  2: 3FWHM,  3: Manual\n");
+            char *ret = prompt_user_input("Select aperture type:", "1");
             aperture_type = atoi(ret);
             free(ret);
-            if (aperture_type <= 2)
+            if (aperture_type >=1 && aperture_type <= 3)
                 break;
 
-            printf("Number must be between 0 and 2\n");
+            printf("Choice must be between 1 and 3\n");
         }
 
-        if (aperture_type == 2)
+        if (aperture_type == 3)
         {
             while (true)
             {
@@ -917,7 +917,7 @@ int create_reduction_file(char *outname)
                 if (aperture_size > 0)
                     break;
 
-                printf("Number must be greater than 0\n");
+                printf("Radius must be greater than 0\n");
             }
         }
 
@@ -1009,7 +1009,7 @@ int create_reduction_file(char *outname)
 
             switch (aperture_type)
             {
-                case 0: // 5*sky sigma
+                case 1: // 5*sky sigma
                 {
                     // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
                     double lastIntensity = 0;
@@ -1031,7 +1031,7 @@ int create_reduction_file(char *outname)
                     }
                     break;
                 }
-                case 1: // 3*FWHM
+                case 2: // 3*FWHM
                 {
                     double fwhm = estimate_fwhm(frame, xy, sky_intensity, t.s1);
                     t.r = 3*fwhm/2;
@@ -1039,7 +1039,7 @@ int create_reduction_file(char *outname)
 
                     break;
                 }
-                case 2:
+                case 3:
                 default:
                     t.r = aperture_size;
                     largest_aperture = aperture_size;

@@ -52,7 +52,6 @@ int ts_exec_write(const char *cmd, const void *restrict data, size_t size);
 int init_ds9();
 
 void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *data, int numData, double *outFreq, double *outAmpl, int numOut);
-void calculate_amplitude_spectrum_float(float fmin, float fmax, float *time, float *data, int numData, float *outFreq, float *outAmpl, int numOut);
 
 char *canonicalize_path(const char *path);
 

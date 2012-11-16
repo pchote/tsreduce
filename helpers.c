@@ -427,6 +427,14 @@ int compare_double(const void *a, const void *b)
     return (*da > *db) - (*da < *db);
 }
 
+int compare_float(const void *a, const void *b)
+{
+    const float *da = (const float *)a;
+    const float *db = (const float *)b;
+
+    return (*da > *db) - (*da < *db);
+}
+
 // Prints an vararg error to stderr then returns 1
 int error(const char * format, ...)
 {

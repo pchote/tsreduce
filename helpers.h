@@ -43,6 +43,7 @@ float *cast_double_array_to_float(double *d_ptr, size_t count);
 size_t get_matching_files(const char *pattern, char ***files);
 char *get_first_matching_file(char *pattern);
 int compare_double(const void *a, const void *b);
+int compare_float(const void *a, const void *b);
 int error(const char * format, ...);
 void die(const char * format, ...) __attribute__ ((noreturn));
 void millisleep(int ms);

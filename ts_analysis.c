@@ -586,14 +586,19 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cpgline(dd->count, (float *)dd->freq, (float *)dd->ampl);
     cpgsci(1);
 
+    // Calculate median intensity
+    qsort(dd->ampl, dd->count, sizeof(float), compare_float);
+
     snprintf(label, label_len, "Frequency (%sHz)", unit);
     cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
     cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
 
     cpgswin(0, 1, 0, 1);
-    snprintf(label, label_len, "Mean amplitude: %.2f mma", dd->mean_ampl);
-    cpgptxt(0.97, 0.93, 0, 1.0, label);
+    snprintf(label, label_len, "Mean: %.2f mma", dd->mean_ampl);
+    cpgptxt(0.97, 0.94, 0, 1.0, label);
+    snprintf(label, label_len, "Median: %.2f mma", ((float *)dd->ampl)[dd->count/2]);
+    cpgptxt(0.97, 0.90, 0, 1.0, label);
 
     cpgend();
 

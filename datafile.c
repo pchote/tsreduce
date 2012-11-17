@@ -639,8 +639,8 @@ struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *p
         return NULL;
     }
 
-    calculate_amplitude_spectrum(d->min_freq, d->max_freq,
-                                 pd->time, pd->mma, pd->filtered_count,
+    calculate_amplitude_spectrum(pd->time, pd->mma, pd->filtered_count,
+                                 d->min_freq, d->max_freq,
                                  d->freq, d->ampl, d->count);
 
     d->max_ampl = 0;

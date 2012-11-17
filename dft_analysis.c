@@ -376,7 +376,7 @@ int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFi
     if (!dftampl)
         error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
 
-    calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mma, num_obs, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
 
     // Save output
     FILE *file = fopen(outFile, "w");
@@ -427,7 +427,7 @@ int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, do
     if (!dftampl)
         error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
 
-    calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mma, num_obs, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
 
     FILE *file = fopen(outFile, "w");
     if (!file)
@@ -491,7 +491,7 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     if (!dftampl)
         error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
 
-    calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mma, num_obs, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(time, mma, minUHz*1e-6, maxUHz*1e-6, num_obs, dftfreq, dftampl, num_uhz);
 
     double max_ampl = 0;
     double max_ampl_freq = 0;
@@ -741,7 +741,7 @@ int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, doub
     {
         printf("%zu of %zu\n", i + 1, repeats);
         shuffle_double_array(time, num_obs, rand);
-        calculate_amplitude_spectrum(minUHz*1e-6, maxUHz*1e-6, time, mma, num_obs, dftfreq, dftampl, num_uhz);
+        calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
 
         // Find mean and max intensity
         double maxfreq = 0;

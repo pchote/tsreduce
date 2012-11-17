@@ -612,25 +612,27 @@ char *prompt_user_input(char *message, char *fallback)
     return input;
 }
 
-// Calculate the amplitude spectrum of the signal defined by numData points in (time, data)
-// in the frequency range (fmin, fmax)
-// numOut results are stored in (outFreq, outPower)
-void calculate_amplitude_spectrum(double fmin, double fmax, double *t, double *data, int numData, double *outFreq, double *outAmpl, int numOut)
+// Calculate the amplitude spectrum between (freq_min, freq_max)
+// for the signal time/mma (count points)
+// length results are stored in (freq, ampl)
+void calculate_amplitude_spectrum(double *time, double *mma, size_t count,
+                                  double freq_min, double freq_max,
+                                  double *freq, double *ampl, size_t length)
 {
-    double df = (fmax-fmin)/numOut;
-    for (int j = 0; j < numOut; j++)
+    double df = (freq_max - freq_min)/length;
+    for (size_t j = 0; j < length; j++)
     {
         double real = 0;
         double imag = 0;
-        outFreq[j] = fmin + j*df;
+        freq[j] = freq_min + j*df;
 
-        for (int i = 0; i < numData; i++)
+        for (size_t i = 0; i < count; i++)
         {
-            double phase = -outFreq[j]*2*M_PI*(t[i]-t[0]);
-            real += data[i]*cos(phase)/numData;
-            imag += data[i]*sin(phase)/numData;
+            double phase = -freq[j]*2*M_PI*(time[i] - time[0]);
+            real += mma[i]*cos(phase)/count;
+            imag += mma[i]*sin(phase)/count;
         }
 
-        outAmpl[j] = 2*sqrt(real*real + imag*imag);
+        ampl[j] = 2*sqrt(real*real + imag*imag);
     }
 }

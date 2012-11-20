@@ -26,5 +26,6 @@ int frame_translation(const char *frame, const char *reference, const char *dark
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
+int process_ccdtime(const char *pattern, const char *date, const char *time);
 
 #endif

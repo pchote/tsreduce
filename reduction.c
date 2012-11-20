@@ -1727,3 +1727,25 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     datafile_free(data);
     return ret;
 }
+
+int process_ccdtime(const char *pattern, const char *date, const char *time)
+{
+    ts_time start = parse_date_time(date, time);
+
+    char **frame_paths;
+    size_t num_frames = get_matching_files(pattern, &frame_paths);
+    for (size_t i = 0; i < num_frames; i++)
+    {
+        framedata *frame = framedata_load(frame_paths[i]);
+        
+        ts_time frame_time;
+        framedata_start_time(frame, &frame_time);
+        double gps = ts_difftime(frame_time, start);
+        double ccd = 0;
+        framedata_get_metadata(frame, "CCD-TIME", FRAME_METADATA_DOUBLE, &ccd);
+
+        printf("%s %f %f %f\n", frame_paths[i], gps, ccd, gps - ccd);
+        framedata_free(frame);
+    }
+    return 0;
+}

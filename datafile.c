@@ -195,11 +195,16 @@ datafile* datafile_load(char *filename)
         if (!obs)
             return NULL;
 
-        // Time
         // Note: strtok_r is unsupported under windows
         char *token;
 
+        // Filename
         if (!(token = strtok(linebuf, " ")))
+            goto parse_error;
+        obs->filename = strdup(token);
+
+        // Time
+        if (!(token = strtok(NULL, " ")))
             goto parse_error;
         obs->time = atof(token);
 
@@ -230,18 +235,6 @@ datafile* datafile_load(char *filename)
                 goto parse_error;
             obs->fwhm[i] = atof(token);
         }
-
-        // Filename
-        if (!(token = strtok(NULL, " ")))
-            goto parse_error;
-        obs->filename = strdup(token);
-
-        size_t len = strlen(obs->filename);
-        if (len < 1)
-            goto parse_error;
-
-        // Strip newline
-        obs->filename[len-1] = '\0';
 
         datafile_append_observation(dp, obs);
 
@@ -377,6 +370,7 @@ int datafile_save(datafile *data, char *filename)
     struct observation *obs;
     for (obs = data->obs_start; obs; obs = obs->next)
     {
+        fprintf(out, "%s ", obs->filename);
         fprintf(out, "%.1f ", obs->time);
         for (size_t i = 0; i < data->num_targets; i++)
         {
@@ -386,8 +380,8 @@ int datafile_save(datafile *data, char *filename)
             fprintf(out, "%.2f %.2f ", obs->pos[i].x, obs->pos[i].y);
             fprintf(out, "%.2f ", obs->fwhm[i]);
         }
+        fprintf(out, "\n");
 
-        fprintf(out, "%s\n", obs->filename);
     }
 
     fclose(out);

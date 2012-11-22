@@ -361,9 +361,10 @@ int datafile_save(datafile *data, char *filename)
 
     fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale]\n");
     for (size_t i = 0; i < data->num_targets; i++)
-        fprintf(out, "# Target: (%f, %f, %f, %f, %f) [1.0]\n",
+        fprintf(out, "# Target: (%6.2f, %6.2f, %6.2f, %6.2f, %6.2f) [%.2f]\n",
                 data->targets[i].x, data->targets[i].y,
-                data->targets[i].r, data->targets[i].s1, data->targets[i].s2);
+                data->targets[i].r, data->targets[i].s1, data->targets[i].s2,
+                data->targets[i].plot_scale);
 
     if (data->num_blocked_ranges > 0)
         fprintf(out, "### (Start (s), End (s))\n");
@@ -371,19 +372,28 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# BlockRange: (%g, %g)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
-    fprintf(out, "### Filename, Start Time (s), [Star (ADU/s), Noise (ADU/s), Sky (ADU/s), x (px), y (px), FWHM (px)] x %u\n", data->num_targets);
+    fprintf(out, "### Filename,          Time  ");
+    for (size_t i = 0; i < data->num_targets; i++)
+        fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
+    fprintf(out, "\n");
+
+    fprintf(out, "###                     (s)  ");
+    for (size_t i = 0; i < data->num_targets; i++)
+        fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px)");
+    fprintf(out, "\n");
+
     struct observation *obs;
     for (obs = data->obs_start; obs; obs = obs->next)
     {
         fprintf(out, "%s ", obs->filename);
-        fprintf(out, "%.1f ", obs->time);
+        fprintf(out, "%9.3f ", obs->time);
         for (size_t i = 0; i < data->num_targets; i++)
         {
-            fprintf(out, "%.2f ", obs->star[i]);
-            fprintf(out, "%.2f ", obs->noise[i]);
-            fprintf(out, "%.2f ", obs->sky[i]);
-            fprintf(out, "%.2f %.2f ", obs->pos[i].x, obs->pos[i].y);
-            fprintf(out, "%.2f ", obs->fwhm[i]);
+            fprintf(out, "%10.2f ", obs->star[i]);
+            fprintf(out, "%6.2f ", obs->noise[i]);
+            fprintf(out, "%9.2f ", obs->sky[i]);
+            fprintf(out, "%6.2f %6.2f ", obs->pos[i].x, obs->pos[i].y);
+            fprintf(out, "%5.2f", obs->fwhm[i]);
         }
         fprintf(out, "\n");
 

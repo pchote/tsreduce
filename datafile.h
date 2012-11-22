@@ -56,6 +56,7 @@ typedef struct
     int plot_num_uhz;
     double plot_min_uhz;
     double plot_max_uhz;
+    bool plot_error_bars;
 
     double ccd_gain;
     double ccd_readnoise;
@@ -65,7 +66,6 @@ typedef struct
     char *coord_dec;
     double coord_epoch;
 
-    bool show_error_bars;
     double2 *blocked_ranges;
     int num_blocked_ranges;
 } datafile;

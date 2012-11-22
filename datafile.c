@@ -22,10 +22,10 @@
 #define PLOT_NUM_UHZ_DEFAULT 1000
 #define PLOT_MIN_UHZ_DEFAULT 0
 #define PLOT_MAX_UHZ_DEFAULT 10000
+#define PLOT_ERROR_BARS_DEFAULT false
 #define CCD_GAIN_DEFAULT 0
 #define CCD_READNOISE_DEFAULT 0
 #define CCD_PLATESCALE_DEFAULT 1.0
-#define SHOW_ERROR_BARS_DEFAULT false
 
 extern int verbosity;
 
@@ -41,10 +41,10 @@ datafile *datafile_alloc()
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
     dp->plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
+    dp->plot_error_bars = PLOT_ERROR_BARS_DEFAULT;
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
-    dp->show_error_bars = SHOW_ERROR_BARS_DEFAULT;
 
     dp->filename_map = hashmap_new();
     return dp;
@@ -143,6 +143,12 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# PlotMaxRaw: %lf\n", &dp->plot_max_raw);
         else if (!strncmp(linebuf,"# PlotMinUhz:", 13))
             sscanf(linebuf, "# PlotMinUhz: %lf\n", &dp->plot_min_uhz);
+        else if (!strncmp(linebuf,"# PlotErrorBars:", 16))
+        {
+            uint8_t temp;
+            sscanf(linebuf, "# PlotErrorBars: %hhu\n", &temp);
+            dp->plot_error_bars = temp;
+        }
         else if (!strncmp(linebuf,"# PlotMaxUhz:", 13))
             sscanf(linebuf, "# PlotMaxUhz: %lf\n", &dp->plot_max_uhz);
         else if (!strncmp(linebuf,"# PlotNumUhz:", 13))
@@ -173,12 +179,7 @@ datafile* datafile_load(char *filename)
                    &dp->blocked_ranges[dp->num_blocked_ranges].y);
             dp->num_blocked_ranges++;
         }
-        else if (!strncmp(linebuf,"# ShowErrorBars:", 16))
-        {
-            uint8_t temp;
-            sscanf(linebuf, "# ShowErrorBars: %hhu\n", &temp);
-            dp->show_error_bars = temp;
-        }
+
         // Skip header / comment lines
         if (linebuf[0] == '#')
             continue;
@@ -348,8 +349,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# CCDReadNoise: %g\n", data->ccd_readnoise);
     if (data->ccd_platescale != CCD_PLATESCALE_DEFAULT)
         fprintf(out, "# CCDPlateScale: %g\n", data->ccd_platescale);
-    if (data->show_error_bars != SHOW_ERROR_BARS_DEFAULT)
-        fprintf(out, "# ShowErrorBars: %d\n", data->show_error_bars);
+    if (data->plot_error_bars != PLOT_ERROR_BARS_DEFAULT)
+        fprintf(out, "# PlotErrorBars: %d\n", data->plot_error_bars);
 
     if (data->reference_time.time)
     {

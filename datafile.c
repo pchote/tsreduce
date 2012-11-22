@@ -14,8 +14,8 @@
 #include "fit.h"
 #include "helpers.h"
 
-#define CUR_DATAFILE_VERSION 6
-#define MIN_DATAFILE_VERSION 6
+#define CUR_DATAFILE_VERSION 7
+#define MIN_DATAFILE_VERSION 7
 
 #define PLOT_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 0
@@ -212,6 +212,10 @@ datafile* datafile_load(char *filename)
 
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
+            obs->noise[i] = atof(token);
+
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
             obs->sky[i] = atof(token);
 
             if (!(token = strtok(NULL, " ")))
@@ -221,19 +225,11 @@ datafile* datafile_load(char *filename)
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
             obs->pos[i].y = atof(token);
+
+            if (!(token = strtok(NULL, " ")))
+                goto parse_error;
+            obs->fwhm[i] = atof(token);
         }
-
-        if (!(token = strtok(NULL, " ")))
-            goto parse_error;
-        obs->ratio = atof(token);
-
-        if (!(token = strtok(NULL, " ")))
-            goto parse_error;
-        obs->ratio_noise = atof(token);
-
-        if (!(token = strtok(NULL, " ")))
-            goto parse_error;
-        obs->fwhm = atof(token);
 
         // Filename
         if (!(token = strtok(NULL, " ")))
@@ -278,17 +274,21 @@ void datafile_free(datafile *data)
 struct observation *datafile_new_observation(datafile *data)
 {
     size_t star_size = data->num_targets*sizeof(double);
+    size_t noise_size = data->num_targets*sizeof(double);
     size_t sky_size = data->num_targets*sizeof(double);
     size_t pos_size = data->num_targets*sizeof(double2);
-    size_t s = sizeof(struct observation) - 1 + star_size + sky_size + pos_size;
+    size_t fwhm_size = data->num_targets*sizeof(double);
+    size_t s = sizeof(struct observation) - 1 + star_size + noise_size + sky_size + pos_size + fwhm_size;
 
     struct observation *obs = calloc(1, s);
     if (!obs)
         return NULL;
 
     obs->star = (double *)obs->data;
-    obs->sky = (double *)(obs->star + data->num_targets);
+    obs->noise = (double *)(obs->star + data->num_targets);
+    obs->sky = (double *)(obs->noise + data->num_targets);
     obs->pos = (double2 *)(obs->sky + data->num_targets);
+    obs->fwhm = (double *)(obs->pos + data->num_targets);
 
     return obs;
 }
@@ -381,13 +381,11 @@ int datafile_save(datafile *data, char *filename)
         for (size_t i = 0; i < data->num_targets; i++)
         {
             fprintf(out, "%.2f ", obs->star[i]);
+            fprintf(out, "%.2f ", obs->noise[i]);
             fprintf(out, "%.2f ", obs->sky[i]);
             fprintf(out, "%.2f %.2f ", obs->pos[i].x, obs->pos[i].y);
+            fprintf(out, "%.2f ", obs->fwhm[i]);
         }
-
-        fprintf(out, "%.5e ", obs->ratio);
-        fprintf(out, "%.5e ", obs->ratio_noise);
-        fprintf(out, "%.3f ", obs->fwhm*data->ccd_platescale);
 
         fprintf(out, "%s\n", obs->filename);
     }
@@ -444,7 +442,6 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->ratio_mean = 0;
     p->fwhm_mean = 0;
 
-    double total_ratio = 0;
     double total_ratio_noise = 0;
 
     // External code may modify obs_count to restrict data processing,
@@ -455,10 +452,29 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         p->raw_time[i] = obs->time;
         p->sky[i] = 0;
 
+        size_t comparison_count = 0;
+        double comparison_intensity = 0;
+        double comparison_noise = 0;
+
+        size_t fwhm_count = 0;
+        double fwhm = 0;
         for (size_t j = 0; j < data->num_targets; j++)
         {
             p->raw[j*data->obs_count + i] = obs->star[j];
             p->sky[i] += obs->sky[j]/data->num_targets;
+
+            if (!isnan(obs->fwhm[j]))
+            {
+                fwhm += obs->fwhm[j];
+                fwhm_count++;
+            }
+
+            if (j > 0 && !isnan(obs->star[j]) && !isnan(obs->noise[j]))
+            {
+                comparison_intensity += obs->star[j];
+                comparison_noise += obs->noise[j];
+                comparison_count++;
+            }
 
             double r = obs->star[j]*data->targets[j].plot_scale;
             if (r > p->scaled_raw_max)
@@ -474,29 +490,28 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
                 break;
             }
 
-        // Invalid observations have noise = nan
-        if (skip || isnan(obs->ratio_noise))
+        if (skip || isnan(obs->star[0]) || isnan(obs->noise[0]))
             continue;
 
         p->time[p->filtered_count] = obs->time;
-        p->ratio[p->filtered_count] = obs->ratio;
-        p->ratio_mean += obs->ratio;
 
-        p->ratio_noise[p->filtered_count] = obs->ratio_noise;
-        total_ratio += p->ratio[p->filtered_count];
+        // Normalize by number of comparison so things remain
+        // sensible if a star is lost off the frame
+        p->ratio[p->filtered_count] = obs->star[0] * comparison_count / comparison_intensity;
+        p->ratio_mean += p->ratio[p->filtered_count];
 
-        // TODO: This is wrong - should add in quadrature(?)
+        p->ratio_noise[p->filtered_count] = (obs->noise[0]/obs->star[0] + comparison_noise/comparison_intensity)*p->ratio[p->filtered_count];
         total_ratio_noise += p->ratio_noise[p->filtered_count];
 
-        p->fwhm[p->filtered_count] = obs->fwhm;
-        p->fwhm_mean += obs->fwhm;
+        p->fwhm[p->filtered_count] = (fwhm && fwhm_count) ? fwhm / fwhm_count : 0;
+        p->fwhm_mean += p->fwhm[p->filtered_count];
 
         p->filtered_count++;
     }
 
+    p->ratio_snr = p->ratio_mean/total_ratio_noise;
     p->ratio_mean /= p->filtered_count;
     p->fwhm_mean /= p->filtered_count;
-    p->ratio_snr = total_ratio/total_ratio_noise;
 
     // Ratio and fwhm standard deviation
     p->ratio_std = 0;

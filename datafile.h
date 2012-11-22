@@ -22,12 +22,13 @@ struct observation
     double time;
     double ratio;
     double ratio_noise;
-    double fwhm;
 
     // Pointers inside data array
     double *star;
+    double *noise;
     double *sky;
     double2 *pos;
+    double *fwhm;
 
     // Dynamically sized by allocating
     // extra space with malloc

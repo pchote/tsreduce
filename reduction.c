@@ -568,14 +568,9 @@ int update_reduction(char *dataPath)
         // Observation start time
         obs->time = starttime;
 
-        // Process frame
-        double comparisonIntensity = 0;
-        double targetIntensity = 0;
-        double comparisonNoise = 0;
-        double targetNoise = 0;
-        double mean_fwhm = 0;
 
-        bool failed = false;
+        // Process frame
+        double nan = sqrt(-1);
         for (int i = 0; i < data->num_targets; i++)
         {
             // Use the aperture position from the previous frame
@@ -590,53 +585,40 @@ int update_reduction(char *dataPath)
                     t.y = last.y;
             }
 
-            double sky = 0;
-            double intensity = 0;
-            double noise = 0;
-            double2 xy = {0,0};
+            obs->star[i] = 0;
+            obs->noise[i] = 0;
+            obs->sky[i] = 0;
+            obs->pos[i] = (double2){0,0};
+            obs->fwhm[i] = 0;
 
-            if (!center_aperture(t, frame, &xy))
+            if (!center_aperture(t, frame, &obs->pos[i]))
             {
                 double bg = 0;
                 if (calculate_background(t, frame, &bg, NULL))
                     bg = 0;
 
                 // Integrate sky over the aperture and normalize per unit time
-                sky = bg*M_PI*t.r*t.r / exptime;
+                obs->sky[i] = bg*M_PI*t.r*t.r / exptime;
 
-                integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
+                integrate_aperture_and_noise(obs->pos[i], t.r, frame, dark, readnoise, gain, &obs->star[i], &obs->noise[i]);
 
-                intensity = intensity/exptime - sky;
-                noise /= exptime;
+                obs->star[i] = obs->star[i]/exptime - obs->sky[i];
+                obs->noise[i] /= exptime;
 
-                double fwhm = estimate_fwhm(frame, xy, bg, t.s1);
-                if (fwhm < 1)
-                    failed = true;
-
-                mean_fwhm += fwhm / data->num_targets;
-            }
-            else
-                failed = true;
-
-            obs->star[i] = intensity;
-            obs->sky[i] = sky;
-            obs->pos[i] = xy;
-
-            if (i == 0)
-            {
-                targetIntensity = intensity;
-                targetNoise = noise;
+                obs->fwhm[i] = estimate_fwhm(frame, obs->pos[i], bg, t.s1);
+                if (obs->fwhm[i] < 1)
+                    obs->fwhm[i] = nan;
             }
             else
             {
-                comparisonIntensity += intensity;
-                comparisonNoise += noise;
+                obs->star[i] = nan;
+                obs->noise[i] = nan;
+                obs->sky[i] = nan;
+                obs->pos[i] = (double2){nan,nan};
+                obs->fwhm[i] = nan;
             }
         }
 
-        obs->fwhm = mean_fwhm;
-        obs->ratio = comparisonIntensity > 0 ? targetIntensity / comparisonIntensity : 0;
-        obs->ratio_noise = failed ? sqrt(-1) : (targetNoise/targetIntensity + comparisonNoise/comparisonIntensity)*obs->ratio;
         obs->filename = strdup(frame_paths[i]);
 
         datafile_append_observation(data, obs);

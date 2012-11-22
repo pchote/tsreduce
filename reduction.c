@@ -959,20 +959,23 @@ int create_reduction_file(char *outname)
 
         // Parse the region definitions
         data->num_targets = 0;
+        size_t target_size = 5;
+        data->targets = malloc(target_size*sizeof(target));
+        double *sky = malloc(target_size*sizeof(double));
+        if (!data->targets || !sky)
+            error_jump(target_error, ret, "Target allocation error");
+
         char *cur = ds9buf;
         double largest_aperture = 0;
-        // Temporarily hardcode target limit to 10
-        // TODO: Fix this
-        data->targets = malloc(10*sizeof(target));
-        double sky[10];
-
         for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
         {
-            // TODO: Fix this
-            if (data->num_targets == 10)
+            if (data->num_targets >= target_size)
             {
-                printf("Limit of %d targets reached. Remaining targets have been ignored", 10);
-                break;
+                target_size += 5;
+                data->targets = realloc(data->targets, target_size*sizeof(target));
+                sky = realloc(sky, target_size*sizeof(double));
+                if (!data->targets || !sky)
+                    error_jump(target_error, ret, "Target allocation error");
             }
 
             // Read aperture coords
@@ -1096,8 +1099,12 @@ int create_reduction_file(char *outname)
         char *ret = prompt_user_input("Are the displayed apertures correct?:", "y");
         bool done = !strcmp(ret, "y");
         free(ret);
+        free(sky);
+
         if (done)
             break;
+
+        free(data->targets);
     }
     printf("Set %d targets\n", data->num_targets);
 
@@ -1109,6 +1116,8 @@ int create_reduction_file(char *outname)
     printf("Saved to %s\n", outname);
     printf("Run `tsreduce update %s` to reduce existing files\n", outname);
     printf("Run `tsreduce plot %s` to preview reduced data\n", outname);
+
+target_error:
 frameload_error:
     framedata_free(frame);
     free(preview_filename);

@@ -409,7 +409,7 @@ void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framed
         {
             double area = pixel_aperture_intesection(xy.x-i, xy.y-j, r);
             double flux = frame->data[i + frame->cols*j];
-            double darkflux = dark->data[i + frame->cols*j];
+            double darkflux = dark ? dark->data[i + frame->cols*j] : 0;
 
             *signal += area*flux;
             *noise += area*(readnoise*readnoise + (flux + darkflux)/gain);

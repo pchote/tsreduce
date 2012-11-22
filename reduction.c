@@ -607,13 +607,8 @@ int update_reduction(char *dataPath)
                 // Integrate sky over the aperture and normalize per unit time
                 sky = bg*M_PI*t.r*t.r / exptime;
 
-                if (dark)
-                    integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
-                else
-                {
-                    intensity = integrate_aperture(xy, t.r, frame);
-                    noise = 0;
-                }
+                integrate_aperture_and_noise(xy, t.r, frame, dark, readnoise, gain, &intensity, &noise);
+
                 intensity = intensity/exptime - sky;
                 noise /= exptime;
 

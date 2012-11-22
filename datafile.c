@@ -17,7 +17,7 @@
 #define CUR_DATAFILE_VERSION 7
 #define MIN_DATAFILE_VERSION 7
 
-#define PLOT_FIT_DEGREE_DEFAULT 2
+#define RATIO_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 0
 #define PLOT_NUM_UHZ_DEFAULT 1000
 #define PLOT_MIN_UHZ_DEFAULT 0
@@ -36,7 +36,7 @@ datafile *datafile_alloc()
 {
     datafile *dp = calloc(1, sizeof(datafile));
     dp->version = CUR_DATAFILE_VERSION;
-    dp->plot_fit_degree = PLOT_FIT_DEGREE_DEFAULT;
+    dp->ratio_fit_degree = RATIO_FIT_DEGREE_DEFAULT;
     dp->plot_max_raw = PLOT_MAX_RAW_DEFAULT;
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
     dp->plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
@@ -137,8 +137,8 @@ datafile* datafile_load(char *filename)
                 return NULL;
             }
         }
-        else if (!strncmp(linebuf,"# PlotFitDegree:", 16))
-            sscanf(linebuf, "# PlotFitDegree: %d\n", &dp->plot_fit_degree);
+        else if (!strncmp(linebuf,"# RatioFitDegree:", 17))
+            sscanf(linebuf, "# RatioFitDegree: %hhu\n", &dp->ratio_fit_degree);
         else if (!strncmp(linebuf,"# PlotMaxRaw:", 13))
             sscanf(linebuf, "# PlotMaxRaw: %lf\n", &dp->plot_max_raw);
         else if (!strncmp(linebuf,"# PlotMinUhz:", 13))
@@ -334,8 +334,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# DarkTemplate: %s\n", data->dark_template);
     if (data->flat_template)
         fprintf(out, "# FlatTemplate: %s\n", data->flat_template);
-    if (data->plot_fit_degree != PLOT_FIT_DEGREE_DEFAULT)
-        fprintf(out, "# PlotFitDegree: %d\n", data->plot_fit_degree);
+    if (data->ratio_fit_degree != RATIO_FIT_DEGREE_DEFAULT)
+        fprintf(out, "# RatioFitDegree: %d\n", data->ratio_fit_degree);
     if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)
         fprintf(out, "# PlotMaxRaw: %g\n", data->plot_max_raw);
     if (data->plot_min_uhz != PLOT_MIN_UHZ_DEFAULT)
@@ -417,7 +417,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
 
     p->fwhm = calloc(data->obs_count, sizeof(double));
 
-    p->fit_coeffs_count = data->plot_fit_degree + 1;
+    p->fit_coeffs_count = data->ratio_fit_degree + 1;
     p->fit_coeffs = calloc(p->fit_coeffs_count, sizeof(double));
 
     if (!p->raw_time || !p->raw || !p->sky ||
@@ -531,7 +531,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         return NULL;
     }
 
-    if (fit_polynomial(p->time, p->ratio, p->ratio_noise, p->filtered_count, p->fit_coeffs, data->plot_fit_degree))
+    if (fit_polynomial(p->time, p->ratio, p->ratio_noise, p->filtered_count, p->fit_coeffs, data->ratio_fit_degree))
     {
         datafile_free_photometry(p);
         error("Polynomial fit failed");

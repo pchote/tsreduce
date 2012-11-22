@@ -51,7 +51,7 @@ typedef struct
     size_t obs_count;
     map_t filename_map;
 
-    int plot_fit_degree;
+    uint8_t ratio_fit_degree;
     double plot_max_raw;
     int plot_num_uhz;
     double plot_min_uhz;

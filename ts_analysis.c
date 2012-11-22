@@ -483,7 +483,49 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Plot the polynomial fit
         cpgsci(2);
-        cpgline(pd->filtered_count, (float *)pd->time, (float *)pd->ratio_fit);
+
+        // Don't plot the fit through blocked regions
+        float *t = (float *)pd->time;
+        float *t_end = &t[pd->filtered_count-1];
+        float *f = (float *)pd->ratio_fit;
+        do
+        {
+            double min_time = t[0];
+            double max_time = max_seconds;
+
+            // Find the first blocked range that affects the data
+            for (size_t j = 0; j < data->num_blocked_ranges; j++)
+            {
+                double2 r = data->blocked_ranges[j];
+                if (min_time > r.x && min_time < r.y)
+                    min_time = r.y;
+
+                if (max_time > r.x && min_time < r.y)
+                    max_time = r.x;
+            }
+
+            // Find the first point to draw
+            while (t < t_end && *t < min_time)
+            {
+                t++;
+                f++;
+            }
+
+            if (t == t_end)
+                break;
+
+            // Find the last point to draw
+            size_t count = 0;
+            while (t + count < t_end && *(t + count) < max_time)
+                count++;
+
+            cpgline(count, t, f);
+
+            // Start next search from end of this section
+            t += count + 1;
+            f += count + 1;
+        } while (t + 1 < t_end);
+
         cpgsci(1);
     }
 

@@ -49,7 +49,7 @@ int display_tracer(char *dataPath)
 
     if (data->obs_start->next)
         for (struct observation *obs = data->obs_start->next; obs; obs = obs->next)
-            for (int i = 0; i < data->num_targets; i++)
+            for (size_t i = 0; i < data->target_count; i++)
             {
                 snprintf(command, 1024, "xpaset tsreduce regions command '{line %f %f %f %f # line= 0 0 color=red select=0}'",
                          obs->prev->pos[i].x + 1, obs->prev->pos[i].y + 1,
@@ -58,7 +58,7 @@ int display_tracer(char *dataPath)
             }
 
     // Draw apertures
-    for (int i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
     {
         double2 xy = data->obs_end->pos[i];
         target t = data->targets[i];
@@ -125,7 +125,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
         error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
     framedata_divide(frame, flat);
 
-    if (targetIndex < 0 || targetIndex >= data->num_targets)
+    if (targetIndex < 0 || targetIndex >= data->target_count)
         error_jump(process_error, ret, "Invalid target `%d' selected", targetIndex);
 
     target t = data->targets[targetIndex];
@@ -357,9 +357,9 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     //
     // Plot raw data
     //
-    cast_double_array_to_float(pd->target_time, data->obs_count*data->num_targets);
-    cast_double_array_to_float(pd->target_intensity, data->obs_count*data->num_targets);
-    cast_double_array_to_float(pd->target_noise, data->obs_count*data->num_targets);
+    cast_double_array_to_float(pd->target_time, data->obs_count*data->target_count);
+    cast_double_array_to_float(pd->target_intensity, data->obs_count*data->target_count);
+    cast_double_array_to_float(pd->target_noise, data->obs_count*data->target_count);
 
     cast_double_array_to_float(pd->raw_time, pd->raw_count);
     cast_double_array_to_float(pd->sky, pd->raw_count);
@@ -390,7 +390,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
         // Raw intensities
-        for (size_t j = 0; j < data->num_targets; j++)
+        for (size_t j = 0; j < data->target_count; j++)
         {
             cpgswin(min_seconds, max_seconds, min_raw, max_raw/data->targets[j].plot_scale);
             cpgsci(plot_colors[j%plot_colors_max]);
@@ -413,12 +413,12 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Labels
         cpgsvp(0.1, 0.9, 0.45, 0.55);
-        cpgswin(0, data->num_targets + 1, 0, 1);
-        for (size_t j = 0; j <= data->num_targets; j++)
+        cpgswin(0, data->target_count + 1, 0, 1);
+        for (size_t j = 0; j <= data->target_count; j++)
         {
             cpgsci(plot_colors[j%plot_colors_max]);
 
-            if (j == data->num_targets)
+            if (j == data->target_count)
             {
                 cpgsci(15);
                 strncpy(label, "Mean Sky", label_len);
@@ -439,7 +439,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             }
 
             cpgptxt(j+0.5, 0.5, 0, 0.5, label);
-            if (j < data->num_targets)
+            if (j < data->target_count)
             {
                 snprintf(label, label_len, "SNR: %.0f", pd->target_snr[j]);
                 cpgsch(0.8);
@@ -720,7 +720,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     double radius = min;
     do
     {
-        for (int i = 0; i < data->num_targets; i++)
+        for (size_t i = 0; i < data->target_count; i++)
             data->targets[i].r = radius;
 
         size_t filename_len = strlen(prefix) + 11;

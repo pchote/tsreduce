@@ -468,7 +468,7 @@ int display_frame(char *data_path, char *frame_name)
     ts_exec_write("xpaset tsreduce orient x", NULL, 0);
     ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
 
-    for (size_t i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
     {
 
         double2 xy = obs->pos[i];
@@ -570,7 +570,7 @@ int update_reduction(char *dataPath)
 
         // Process frame
         double nan = sqrt(-1);
-        for (int i = 0; i < data->num_targets; i++)
+        for (size_t i = 0; i < data->target_count; i++)
         {
             // Use the aperture position from the previous frame
             // as a starting point if it is valid
@@ -932,7 +932,7 @@ int create_reduction_file(char *outname)
             error_jump(frameload_error, ret, "ds9 request regions failed");
 
         // Parse the region definitions
-        data->num_targets = 0;
+        data->target_count = 0;
         size_t target_size = 5;
         data->targets = malloc(target_size*sizeof(target));
         double *sky = malloc(target_size*sizeof(double));
@@ -943,7 +943,7 @@ int create_reduction_file(char *outname)
         double largest_aperture = 0;
         for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
         {
-            if (data->num_targets >= target_size)
+            if (data->target_count >= target_size)
             {
                 target_size += 5;
                 data->targets = realloc(data->targets, target_size*sizeof(target));
@@ -982,7 +982,7 @@ int create_reduction_file(char *outname)
                 printf("Background calculation failed. Removing aperture.\n");
                 continue;
             }
-            sky[data->num_targets] = sky_intensity;
+            sky[data->target_count] = sky_intensity;
 
             switch (aperture_type)
             {
@@ -1024,12 +1024,12 @@ int create_reduction_file(char *outname)
             }
 
             // Set target parameters
-            data->targets[data->num_targets++] = t;
+            data->targets[data->target_count++] = t;
         }
         free(ds9buf);
 
         // Set aperture radii to the same size, equal to the largest calculated above
-        for (int i = 0; i < data->num_targets; i++)
+        for (size_t i = 0; i < data->target_count; i++)
             data->targets[i].r = largest_aperture;
 
         printf("Aperture radius: %fpx\n", largest_aperture);
@@ -1037,7 +1037,7 @@ int create_reduction_file(char *outname)
         // Display results in ds9 - errors are non-fatal
         ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
 
-        for (size_t i = 0; i < data->num_targets; i++)
+        for (size_t i = 0; i < data->target_count; i++)
         {
             double x = data->targets[i].x + 1;
             double y = data->targets[i].y + 1;
@@ -1080,7 +1080,7 @@ int create_reduction_file(char *outname)
 
         free(data->targets);
     }
-    printf("Set %d targets\n", data->num_targets);
+    printf("Set %zu targets\n", data->target_count);
 
     // Save to disk
     if (chdir(datadir))

@@ -43,7 +43,7 @@ typedef struct
     char *dark_template;
     char *flat_template;
     target *targets;
-    int num_targets;
+    size_t target_count;
     ts_time reference_time;
 
     struct observation *obs_start;

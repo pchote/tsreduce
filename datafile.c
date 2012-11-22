@@ -111,16 +111,13 @@ datafile* datafile_load(char *filename)
             dp->flat_template = strdup(stringbuf);
         }
         else if (!strncmp(linebuf,"# Target:", 9) &&
-                 dp->num_targets < target_count)
+                 dp->target_count < target_count)
         {
+            target *t = &dp->targets[dp->target_count];
             sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf]\n",
-                   &dp->targets[dp->num_targets].x,
-                   &dp->targets[dp->num_targets].y,
-                   &dp->targets[dp->num_targets].r,
-                   &dp->targets[dp->num_targets].s1,
-                   &dp->targets[dp->num_targets].s2,
-                   &dp->targets[dp->num_targets].plot_scale);
-            dp->num_targets++;
+                   &t->x, &t->y, &t->r, &t->s1, &t->s2,
+                   &t->plot_scale);
+            dp->target_count++;
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
             dp->reference_time = parse_time(linebuf+17);
@@ -210,7 +207,7 @@ datafile* datafile_load(char *filename)
         obs->time = atof(token);
 
         // Target intensity / sky / aperture x / aperture y
-        for (size_t i = 0; i < dp->num_targets; i++)
+        for (size_t i = 0; i < dp->target_count; i++)
         {
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
@@ -267,11 +264,11 @@ void datafile_free(datafile *data)
 
 struct observation *datafile_new_observation(datafile *data)
 {
-    size_t star_size = data->num_targets*sizeof(double);
-    size_t noise_size = data->num_targets*sizeof(double);
-    size_t sky_size = data->num_targets*sizeof(double);
-    size_t pos_size = data->num_targets*sizeof(double2);
-    size_t fwhm_size = data->num_targets*sizeof(double);
+    size_t star_size = data->target_count*sizeof(double);
+    size_t noise_size = data->target_count*sizeof(double);
+    size_t sky_size = data->target_count*sizeof(double);
+    size_t pos_size = data->target_count*sizeof(double2);
+    size_t fwhm_size = data->target_count*sizeof(double);
     size_t s = sizeof(struct observation) - 1 + star_size + noise_size + sky_size + pos_size + fwhm_size;
 
     struct observation *obs = calloc(1, s);
@@ -279,10 +276,10 @@ struct observation *datafile_new_observation(datafile *data)
         return NULL;
 
     obs->star = (double *)obs->data;
-    obs->noise = (double *)(obs->star + data->num_targets);
-    obs->sky = (double *)(obs->noise + data->num_targets);
-    obs->pos = (double2 *)(obs->sky + data->num_targets);
-    obs->fwhm = (double *)(obs->pos + data->num_targets);
+    obs->noise = (double *)(obs->star + data->target_count);
+    obs->sky = (double *)(obs->noise + data->target_count);
+    obs->pos = (double2 *)(obs->sky + data->target_count);
+    obs->fwhm = (double *)(obs->pos + data->target_count);
 
     return obs;
 }
@@ -360,7 +357,7 @@ int datafile_save(datafile *data, char *filename)
     }
 
     fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale]\n");
-    for (size_t i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
         fprintf(out, "# Target: (%6.2f, %6.2f, %6.2f, %6.2f, %6.2f) [%.2f]\n",
                 data->targets[i].x, data->targets[i].y,
                 data->targets[i].r, data->targets[i].s1, data->targets[i].s2,
@@ -373,12 +370,12 @@ int datafile_save(datafile *data, char *filename)
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
     fprintf(out, "### Filename,          Time  ");
-    for (size_t i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
         fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
     fprintf(out, "\n");
 
     fprintf(out, "###                     (s)  ");
-    for (size_t i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
         fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px)");
     fprintf(out, "\n");
 
@@ -387,7 +384,7 @@ int datafile_save(datafile *data, char *filename)
     {
         fprintf(out, "%s ", obs->filename);
         fprintf(out, "%9.3f ", obs->time);
-        for (size_t i = 0; i < data->num_targets; i++)
+        for (size_t i = 0; i < data->target_count; i++)
         {
             fprintf(out, "%10.2f ", obs->star[i]);
             fprintf(out, "%6.2f ", obs->noise[i]);
@@ -415,12 +412,12 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     if (!p)
         return NULL;
 
-    p->target_time = calloc(data->obs_count*data->num_targets, sizeof(double));
-    p->target_intensity = calloc(data->obs_count*data->num_targets, sizeof(double));
-    p->target_noise = calloc(data->obs_count*data->num_targets, sizeof(double));
+    p->target_time = calloc(data->obs_count*data->target_count, sizeof(double));
+    p->target_intensity = calloc(data->obs_count*data->target_count, sizeof(double));
+    p->target_noise = calloc(data->obs_count*data->target_count, sizeof(double));
 
-    p->target_count = calloc(data->num_targets, sizeof(size_t));
-    p->target_snr = calloc(data->num_targets, sizeof(double));
+    p->target_count = calloc(data->target_count, sizeof(size_t));
+    p->target_snr = calloc(data->target_count, sizeof(double));
 
     p->raw_time = calloc(data->obs_count, sizeof(double));
     p->sky = calloc(data->obs_count, sizeof(double));
@@ -452,7 +449,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     // Parse raw data
     //
 
-    for (size_t i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
     {
         p->target_count[i] = 0;
         p->target_snr[i] = 0;
@@ -476,7 +473,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         double comparison_intensity = 0;
         double comparison_noise = 0;
 
-        for (size_t j = 0; j < data->num_targets; j++)
+        for (size_t j = 0; j < data->target_count; j++)
         {
             if (isnan(obs->star[j]) || isnan(obs->noise[j]) || isnan(obs->fwhm[j]))
                 continue;
@@ -515,7 +512,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
 
         // Cannot calculate ratio if we've lost one or more targets
         // (each contributes a factor proportional to its relative intensity)
-        if (target_count != data->num_targets)
+        if (target_count != data->target_count)
             continue;
 
         bool skip = false;
@@ -538,7 +535,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         p->filtered_count++;
     }
 
-    for (size_t i = 0; i < data->num_targets; i++)
+    for (size_t i = 0; i < data->target_count; i++)
         p->target_snr[i] /= p->target_count[i];
 
     p->ratio_mean /= p->filtered_count;

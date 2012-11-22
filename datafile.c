@@ -323,7 +323,7 @@ int datafile_save(datafile *data, char *filename)
         return error("Error opening file %s", filename);
 
     // Write the file
-    fprintf(out, "# Puoko-nui Online reduction output\n");
+    fprintf(out, "### tsreduce reduction data\n");
     if (data->version)
         fprintf(out, "# Version: %d\n", data->version);
     if (data->frame_dir)
@@ -358,15 +358,19 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
 
+    fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale]\n");
     for (size_t i = 0; i < data->num_targets; i++)
         fprintf(out, "# Target: (%f, %f, %f, %f, %f) [1.0]\n",
                 data->targets[i].x, data->targets[i].y,
                 data->targets[i].r, data->targets[i].s1, data->targets[i].s2);
 
+    if (data->num_blocked_ranges > 0)
+        fprintf(out, "### (Start (s), End (s))\n");
     for (size_t i = 0; i < data->num_blocked_ranges; i++)
         fprintf(out, "# BlockRange: (%f, %f)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
+    fprintf(out, "### Filename, Start Time (s), [Star (ADU/s), Noise (ADU/s), Sky (ADU/s), x (px), y (px), FWHM (px)] x %u\n", data->num_targets);
     struct observation *obs;
     for (obs = data->obs_start; obs; obs = obs->next)
     {

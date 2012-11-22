@@ -337,17 +337,17 @@ int datafile_save(datafile *data, char *filename)
     if (data->plot_fit_degree != PLOT_FIT_DEGREE_DEFAULT)
         fprintf(out, "# PlotFitDegree: %d\n", data->plot_fit_degree);
     if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)
-        fprintf(out, "# PlotMaxRaw: %f\n", data->plot_max_raw);
+        fprintf(out, "# PlotMaxRaw: %g\n", data->plot_max_raw);
     if (data->plot_min_uhz != PLOT_MIN_UHZ_DEFAULT)
-        fprintf(out, "# PlotMinUhz: %f\n", data->plot_min_uhz);
+        fprintf(out, "# PlotMinUhz: %g\n", data->plot_min_uhz);
     if (data->plot_max_uhz != PLOT_MAX_UHZ_DEFAULT)
-        fprintf(out, "# PlotMaxUhz: %f\n", data->plot_max_uhz);
+        fprintf(out, "# PlotMaxUhz: %g\n", data->plot_max_uhz);
     if (data->ccd_gain != CCD_GAIN_DEFAULT)
-        fprintf(out, "# CCDGain: %f\n", data->ccd_gain);
+        fprintf(out, "# CCDGain: %g\n", data->ccd_gain);
     if (data->ccd_readnoise != CCD_READNOISE_DEFAULT)
-        fprintf(out, "# CCDReadNoise: %f\n", data->ccd_readnoise);
+        fprintf(out, "# CCDReadNoise: %g\n", data->ccd_readnoise);
     if (data->ccd_platescale != CCD_PLATESCALE_DEFAULT)
-        fprintf(out, "# CCDPlateScale: %f\n", data->ccd_platescale);
+        fprintf(out, "# CCDPlateScale: %g\n", data->ccd_platescale);
     if (data->show_error_bars != SHOW_ERROR_BARS_DEFAULT)
         fprintf(out, "# ShowErrorBars: %d\n", data->show_error_bars);
 
@@ -367,7 +367,7 @@ int datafile_save(datafile *data, char *filename)
     if (data->num_blocked_ranges > 0)
         fprintf(out, "### (Start (s), End (s))\n");
     for (size_t i = 0; i < data->num_blocked_ranges; i++)
-        fprintf(out, "# BlockRange: (%f, %f)\n",
+        fprintf(out, "# BlockRange: (%g, %g)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
     fprintf(out, "### Filename, Start Time (s), [Star (ADU/s), Noise (ADU/s), Sky (ADU/s), x (px), y (px), FWHM (px)] x %u\n", data->num_targets);

@@ -498,9 +498,6 @@ int update_reduction(char *dataPath)
     if (data == NULL)
         return error("Error opening data file");
 
-    if (data->version < 3)
-        error_jump(data_error, ret, "Invalid data file version `%d'. Requires version >= 3", data->version);
-
     char *datadir = getcwd(NULL, 0);
     if (chdir(data->frame_dir))
         error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
@@ -612,14 +609,11 @@ int update_reduction(char *dataPath)
                 intensity = intensity/exptime - sky;
                 noise /= exptime;
 
-                if (data->version >= 6)
-                {
-                    double fwhm = estimate_fwhm(frame, xy, bg, t.s1);
-                    if (fwhm < 1)
-                        failed = true;
+                double fwhm = estimate_fwhm(frame, xy, bg, t.s1);
+                if (fwhm < 1)
+                    failed = true;
 
-                    mean_fwhm += fwhm / data->num_targets;
-                }
+                mean_fwhm += fwhm / data->num_targets;
             }
             else
                 failed = true;

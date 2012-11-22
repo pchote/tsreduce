@@ -14,6 +14,9 @@
 #include "fit.h"
 #include "helpers.h"
 
+#define CUR_DATAFILE_VERSION 6
+#define MIN_DATAFILE_VERSION 6
+
 #define PLOT_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 0
 #define PLOT_NUM_UHZ_DEFAULT 1000
@@ -32,7 +35,7 @@ extern int verbosity;
 datafile *datafile_alloc()
 {
     datafile *dp = calloc(1, sizeof(datafile));
-    dp->version = 6;
+    dp->version = CUR_DATAFILE_VERSION;
     dp->plot_fit_degree = PLOT_FIT_DEGREE_DEFAULT;
     dp->plot_max_raw = PLOT_MAX_RAW_DEFAULT;
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
@@ -110,34 +113,30 @@ datafile* datafile_load(char *filename)
         else if (!strncmp(linebuf,"# Target:", 9) &&
                  dp->num_targets < target_count)
         {
-            if (dp->version == 3)
-            {
-                sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf)\n",
-                       &dp->targets[dp->num_targets].x,
-                       &dp->targets[dp->num_targets].y,
-                       &dp->targets[dp->num_targets].r,
-                       &dp->targets[dp->num_targets].s1,
-                       &dp->targets[dp->num_targets].s2);
-                dp->targets[dp->num_targets].plot_scale = 1;
-                dp->num_targets++;
-            }
-            else
-            {
-                sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf]\n",
-                       &dp->targets[dp->num_targets].x,
-                       &dp->targets[dp->num_targets].y,
-                       &dp->targets[dp->num_targets].r,
-                       &dp->targets[dp->num_targets].s1,
-                       &dp->targets[dp->num_targets].s2,
-                       &dp->targets[dp->num_targets].plot_scale);
-                dp->num_targets++;
-            }
+            sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf]\n",
+                   &dp->targets[dp->num_targets].x,
+                   &dp->targets[dp->num_targets].y,
+                   &dp->targets[dp->num_targets].r,
+                   &dp->targets[dp->num_targets].s1,
+                   &dp->targets[dp->num_targets].s2,
+                   &dp->targets[dp->num_targets].plot_scale);
+            dp->num_targets++;
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
             dp->reference_time = parse_time(linebuf+17);
 
         else if (!strncmp(linebuf,"# Version:", 10))
+        {
             sscanf(linebuf, "# Version: %d\n", &dp->version);
+            if (dp->version < MIN_DATAFILE_VERSION)
+            {
+                fprintf(stderr, "Obsolete file format (Version %d).\n", dp->version);
+                fprintf(stderr, "Re-reduce data in Version %d or later to continue.\n", MIN_DATAFILE_VERSION);
+
+                // TODO Cleanup resources properly
+                return NULL;
+            }
+        }
         else if (!strncmp(linebuf,"# PlotFitDegree:", 16))
             sscanf(linebuf, "# PlotFitDegree: %d\n", &dp->plot_fit_degree);
         else if (!strncmp(linebuf,"# PlotMaxRaw:", 13))
@@ -228,19 +227,13 @@ datafile* datafile_load(char *filename)
             goto parse_error;
         obs->ratio = atof(token);
 
-        if (dp->version >= 5)
-        {
-            if (!(token = strtok(NULL, " ")))
-                goto parse_error;
-            obs->ratio_noise = atof(token);
-        }
+        if (!(token = strtok(NULL, " ")))
+            goto parse_error;
+        obs->ratio_noise = atof(token);
 
-        if (dp->version >= 6)
-        {
-            if (!(token = strtok(NULL, " ")))
-                goto parse_error;
-            obs->fwhm = atof(token);
-        }
+        if (!(token = strtok(NULL, " ")))
+            goto parse_error;
+        obs->fwhm = atof(token);
 
         // Filename
         if (!(token = strtok(NULL, " ")))
@@ -393,11 +386,8 @@ int datafile_save(datafile *data, char *filename)
         }
 
         fprintf(out, "%.5e ", obs->ratio);
-        if (data->version >= 5)
-            fprintf(out, "%.5e ", obs->ratio_noise);
-
-        if (data->version >= 6)
-            fprintf(out, "%.3f ", obs->fwhm*data->ccd_platescale);
+        fprintf(out, "%.5e ", obs->ratio_noise);
+        fprintf(out, "%.3f ", obs->fwhm*data->ccd_platescale);
 
         fprintf(out, "%s\n", obs->filename);
     }
@@ -448,8 +438,6 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     // Parse raw data
     //
 
-    p->has_noise = (data->version >= 5 && data->dark_template);
-    p->has_fwhm = (data->version >= 6);
     p->raw_count = data->obs_count;
     p->scaled_raw_max = 0;
     p->filtered_count = 0;
@@ -494,29 +482,21 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         p->ratio[p->filtered_count] = obs->ratio;
         p->ratio_mean += obs->ratio;
 
-        // Read noise and fwhm from data file if available
-        if (p->has_noise)
-        {
-            p->ratio_noise[p->filtered_count] = obs->ratio_noise;
-            total_ratio += p->ratio[p->filtered_count];
+        p->ratio_noise[p->filtered_count] = obs->ratio_noise;
+        total_ratio += p->ratio[p->filtered_count];
 
-            // TODO: This is wrong - should add in quadrature(?)
-            total_ratio_noise += p->ratio_noise[p->filtered_count];
-        }
+        // TODO: This is wrong - should add in quadrature(?)
+        total_ratio_noise += p->ratio_noise[p->filtered_count];
 
-        if (p->has_fwhm)
-        {
-            p->fwhm[p->filtered_count] = obs->fwhm;
-            p->fwhm_mean += obs->fwhm;
-        }
+        p->fwhm[p->filtered_count] = obs->fwhm;
+        p->fwhm_mean += obs->fwhm;
+
         p->filtered_count++;
     }
 
     p->ratio_mean /= p->filtered_count;
     p->fwhm_mean /= p->filtered_count;
-
-    if (p->has_noise)
-        p->ratio_snr = total_ratio/total_ratio_noise;
+    p->ratio_snr = total_ratio/total_ratio_noise;
 
     // Ratio and fwhm standard deviation
     p->ratio_std = 0;
@@ -538,7 +518,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         return NULL;
     }
 
-    if (fit_polynomial(p->time, p->ratio, p->has_noise ? p->ratio_noise : NULL, p->filtered_count, p->fit_coeffs, data->plot_fit_degree))
+    if (fit_polynomial(p->time, p->ratio, p->ratio_noise, p->filtered_count, p->fit_coeffs, data->plot_fit_degree))
     {
         datafile_free_photometry(p);
         error("Polynomial fit failed");
@@ -562,12 +542,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         }
         p->mma[i] = 1000*(p->ratio[i] - p->ratio_fit[i])/p->ratio_fit[i];
 
-        if (p->has_noise)
-        {
-            double numer_error = fabs(p->ratio_noise[i]/(p->ratio[i] - p->ratio_fit[i]));
-            double denom_error = fabs(p->ratio_noise[i]/p->ratio[i]);
-            p->mma_noise[i] = (numer_error + denom_error)*fabs(p->mma[i]);
-        }
+        double numer_error = fabs(p->ratio_noise[i]/(p->ratio[i] - p->ratio_fit[i]));
+        double denom_error = fabs(p->ratio_noise[i]/p->ratio[i]);
+        p->mma_noise[i] = (numer_error + denom_error)*fabs(p->mma[i]);
 
         p->mma_mean += p->mma[i];
     }

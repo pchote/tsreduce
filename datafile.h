@@ -71,9 +71,6 @@ typedef struct
 
 struct photometry_data
 {
-    bool has_noise;
-    bool has_fwhm;
-
     double scaled_raw_max;
     double ratio_snr;
     double ratio_mean;

@@ -434,7 +434,6 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     //
     cast_double_array_to_float(pd->time, pd->filtered_count);
 
-    if (pd->has_fwhm)
     {
         double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
         double max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
@@ -477,7 +476,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsch(1.0);
 
         cpgswin(min_seconds, max_seconds, min_ratio, max_ratio);
-        if (pd->has_noise && data->show_error_bars)
+        if (data->show_error_bars)
             cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->ratio, (float *)pd->ratio_noise, 0.0);
         else
             cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->ratio, 229);
@@ -512,7 +511,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsch(1.0);
         
         cpgswin(min_seconds, max_seconds, min_mma, max_mma);
-        if (pd->has_noise && data->show_error_bars)
+        if (data->show_error_bars)
             cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->mma, (float *)pd->mma_noise, 0.0);
         else
             cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->mma, 229);
@@ -527,17 +526,12 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsci(1);
         cpgsch(0.9);
 
-        if (pd->has_noise)
-        {
-            snprintf(label, 32, "Ratio SNR: %.2f", pd->ratio_snr);
-            cpgptxt(0.95, 0, 0, 1.0, label);
-        }
+        snprintf(label, 32, "Ratio SNR: %.2f", pd->ratio_snr);
+        cpgptxt(0.95, 0, 0, 1.0, label);
 
-        if (pd->has_fwhm)
-        {
-            snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean, pd->fwhm_mean/data->ccd_platescale);
-            cpgptxt(0.05, 0, 0, 0.0, label);
-        }
+        snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean, pd->fwhm_mean/data->ccd_platescale);
+        cpgptxt(0.05, 0, 0, 0.0, label);
+
         cpgsch(1.0);
     }
     cpgend();
@@ -662,10 +656,6 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
         return error("Error opening data file");
 
     datafile_discard_observations(data);
-
-    // Force at least version 5 to include noise calculation
-    if (data->version < 5)
-        data->version = 5;
 
     char *dir = getcwd(NULL, 0);
     // Create and update a datafile for each aperture

@@ -444,7 +444,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.7);
-        cpgswin(min_time, max_time, min_fwhm, max_fwhm);
+        cpgswin(min_time, max_time, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
         cpgbox("cst", 1, 4, "bcstnv", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_fwhm, max_fwhm);
         cpgbox("bst", 0, 0, "0", 0, 0);
@@ -571,7 +571,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         snprintf(label, 32, "Ratio SNR: %.2f", pd->ratio_snr);
         cpgptxt(0.95, 0, 0, 1.0, label);
 
-        snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean, pd->fwhm_mean/data->ccd_platescale);
+        snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
         cpgptxt(0.05, 0, 0, 0.0, label);
 
         cpgsch(1.0);

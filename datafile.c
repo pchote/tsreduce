@@ -408,7 +408,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->target_time = calloc(data->obs_count*data->num_targets, sizeof(double));
     p->target_intensity = calloc(data->obs_count*data->num_targets, sizeof(double));
     p->target_noise = calloc(data->obs_count*data->num_targets, sizeof(double));
+
     p->target_count = calloc(data->num_targets, sizeof(size_t));
+    p->target_snr = calloc(data->num_targets, sizeof(double));
 
     p->raw_time = calloc(data->obs_count, sizeof(double));
     p->sky = calloc(data->obs_count, sizeof(double));
@@ -424,7 +426,8 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->fit_coeffs_count = data->ratio_fit_degree + 1;
     p->fit_coeffs = calloc(p->fit_coeffs_count, sizeof(double));
 
-    if (!p->target_time || !p->target_intensity || !p->target_noise || !p->target_count ||
+    if (!p->target_time || !p->target_intensity || !p->target_noise ||
+        !p->target_count || !p->target_snr ||
         !p->raw_time || !p->sky || !p->fwhm ||
         !p->time || !p->ratio || !p->ratio_noise ||
         !p->ratio_fit || !p->mma || !p->mma_noise ||
@@ -440,14 +443,15 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     //
 
     for (size_t i = 0; i < data->num_targets; i++)
+    {
         p->target_count[i] = 0;
+        p->target_snr[i] = 0;
+    }
 
     p->scaled_target_max = 0;
     p->filtered_count = 0;
     p->ratio_mean = 0;
     p->fwhm_mean = 0;
-
-    double total_ratio_noise = 0;
 
     // External code may modify obs_count to restrict data processing,
     // so both checks are required
@@ -471,11 +475,14 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
             p->target_time[k] = obs->time;
             p->target_intensity[k] = obs->star[j];
             p->target_noise[k] = obs->noise[j];
+
             p->target_count[j]++;
+            p->target_snr[j] += obs->star[j] / obs->noise[j];
 
             p->sky[p->raw_count] += obs->sky[j];
             p->fwhm[p->raw_count] += obs->fwhm[j];
             target_count++;
+
 
             if (j > 0)
             {
@@ -517,14 +524,14 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         p->ratio_mean += p->ratio[p->filtered_count];
 
         p->ratio_noise[p->filtered_count] = (obs->noise[0]/obs->star[0] + comparison_noise/comparison_intensity)*p->ratio[p->filtered_count];
-        total_ratio_noise += p->ratio_noise[p->filtered_count];
 
         p->filtered_count++;
     }
 
-    p->ratio_snr = p->ratio_mean/total_ratio_noise;
-    p->ratio_mean /= p->filtered_count;
+    for (size_t i = 0; i < data->num_targets; i++)
+        p->target_snr[i] /= p->target_count[i];
 
+    p->ratio_mean /= p->filtered_count;
     p->fwhm_mean /= p->raw_count;
 
     // Ratio and fwhm standard deviation
@@ -615,7 +622,9 @@ void datafile_free_photometry(struct photometry_data *p)
     free(p->target_time);
     free(p->target_intensity);
     free(p->target_noise);
+
     free(p->target_count);
+    free(p->target_snr);
 
     free(p->raw_time);
     free(p->sky);

@@ -568,7 +568,6 @@ int update_reduction(char *dataPath)
         // Observation start time
         obs->time = starttime;
 
-
         // Process frame
         double nan = sqrt(-1);
         for (int i = 0; i < data->num_targets; i++)
@@ -591,6 +590,7 @@ int update_reduction(char *dataPath)
             obs->pos[i] = (double2){0,0};
             obs->fwhm[i] = 0;
 
+            bool failed = false;
             if (!center_aperture(t, frame, &obs->pos[i]))
             {
                 double bg = 0;
@@ -607,9 +607,12 @@ int update_reduction(char *dataPath)
 
                 obs->fwhm[i] = estimate_fwhm(frame, obs->pos[i], bg, t.s1);
                 if (obs->fwhm[i] < 1)
-                    obs->fwhm[i] = nan;
+                    failed = true;
             }
             else
+                failed = true;
+
+            if (failed)
             {
                 obs->star[i] = nan;
                 obs->noise[i] = nan;

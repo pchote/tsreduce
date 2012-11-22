@@ -366,7 +366,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cast_double_array_to_float(pd->fwhm, pd->raw_count);
     {
         double min_raw = 0;
-        double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.2*pd->scaled_target_max;
+        double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.3*pd->scaled_target_max;
         int raw_exp = (int)log10(max_raw);
         double raw_scale = 1.0/pow(10, raw_exp);
 
@@ -437,7 +437,15 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
                 else
                     snprintf(label, label_len, "%g \\x Comparison %zu", data->targets[j].plot_scale, j);
             }
+
             cpgptxt(j+0.5, 0.5, 0, 0.5, label);
+            if (j < data->num_targets)
+            {
+                snprintf(label, label_len, "SNR: %.0f", pd->target_snr[j]);
+                cpgsch(0.8);
+                cpgptxt(j+0.5, 0.25, 0, 0.5, label);
+                cpgsch(1.0);
+            }
         }
         cpgsci(1);
     }
@@ -571,16 +579,13 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     }
 
     //
-    // Plot mean FWHM / SNR labels
+    // Plot mean FWHM label
     //
     {
         cpgsvp(0.1, 0.9, 0.015, 0.05);
         cpgswin(0, 1, 0, 1);
         cpgsci(1);
         cpgsch(0.9);
-
-        snprintf(label, 32, "Ratio SNR: %.2f", pd->ratio_snr);
-        cpgptxt(0.95, 0, 0, 1.0, label);
 
         snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
         cpgptxt(0.05, 0, 0, 0.0, label);

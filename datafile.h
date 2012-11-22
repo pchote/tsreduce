@@ -73,7 +73,6 @@ typedef struct
 struct photometry_data
 {
     double scaled_target_max;
-    double ratio_snr;
     double ratio_mean;
     double ratio_std;
     double mma_mean;
@@ -85,7 +84,9 @@ struct photometry_data
     double *target_time;
     double *target_intensity;
     double *target_noise;
+
     size_t *target_count;
+    double *target_snr;
 
     // Data averaged over all raw photometry
     double *raw_time;

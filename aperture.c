@@ -73,14 +73,14 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
 
 
 // Iterate center_aperture to converge on the best aperture position
-int center_aperture(target r, framedata *frame, double2 *center)
+int center_aperture(aperture r, framedata *frame, double2 *center)
 {
     // Allow up to 20 iterations to center
     double2 pos[20];
     double move;
     int n = 0;
 
-    // Set initial center from the given target
+    // Set initial center from the given aperture
     pos[0].x = r.x;
     pos[0].y = r.y;
 
@@ -138,7 +138,7 @@ int center_aperture(target r, framedata *frame, double2 *center)
 // Calculate the mode intensity and standard deviation within an annulus
 // Pixels brighter than 10 x standard deviation are discarded
 // This provides a robust method for calculating the background sky intensity and uncertainty
-int calculate_background(target r, framedata *frame, double *sky_mode, double *sky_std_dev)
+int calculate_background(aperture r, framedata *frame, double *sky_mode, double *sky_std_dev)
 {
     int minx = (int)fmax(floor(r.x - r.s2), 0);
     int maxx = (int)fmin(ceil(r.x + r.s2), frame->cols-1);
@@ -146,7 +146,7 @@ int calculate_background(target r, framedata *frame, double *sky_mode, double *s
     int maxy = (int)fmin(ceil(r.y + r.s2), frame->rows-1);
 
     // Copy pixels into a flat list that can be sorted
-    // Allocate enough space to store the entire target region, but only copy pixels
+    // Allocate enough space to store the entire aperture region, but only copy pixels
     // within the annulus.
     double *data = (double *)malloc((maxy - miny + 1)*(maxx - minx + 1)*sizeof(double));
     if (data == NULL)

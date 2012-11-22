@@ -61,7 +61,7 @@ int display_tracer(char *dataPath)
     for (size_t i = 0; i < data->target_count; i++)
     {
         double2 xy = data->obs_end->pos[i];
-        target *t = &data->targets[i].aperture;
+        aperture *t = &data->targets[i].aperture;
         snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t->r);
         ts_exec_write(command, NULL, 0);
 
@@ -128,14 +128,16 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     if (targetIndex < 0 || targetIndex >= data->target_count)
         error_jump(process_error, ret, "Invalid target `%d' selected", targetIndex);
 
-    target t = data->targets[targetIndex].aperture;
+    aperture a = data->targets[targetIndex].aperture;
     double2 xy;
-    if (center_aperture(t, frame, &xy))
+    if (center_aperture(a, frame, &xy))
         error_jump(process_error, ret, "Aperture centering failed");
-    t.x = xy.x; t.y = xy.y;
+
+    a.x = xy.x;
+    a.y = xy.y;
 
     double sky_intensity, sky_std_dev;
-    if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
+    if (calculate_background(a, frame, &sky_intensity, &sky_std_dev))
         error_jump(process_error, ret, "Background calculation failed");
 
     // Calculation lives in its own scope to ensure jumping to the error handling is safe

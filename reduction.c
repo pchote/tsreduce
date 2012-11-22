@@ -472,12 +472,12 @@ int display_frame(char *data_path, char *frame_name)
     {
 
         double2 xy = obs->pos[i];
-        target t = data->targets[i].aperture;
-        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t.r);
+        aperture *a = &data->targets[i].aperture;
+        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, a->r);
         ts_exec_write(command, NULL, 0);
 
         snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #select=0}'",
-                 xy.x + 1, xy.y + 1, t.s1, t.s2);
+                 xy.x + 1, xy.y + 1, a->s1, a->s2);
         ts_exec_write(command, NULL, 0);
     }
 
@@ -574,14 +574,14 @@ int update_reduction(char *dataPath)
         {
             // Use the aperture position from the previous frame
             // as a starting point if it is valid
-            target t = data->targets[i].aperture;
+            aperture a = data->targets[i].aperture;
             if (data->obs_end)
             {
                 double2 last = data->obs_end->pos[i];
                 if (last.x > 0 && last.x < frame->cols)
-                    t.x = last.x;
+                    a.x = last.x;
                 if (last.y > 0 && last.y < frame->rows)
-                    t.y = last.y;
+                    a.y = last.y;
             }
 
             obs->star[i] = 0;
@@ -591,21 +591,21 @@ int update_reduction(char *dataPath)
             obs->fwhm[i] = 0;
 
             bool failed = false;
-            if (!center_aperture(t, frame, &obs->pos[i]))
+            if (!center_aperture(a, frame, &obs->pos[i]))
             {
                 double bg = 0;
-                if (calculate_background(t, frame, &bg, NULL))
+                if (calculate_background(a, frame, &bg, NULL))
                     bg = 0;
 
                 // Integrate sky over the aperture and normalize per unit time
-                obs->sky[i] = bg*M_PI*t.r*t.r / exptime;
+                obs->sky[i] = bg*M_PI*a.r*a.r / exptime;
 
-                integrate_aperture_and_noise(obs->pos[i], t.r, frame, dark, readnoise, gain, &obs->star[i], &obs->noise[i]);
+                integrate_aperture_and_noise(obs->pos[i], a.r, frame, dark, readnoise, gain, &obs->star[i], &obs->noise[i]);
 
                 obs->star[i] = obs->star[i]/exptime - obs->sky[i];
                 obs->noise[i] /= exptime;
 
-                obs->fwhm[i] = estimate_fwhm(frame, obs->pos[i], bg, t.s1);
+                obs->fwhm[i] = estimate_fwhm(frame, obs->pos[i], bg, a.s1);
                 if (obs->fwhm[i] < 1)
                     failed = true;
             }
@@ -953,31 +953,31 @@ int create_reduction_file(char *outname)
             }
 
             // Read aperture coords
-            target t;
-            sscanf(cur, "annulus(%lf,%lf,%lf,%lf)", &t.x, &t.y, &t.s1, &t.s2);
+            aperture a;
+            sscanf(cur, "annulus(%lf,%lf,%lf,%lf)", &a.x, &a.y, &a.s1, &a.s2);
 
             // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
-            t.x -= 1;
-            t.y -= 1;
+            a.x -= 1;
+            a.y -= 1;
 
             // Estimate initial aperture size as inner sky radius
-            t.r = t.s1;
+            a.r = a.s1;
 
             if (verbosity >= 1)
-                printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", t.x, t.y, t.r, t.s1, t.s2);
+                printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", a.x, a.y, a.r, a.s1, a.s2);
 
             double2 xy;
-            if (center_aperture(t, frame, &xy))
+            if (center_aperture(a, frame, &xy))
             {
                 printf("Centering failed to converge. Removing aperture.\n");
                 continue;
             }
 
-            t.x = xy.x;
-            t.y = xy.y;
+            a.x = xy.x;
+            a.y = xy.y;
 
             double sky_intensity, sky_std_dev;
-            if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
+            if (calculate_background(a, frame, &sky_intensity, &sky_std_dev))
             {
                 printf("Background calculation failed. Removing aperture.\n");
                 continue;
@@ -991,7 +991,7 @@ int create_reduction_file(char *outname)
                     // Estimate the radius where the star flux falls to 5 times the std. dev. of the background
                     double lastIntensity = 0;
                     double lastProfile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity;
-                    int maxRadius = (int)t.s2 + 1;
+                    int maxRadius = (int)a.s2 + 1;
                     for (int radius = 1; radius <= maxRadius; radius++)
                     {
                         double intensity = integrate_aperture(xy, radius, frame) - sky_intensity*M_PI*radius*radius;
@@ -999,8 +999,8 @@ int create_reduction_file(char *outname)
                         if (profile < 5*sky_std_dev)
                         {
                             // Linear interpolate radii to estimate the radius that gives 5*stddev
-                            t.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
-                            largest_aperture = fmax(largest_aperture, t.r);
+                            a.r = radius - 1 + (5*sky_std_dev - lastProfile) / (profile - lastProfile);
+                            largest_aperture = fmax(largest_aperture, a.r);
                             break;
                         }
                         lastIntensity = intensity;
@@ -1010,21 +1010,21 @@ int create_reduction_file(char *outname)
                 }
                 case 2: // 3*FWHM
                 {
-                    double fwhm = estimate_fwhm(frame, xy, sky_intensity, t.s1);
-                    t.r = 3*fwhm/2;
-                    largest_aperture = fmax(largest_aperture, t.r);
+                    double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
+                    a.r = 3*fwhm/2;
+                    largest_aperture = fmax(largest_aperture, a.r);
 
                     break;
                 }
                 case 3:
                 default:
-                    t.r = aperture_size;
+                    a.r = aperture_size;
                     largest_aperture = aperture_size;
                     break;
             }
 
             // Set target parameters
-            data->targets[data->target_count].aperture = t;
+            data->targets[data->target_count].aperture = a;
             data->targets[data->target_count].scale = 1.0;
             data->target_count++;
         }
@@ -1041,7 +1041,7 @@ int create_reduction_file(char *outname)
 
         for (size_t i = 0; i < data->target_count; i++)
         {
-            target *t = &data->targets[i].aperture;
+            aperture *t = &data->targets[i].aperture;
             double x = t->x + 1;
             double y = t->y + 1;
 
@@ -1143,65 +1143,68 @@ int update_preview(char *preview_filename, char *ds9_title)
     for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
     {
         // Read aperture coords
-        target t;
+        aperture a;
         int select = 1;
-        sscanf(cur, "annulus(%lf,%lf,%lf,%lf) # color=red select=%d", &t.x, &t.y, &t.s1, &t.s2, &select);
+        sscanf(cur, "annulus(%lf,%lf,%lf,%lf) # color=red select=%d", &a.x, &a.y, &a.s1, &a.s2, &select);
         if (!select)
             continue;
 
         // ds9 denotes the bottom-left pixel (1,1), tsreduce uses (0,0)
-        t.x -= 1;
-        t.y -= 1;
+        a.x -= 1;
+        a.y -= 1;
 
         // Estimate initial aperture size as inner sky radius
-        t.r = t.s1;
+        a.r = a.s1;
 
         double2 xy;
-        if (center_aperture(t, frame, &xy))
+        if (center_aperture(a, frame, &xy))
         {
             printf("Aperture converge failed. Removing target\n");
             continue;
         }
-        t.x = xy.x;
-        t.y = xy.y;
+        a.x = xy.x;
+        a.y = xy.y;
 
         double sky_intensity, sky_std_dev;
-        if (calculate_background(t, frame, &sky_intensity, &sky_std_dev))
+        if (calculate_background(a, frame, &sky_intensity, &sky_std_dev))
         {
             printf("Sky calculation failed. Removing target\n");
             continue;
         }
 
-        double fwhm = estimate_fwhm(frame, xy, sky_intensity, t.s1);
+        double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
         if (fwhm < 1)
         {
             printf("Invalid fwhm. Removing target\n");
             continue;
         }
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f}'", ds9_title, t.x + 1, t.y + 1, t.s1, t.s2);
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f}'",
+                 ds9_title, a.x + 1, a.y + 1, a.s1, a.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f #color=red select=0 background}'", ds9_title, t.x + 1, t.y + 1, t.s1, t.s2);
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f #color=red select=0 background}'",
+                 ds9_title, a.x + 1, a.y + 1, a.s1, a.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'", ds9_title, t.x + 1, t.y + 1, fwhm/2);
+        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'",
+                 ds9_title, a.x + 1, a.y + 1, fwhm/2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM: %.2f arcsec\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 10/zoom, fwhm*binning*plate_scale);
+                 ds9_title, a.x + 1, a.y + 1 - a.s2 - 10/zoom, fwhm*binning*plate_scale);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak: %.0f ADU/px\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity);
+                 ds9_title, a.x + 1, a.y + 1 - a.s2 - 25/zoom, frame->data[frame->cols*((int)xy.y) + (int)xy.x] - sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"BG: %.0f ADU/px\"}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 40/zoom, sky_intensity);
+                 ds9_title, a.x + 1, a.y + 1 - a.s2 - 40/zoom, sky_intensity);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{box %f %f %f %f #color=black select=0 width=%d}'",
-                 ds9_title, t.x + 1, t.y + 1 - t.s2 - 25/zoom, 115/zoom, 25/zoom, 25);
+                 ds9_title, a.x + 1, a.y + 1 - a.s2 - 25/zoom, 115/zoom, 25/zoom, 25);
         ts_exec_write(ds9_command_buf, NULL, 0);
     }
 

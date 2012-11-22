@@ -37,7 +37,7 @@ struct observation
 
 struct target_data
 {
-    target aperture;
+    aperture aperture;
     char *label;
     double scale;
 };

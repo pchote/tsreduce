@@ -357,9 +357,16 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     //
     // Plot raw data
     //
+    cast_double_array_to_float(pd->target_time, data->obs_count*data->num_targets);
+    cast_double_array_to_float(pd->target_intensity, data->obs_count*data->num_targets);
+    cast_double_array_to_float(pd->target_noise, data->obs_count*data->num_targets);
+
+    cast_double_array_to_float(pd->raw_time, pd->raw_count);
+    cast_double_array_to_float(pd->sky, pd->raw_count);
+    cast_double_array_to_float(pd->fwhm, pd->raw_count);
     {
         double min_raw = 0;
-        double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.2*pd->scaled_raw_max;
+        double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.2*pd->scaled_target_max;
         int raw_exp = (int)log10(max_raw);
         double raw_scale = 1.0/pow(10, raw_exp);
 
@@ -383,17 +390,23 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
         // Raw intensities
-        cast_double_array_to_float(pd->raw_time, pd->raw_count);
-        cast_double_array_to_float(pd->raw, pd->raw_count*data->num_targets);
         for (size_t j = 0; j < data->num_targets; j++)
         {
             cpgswin(min_seconds, max_seconds, min_raw, max_raw/data->targets[j].plot_scale);
             cpgsci(plot_colors[j%plot_colors_max]);
-            cpgpt(pd->raw_count, (float *)pd->raw_time, &((float *)pd->raw)[j*pd->raw_count], 229);
+
+            size_t k = j*data->obs_count;
+            float *time = &((float *)pd->target_time)[k];
+            float *intensity =  &((float *)pd->target_intensity)[k];
+            float *noise =  &((float *)pd->target_noise)[k];
+
+            if (data->plot_error_bars)
+                cpgerrb(6, pd->target_count[j], time, intensity, noise, 0.0);
+            else
+                cpgpt(pd->target_count[j], time, intensity, 229);
         }
 
         // Mean sky intensity
-        cast_double_array_to_float(pd->sky, pd->raw_count);
         cpgswin(min_seconds, max_seconds, min_raw, max_raw);
         cpgsci(15);
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->sky, 229);
@@ -432,12 +445,9 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     //
     // Plot FWHM
     //
-    cast_double_array_to_float(pd->time, pd->filtered_count);
-
     {
         double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
         double max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
-        cast_double_array_to_float(pd->fwhm, pd->filtered_count);
 
         cpgsvp(0.1, 0.9, 0.54, 0.67);
         cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
@@ -451,12 +461,13 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsch(1.0);
 
         cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
-        cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->fwhm, 229);
+        cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
     }
 
     //
     // Plot Ratio
     //
+    cast_double_array_to_float(pd->time, pd->filtered_count);
     {
         double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
         double max_ratio = pd->ratio_mean + 5*pd->ratio_std;

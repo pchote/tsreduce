@@ -401,13 +401,18 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     if (!data->obs_start)
         return NULL;
 
-    struct photometry_data *p = malloc(sizeof(struct photometry_data));
+    struct photometry_data *p = calloc(1, sizeof(struct photometry_data));
     if (!p)
         return NULL;
 
+    p->target_time = calloc(data->obs_count*data->num_targets, sizeof(double));
+    p->target_intensity = calloc(data->obs_count*data->num_targets, sizeof(double));
+    p->target_noise = calloc(data->obs_count*data->num_targets, sizeof(double));
+    p->target_count = calloc(data->num_targets, sizeof(size_t));
+
     p->raw_time = calloc(data->obs_count, sizeof(double));
-    p->raw = calloc(data->obs_count*data->num_targets, sizeof(double));
     p->sky = calloc(data->obs_count, sizeof(double));
+    p->fwhm = calloc(data->obs_count, sizeof(double));
 
     p->time = calloc(data->obs_count, sizeof(double));
     p->ratio = calloc(data->obs_count, sizeof(double));
@@ -416,15 +421,14 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->mma = calloc(data->obs_count, sizeof(double));
     p->mma_noise = calloc(data->obs_count, sizeof(double));
 
-    p->fwhm = calloc(data->obs_count, sizeof(double));
-
     p->fit_coeffs_count = data->ratio_fit_degree + 1;
     p->fit_coeffs = calloc(p->fit_coeffs_count, sizeof(double));
 
-    if (!p->raw_time || !p->raw || !p->sky ||
+    if (!p->target_time || !p->target_intensity || !p->target_noise || !p->target_count ||
+        !p->raw_time || !p->sky || !p->fwhm ||
         !p->time || !p->ratio || !p->ratio_noise ||
         !p->ratio_fit || !p->mma || !p->mma_noise ||
-        !p->fwhm || !p->fit_coeffs)
+        !p->fit_coeffs)
     {
         datafile_free_photometry(p);
         error("Allocation error");
@@ -435,8 +439,10 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     // Parse raw data
     //
 
-    p->raw_count = data->obs_count;
-    p->scaled_raw_max = 0;
+    for (size_t i = 0; i < data->num_targets; i++)
+        p->target_count[i] = 0;
+
+    p->scaled_target_max = 0;
     p->filtered_count = 0;
     p->ratio_mean = 0;
     p->fwhm_mean = 0;
@@ -448,69 +454,78 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     struct observation *obs = data->obs_start;
     for (size_t i = 0; obs && i < data->obs_count; obs = obs->next, i++)
     {
-        p->raw_time[i] = obs->time;
-        p->sky[i] = 0;
+        p->raw_time[p->raw_count] = obs->time;
+        p->sky[p->raw_count] = 0;
+        p->fwhm[p->raw_count] = 0;
+        size_t target_count = 0;
 
-        size_t comparison_count = 0;
         double comparison_intensity = 0;
         double comparison_noise = 0;
 
-        size_t fwhm_count = 0;
-        double fwhm = 0;
         for (size_t j = 0; j < data->num_targets; j++)
         {
-            p->raw[j*data->obs_count + i] = obs->star[j];
-            p->sky[i] += obs->sky[j]/data->num_targets;
+            if (isnan(obs->star[j]) || isnan(obs->noise[j]) || isnan(obs->fwhm[j]))
+                continue;
 
-            if (!isnan(obs->fwhm[j]))
-            {
-                fwhm += obs->fwhm[j];
-                fwhm_count++;
-            }
+            size_t k = j*data->obs_count + p->target_count[j];
+            p->target_time[k] = obs->time;
+            p->target_intensity[k] = obs->star[j];
+            p->target_noise[k] = obs->noise[j];
+            p->target_count[j]++;
 
-            if (j > 0 && !isnan(obs->star[j]) && !isnan(obs->noise[j]))
+            p->sky[p->raw_count] += obs->sky[j];
+            p->fwhm[p->raw_count] += obs->fwhm[j];
+            target_count++;
+
+            if (j > 0)
             {
                 comparison_intensity += obs->star[j];
                 comparison_noise += obs->noise[j];
-                comparison_count++;
             }
 
             double r = obs->star[j]*data->targets[j].plot_scale;
-            if (r > p->scaled_raw_max)
-                p->scaled_raw_max = r;
+            if (r > p->scaled_target_max)
+                p->scaled_target_max = r;
         }
 
-        // Filter bad observations
+        if (target_count > 0)
+        {
+            p->sky[p->raw_count] /= target_count;
+            p->fwhm[p->raw_count] /= target_count;
+            p->fwhm_mean += p->fwhm[p->raw_count];
+            p->raw_count++;
+        }
+
+        // Cannot calculate ratio if we've lost one or more targets
+        // (each contributes a factor proportional to its relative intensity)
+        if (target_count != data->num_targets)
+            continue;
+
         bool skip = false;
         for (size_t j = 0; j < data->num_blocked_ranges; j++)
-            if (p->raw_time[i] >= data->blocked_ranges[j].x && p->raw_time[i] <= data->blocked_ranges[j].y)
+            if (obs->time >= data->blocked_ranges[j].x && obs->time <= data->blocked_ranges[j].y)
             {
                 skip = true;
                 break;
             }
 
-        if (skip || isnan(obs->star[0]) || isnan(obs->noise[0]))
+        if (skip)
             continue;
 
         p->time[p->filtered_count] = obs->time;
-
-        // Normalize by number of comparison so things remain
-        // sensible if a star is lost off the frame
-        p->ratio[p->filtered_count] = obs->star[0] * comparison_count / comparison_intensity;
+        p->ratio[p->filtered_count] = obs->star[0] / comparison_intensity;
         p->ratio_mean += p->ratio[p->filtered_count];
 
         p->ratio_noise[p->filtered_count] = (obs->noise[0]/obs->star[0] + comparison_noise/comparison_intensity)*p->ratio[p->filtered_count];
         total_ratio_noise += p->ratio_noise[p->filtered_count];
-
-        p->fwhm[p->filtered_count] = (fwhm && fwhm_count) ? fwhm / fwhm_count : 0;
-        p->fwhm_mean += p->fwhm[p->filtered_count];
 
         p->filtered_count++;
     }
 
     p->ratio_snr = p->ratio_mean/total_ratio_noise;
     p->ratio_mean /= p->filtered_count;
-    p->fwhm_mean /= p->filtered_count;
+
+    p->fwhm_mean /= p->raw_count;
 
     // Ratio and fwhm standard deviation
     p->ratio_std = 0;
@@ -595,20 +610,26 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     return p;
 }
 
-void datafile_free_photometry(struct photometry_data *data)
+void datafile_free_photometry(struct photometry_data *p)
 {
-    free(data->raw_time);
-    free(data->raw);
-    free(data->sky);
-    free(data->time);
-    free(data->ratio);
-    free(data->ratio_noise);
-    free(data->ratio_fit);
-    free(data->mma);
-    free(data->mma_noise);
-    free(data->fwhm);
-    free(data->fit_coeffs);
-    free(data);
+    free(p->target_time);
+    free(p->target_intensity);
+    free(p->target_noise);
+    free(p->target_count);
+
+    free(p->raw_time);
+    free(p->sky);
+    free(p->fwhm);
+
+    free(p->time);
+    free(p->ratio);
+    free(p->ratio_noise);
+    free(p->ratio_fit);
+    free(p->mma);
+    free(p->mma_noise);
+    free(p->fit_coeffs);
+
+    free(p);
 }
 
 struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *pd)

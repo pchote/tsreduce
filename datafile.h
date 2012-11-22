@@ -72,7 +72,7 @@ typedef struct
 
 struct photometry_data
 {
-    double scaled_raw_max;
+    double scaled_target_max;
     double ratio_snr;
     double ratio_mean;
     double ratio_std;
@@ -82,9 +82,15 @@ struct photometry_data
     double fwhm_std;
 
     // Raw (unfiltered) photometry
+    double *target_time;
+    double *target_intensity;
+    double *target_noise;
+    size_t *target_count;
+
+    // Data averaged over all raw photometry
     double *raw_time;
-    double *raw;
     double *sky;
+    double *fwhm;
     size_t raw_count;
 
     // Processed photometry
@@ -95,7 +101,6 @@ struct photometry_data
     double *ratio_fit;
     double *mma;
     double *mma_noise;
-    double *fwhm;
     size_t filtered_count;
 
     // Polynomial fit coefficients to ratio

@@ -29,7 +29,6 @@ typedef struct
     double r;
     double s1;
     double s2;
-    double plot_scale;
 } target;
 
 int center_aperture(target r, framedata *frame, double2 *center);

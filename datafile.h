@@ -35,6 +35,13 @@ struct observation
     char data[1];
 };
 
+struct target_data
+{
+    target aperture;
+    char *label;
+    double scale;
+};
+
 typedef struct
 {
     int version;
@@ -42,7 +49,7 @@ typedef struct
     char *frame_pattern;
     char *dark_template;
     char *flat_template;
-    target *targets;
+    struct target_data *targets;
     size_t target_count;
     ts_time reference_time;
 

@@ -472,7 +472,7 @@ int display_frame(char *data_path, char *frame_name)
     {
 
         double2 xy = obs->pos[i];
-        target t = data->targets[i];
+        target t = data->targets[i].aperture;
         snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t.r);
         ts_exec_write(command, NULL, 0);
 
@@ -574,7 +574,7 @@ int update_reduction(char *dataPath)
         {
             // Use the aperture position from the previous frame
             // as a starting point if it is valid
-            target t = data->targets[i];
+            target t = data->targets[i].aperture;
             if (data->obs_end)
             {
                 double2 last = data->obs_end->pos[i];
@@ -934,7 +934,7 @@ int create_reduction_file(char *outname)
         // Parse the region definitions
         data->target_count = 0;
         size_t target_size = 5;
-        data->targets = malloc(target_size*sizeof(target));
+        data->targets = malloc(target_size*sizeof(struct target_data));
         double *sky = malloc(target_size*sizeof(double));
         if (!data->targets || !sky)
             error_jump(target_error, ret, "Target allocation error");
@@ -946,7 +946,7 @@ int create_reduction_file(char *outname)
             if (data->target_count >= target_size)
             {
                 target_size += 5;
-                data->targets = realloc(data->targets, target_size*sizeof(target));
+                data->targets = realloc(data->targets, target_size*sizeof(struct target_data));
                 sky = realloc(sky, target_size*sizeof(double));
                 if (!data->targets || !sky)
                     error_jump(target_error, ret, "Target allocation error");
@@ -1024,13 +1024,15 @@ int create_reduction_file(char *outname)
             }
 
             // Set target parameters
-            data->targets[data->target_count++] = t;
+            data->targets[data->target_count].aperture = t;
+            data->targets[data->target_count].scale = 1.0;
+            data->target_count++;
         }
         free(ds9buf);
 
         // Set aperture radii to the same size, equal to the largest calculated above
         for (size_t i = 0; i < data->target_count; i++)
-            data->targets[i].r = largest_aperture;
+            data->targets[i].aperture.r = largest_aperture;
 
         printf("Aperture radius: %fpx\n", largest_aperture);
 
@@ -1039,16 +1041,14 @@ int create_reduction_file(char *outname)
 
         for (size_t i = 0; i < data->target_count; i++)
         {
-            double x = data->targets[i].x + 1;
-            double y = data->targets[i].y + 1;
-            double r = data->targets[i].r;
-            double s1 = data->targets[i].s1;
-            double s2 = data->targets[i].s2;
+            target *t = &data->targets[i].aperture;
+            double x = t->x + 1;
+            double y = t->y + 1;
 
             char command[1024];
-            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", x, y, r);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", x, y, t->r);
             ts_exec_write(command, NULL, 0);
-            snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #background select=0}'", x, y, s1, s2);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #background select=0}'", x, y, t->s1, t->s2);
             ts_exec_write(command, NULL, 0);
 
             char msg[16];
@@ -1057,15 +1057,15 @@ int create_reduction_file(char *outname)
             else
                 snprintf(msg, 16, "Comparison %zu", i);
 
-            double intensity = frame->data[frame->cols*((size_t)data->targets[i].y) + (size_t)data->targets[i].x] - sky[i];
+            double intensity = frame->data[frame->cols*((size_t)t->y) + (size_t)t->x] - sky[i];
 
-            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - s2 - 10/zoom, msg);
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - t->s2 - 10/zoom, msg);
             ts_exec_write(command, NULL, 0);
-            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%.0f ADU\"}'", x, y - s2 - 25/zoom, intensity);
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%.0f ADU\"}'", x, y - t->s2 - 25/zoom, intensity);
             ts_exec_write(command, NULL, 0);
 
             snprintf(command, 1024, "xpaset -p tsreduce regions command '{box %f %f %f %f #color=black select=0 width=%d}'",
-                     x, y - s2 - 17.5/zoom, 115/zoom, 17.5/zoom, 18);
+                     x, y - t->s2 - 17.5/zoom, 115/zoom, 17.5/zoom, 18);
             ts_exec_write(command, NULL, 0);
         }
         ts_exec_write("xpaset -p tsreduce update now", NULL, 0);

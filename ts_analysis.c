@@ -61,12 +61,12 @@ int display_tracer(char *dataPath)
     for (size_t i = 0; i < data->target_count; i++)
     {
         double2 xy = data->obs_end->pos[i];
-        target t = data->targets[i];
-        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t.r);
+        target *t = &data->targets[i].aperture;
+        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t->r);
         ts_exec_write(command, NULL, 0);
 
         snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #select=0}'",
-                 xy.x + 1, xy.y + 1, t.s1, t.s2);
+                 xy.x + 1, xy.y + 1, t->s1, t->s2);
         ts_exec_write(command, NULL, 0);
     }
 
@@ -128,7 +128,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     if (targetIndex < 0 || targetIndex >= data->target_count)
         error_jump(process_error, ret, "Invalid target `%d' selected", targetIndex);
 
-    target t = data->targets[targetIndex];
+    target t = data->targets[targetIndex].aperture;
     double2 xy;
     if (center_aperture(t, frame, &xy))
         error_jump(process_error, ret, "Aperture centering failed");
@@ -392,7 +392,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         // Raw intensities
         for (size_t j = 0; j < data->target_count; j++)
         {
-            cpgswin(min_seconds, max_seconds, min_raw, max_raw/data->targets[j].plot_scale);
+            cpgswin(min_seconds, max_seconds, min_raw, max_raw/data->targets[j].scale);
             cpgsci(plot_colors[j%plot_colors_max]);
 
             size_t k = j*data->obs_count;
@@ -425,17 +425,17 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             }
             else if (j == 0)
             {
-                if (data->targets[j].plot_scale == 1.0)
+                if (data->targets[j].scale == 1.0)
                     strncpy(label, "Target", label_len);
                 else
-                    snprintf(label, label_len, "%g \\x Target", data->targets[j].plot_scale);
+                    snprintf(label, label_len, "%g \\x Target", data->targets[j].scale);
             }
             else
             {
-                if (data->targets[j].plot_scale == 1.0)
+                if (data->targets[j].scale == 1.0)
                     snprintf(label, label_len, "Comparison %zu", j);
                 else
-                    snprintf(label, label_len, "%g \\x Comparison %zu", data->targets[j].plot_scale, j);
+                    snprintf(label, label_len, "%g \\x Comparison %zu", data->targets[j].scale, j);
             }
 
             cpgptxt(j+0.5, 0.5, 0, 0.5, label);
@@ -721,7 +721,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     do
     {
         for (size_t i = 0; i < data->target_count; i++)
-            data->targets[i].r = radius;
+            data->targets[i].aperture.r = radius;
 
         size_t filename_len = strlen(prefix) + 11;
         char *filename = malloc(filename_len*sizeof(char));

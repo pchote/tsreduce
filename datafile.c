@@ -76,7 +76,7 @@ datafile* datafile_load(char *filename)
             block_count++;
     }
 
-    dp->targets = malloc(target_count*sizeof(target));
+    dp->targets = malloc(target_count*sizeof(struct target_data));
     dp->blocked_ranges = malloc(block_count*sizeof(double2));
     if (!dp->targets || !dp->blocked_ranges)
     {
@@ -113,10 +113,10 @@ datafile* datafile_load(char *filename)
         else if (!strncmp(linebuf,"# Target:", 9) &&
                  dp->target_count < target_count)
         {
-            target *t = &dp->targets[dp->target_count];
+            target *t = &dp->targets[dp->target_count].aperture;
             sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf]\n",
                    &t->x, &t->y, &t->r, &t->s1, &t->s2,
-                   &t->plot_scale);
+                   &dp->targets[dp->target_count].scale);
             dp->target_count++;
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
@@ -358,11 +358,12 @@ int datafile_save(datafile *data, char *filename)
 
     fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale]\n");
     for (size_t i = 0; i < data->target_count; i++)
+    {
+        target *t = &data->targets[i].aperture;
         fprintf(out, "# Target: (%6.2f, %6.2f, %6.2f, %6.2f, %6.2f) [%.2f]\n",
-                data->targets[i].x, data->targets[i].y,
-                data->targets[i].r, data->targets[i].s1, data->targets[i].s2,
-                data->targets[i].plot_scale);
-
+                t->x, t->y, t->r, t->s1, t->s2,
+                data->targets[i].scale);
+    }
     if (data->num_blocked_ranges > 0)
         fprintf(out, "### (Start (s), End (s))\n");
     for (size_t i = 0; i < data->num_blocked_ranges; i++)
@@ -497,7 +498,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
                 comparison_noise += obs->noise[j];
             }
 
-            double r = obs->star[j]*data->targets[j].plot_scale;
+            double r = obs->star[j]*data->targets[j].scale;
             if (r > p->scaled_target_max)
                 p->scaled_target_max = r;
         }

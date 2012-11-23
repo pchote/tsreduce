@@ -519,7 +519,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Don't plot the fit through blocked regions
         float *t = (float *)pd->time;
-        float *t_end = &t[pd->filtered_count-1];
+        float *t_end = &t[pd->filtered_count];
         float *f = (float *)pd->ratio_fit;
         do
         {
@@ -549,7 +549,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
             // Find the last point to draw
             size_t count = 0;
-            while (t + count < t_end && *(t + count) < max_time)
+            while (t + count < t_end && *(t + count) <= max_time)
                 count++;
 
             cpgline(count, t, f);

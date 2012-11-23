@@ -456,15 +456,22 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
+        // Reserve the top 25% of the plot for the mean FWHM label
         cpgsch(0.7);
-        cpgswin(min_time, max_time, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
+        cpgswin(min_time, max_time, min_fwhm*data->ccd_platescale,
+                max_fwhm*data->ccd_platescale + 0.25*data->ccd_platescale*(max_fwhm - min_fwhm));
         cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_fwhm, max_fwhm);
+        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_fwhm, max_fwhm + 0.25*(max_fwhm - min_fwhm));
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
 
-        cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
+        cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm + 0.25*(max_fwhm - min_fwhm));
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
+
+        snprintf(label, 32, "Mean: %.2f\": (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
+        cpgsch(0.8);
+        cpgptxt(max_seconds, max_fwhm, 0, 1.05, label);
+        cpgsch(1.0);
     }
 
     //
@@ -571,21 +578,6 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->mma, (float *)pd->mma_noise, 0.0);
         else
             cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->mma, 229);
-    }
-
-    //
-    // Plot mean FWHM label
-    //
-    {
-        cpgsvp(0.1, 0.9, 0.015, 0.05);
-        cpgswin(0, 1, 0, 1);
-        cpgsci(1);
-        cpgsch(0.9);
-
-        snprintf(label, 32, "Mean FWHM: %.2f\": (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
-        cpgptxt(0.05, 0, 0, 0.0, label);
-
-        cpgsch(1.0);
     }
     cpgend();
 

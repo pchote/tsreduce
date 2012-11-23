@@ -368,7 +368,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cast_double_array_to_float(pd->fwhm, pd->raw_count);
     {
         double min_raw = 0;
-        double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.3*pd->scaled_target_max;
+        double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.25*pd->scaled_target_max;
         int raw_exp = (int)log10(max_raw);
         double raw_scale = 1.0/pow(10, raw_exp);
 

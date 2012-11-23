@@ -692,6 +692,46 @@ struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *p
     return d;
 }
 
+struct dft_data *datafile_generate_window(datafile *data, struct photometry_data *pd, double freq, double range, size_t count)
+{
+    struct dft_data *d = calloc(1, sizeof(struct dft_data));
+    if (!d)
+        return NULL;
+
+    d->min_freq = (freq - range)*1e-6;
+    d->max_freq = (freq + range)*1e-6;
+    d->count = count;
+    double *gen = calloc(pd->filtered_count, sizeof(double));
+    d->freq = calloc(d->count, sizeof(double));
+    d->ampl = calloc(d->count, sizeof(double));
+
+    if (!gen || !d->freq || !d->count)
+    {
+        datafile_free_dft(d);
+        error("Allocation error");
+        return NULL;
+    }
+
+    // Generate sinusoid
+    for (size_t i = 0; i < pd->filtered_count; i++)
+        gen[i] = sin(2*M_PI*freq*1e-6*pd->time[i]);
+
+    calculate_amplitude_spectrum(pd->time, gen, pd->filtered_count,
+                                 d->min_freq, d->max_freq,
+                                 d->freq, d->ampl, d->count);
+    free(gen);
+    d->max_ampl = 0;
+    d->mean_ampl = 0;
+    for (size_t i = 0; i < d->count; i++)
+    {
+        d->max_ampl = fmax(d->max_ampl, d->ampl[i]);
+        d->mean_ampl += d->ampl[i];
+    }
+    d->mean_ampl /= d->count;
+
+    return d;
+}
+
 void datafile_free_dft(struct dft_data *data)
 {
     free(data->freq);

@@ -319,6 +319,18 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         return error("DFT calculation failed");
     }
 
+    double window_range = (data->plot_max_uhz - data->plot_min_uhz)/16;
+    double window_freq = (data->plot_max_uhz + data->plot_min_uhz)/2;
+    size_t window_count = data->plot_num_uhz/5;
+
+    struct dft_data *wd = datafile_generate_window(data, pd, window_freq, window_range, window_count);
+    if (!wd)
+    {
+        datafile_free_photometry(pd);
+        datafile_free_dft(dd);
+        return error("DFT window calculation failed");
+    }
+
     double min_seconds = pd->raw_time[0];
     double max_seconds = pd->raw_time[pd->raw_count - 1];
     int secexp = (int)(log10(max_seconds) / 3)*3;
@@ -639,8 +651,19 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     snprintf(label, label_len, "Median: %.2f mma", ((float *)dd->ampl)[dd->count/2]);
     cpgptxt(0.97, 0.90, 0, 1.0, label);
 
+    // DFT Window
+    cpgsvp(0.1, 0.2125, 0.75, 0.94);
+    cpgswin(wd->min_freq, wd->max_freq, 0, 1.1);
+    cpgsci(12);
+    cast_double_array_to_float(wd->freq, wd->count);
+    cast_double_array_to_float(wd->ampl, wd->count);
+    cpgline(wd->count, (float *)wd->freq, (float *)wd->ampl);
+    cpgsci(1);
+    cpgbox("bc", 0, 0, "bc", 0, 0);
+
     cpgend();
 
+    datafile_free_dft(wd);
     datafile_free_dft(dd);
     datafile_free_photometry(pd);
 

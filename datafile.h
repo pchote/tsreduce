@@ -141,6 +141,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data);
 void datafile_free_photometry(struct photometry_data *data);
 
 struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *pd);
+struct dft_data *datafile_generate_window(datafile *data, struct photometry_data *pd, double freq, double range, size_t count);
 void datafile_free_dft(struct dft_data *data);
 
 #endif

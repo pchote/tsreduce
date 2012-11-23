@@ -552,7 +552,7 @@ int update_reduction(char *dataPath)
 
         // Calculate time at the start of the exposure relative to ReferenceTime
         ts_time frame_time = framedata_start_time(frame);
-        double starttime = ts_difftime(frame_time, data->reference_time);
+        double midtime = ts_difftime(frame_time, data->reference_time) + exptime / 2;
 
         // Process frame
         subtract_bias(frame);
@@ -565,8 +565,8 @@ int update_reduction(char *dataPath)
         if (!obs)
             error_jump(process_error, ret, "Allocation error");
 
-        // Observation start time
-        obs->time = starttime;
+        // Observation mid time
+        obs->time = midtime;
 
         // Process frame
         double nan = sqrt(-1);

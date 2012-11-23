@@ -377,7 +377,7 @@ int datafile_save(datafile *data, char *filename)
 
     if (data->target_count)
     {
-        fprintf(out, "### Filename,          Time  ");
+        fprintf(out, "### Filename,        Mid Time");
         for (size_t i = 0; i < data->target_count; i++)
             fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
         fprintf(out, "\n");

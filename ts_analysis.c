@@ -387,7 +387,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsvp(0.075, 0.975, 0.075, 0.54);
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
-        cpgsch(0.7);
+        cpgsch(0.9);
         cpgswin(min_time, max_time, raw_scale*min_raw, raw_scale*max_raw);
         cpgbox("cst", 1, 4, "bcstnv", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_raw, max_raw);
@@ -449,7 +449,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
             if (j < data->target_count)
             {
                 snprintf(label, label_len, "SNR: %.0f", pd->target_snr[j]);
-                cpgsch(0.8);
+                cpgsch(0.9);
                 cpgptxt(j+0.5, 0.25, 0, 0.5, label);
                 cpgsch(1.0);
             }
@@ -469,7 +469,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         // Reserve the top 25% of the plot for the mean FWHM label
-        cpgsch(0.7);
+        cpgsch(0.9);
         cpgswin(min_time, max_time, min_fwhm*data->ccd_platescale,
                 max_fwhm*data->ccd_platescale + 0.25*data->ccd_platescale*(max_fwhm - min_fwhm));
         cpgbox("cst", 1, 4, "bcstnv", 0, 0);
@@ -480,9 +480,9 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm + 0.25*(max_fwhm - min_fwhm));
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
 
-        snprintf(label, 32, "Mean: %.2f\": (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
-        cpgsch(0.8);
-        cpgptxt(max_seconds, max_fwhm, 0, 1.05, label);
+        snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
+        cpgsch(0.9);
+        cpgptxt(max_seconds, max_fwhm - 0.05*(max_fwhm - min_fwhm), 0, 1.05, label);
         cpgsch(1.0);
     }
 
@@ -501,9 +501,9 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
-        cpgsch(0.7);
+        cpgsch(0.9);
         cpgswin(min_time, max_time, min_ratio, max_ratio);
-        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
+        cpgbox("cst", 1, 4, "bc", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_ratio, max_ratio);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
@@ -578,7 +578,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
-        cpgsch(0.7);
+        cpgsch(0.9);
         cpgswin(min_time, max_time, min_mma, max_mma);
         cpgbox("cstm", 1, 4, "bcstnv", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_mma, max_mma);
@@ -627,13 +627,13 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     // DFT
     cpgsvp(0.075, 0.975, 0.075, 0.975);
     cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
-    cpgsch(0.7);
+    cpgsch(0.9);
     cpgbox("bcstn", 0, 0, "0", 0, 0);
     cpgswin(dd->min_freq, dd->max_freq, 0, 1.1*dd->max_ampl);
     cpgbox("0", 0, 0, "bcstnv", 0, 0);
     cpgsch(1.0);
 
-    cpgsci(12);
+    cpgsci(2);
     cast_double_array_to_float(dd->freq, dd->count);
     cast_double_array_to_float(dd->ampl, dd->count);
     cpgline(dd->count, (float *)dd->freq, (float *)dd->ampl);
@@ -656,7 +656,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     // DFT Window
     cpgsvp(0.1, 0.2125, 0.75, 0.94);
     cpgswin(wd->min_freq, wd->max_freq, 0, 1.1);
-    cpgsci(12);
+    cpgsci(2);
     cast_double_array_to_float(wd->freq, wd->count);
     cast_double_array_to_float(wd->ampl, wd->count);
     cpgline(wd->count, (float *)wd->freq, (float *)wd->ampl);

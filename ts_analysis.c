@@ -627,9 +627,11 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     // DFT
     cpgsvp(0.075, 0.975, 0.075, 0.975);
     cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
+    cpgsch(0.7);
     cpgbox("bcstn", 0, 0, "0", 0, 0);
     cpgswin(dd->min_freq, dd->max_freq, 0, 1.1*dd->max_ampl);
-    cpgbox("0", 0, 0, "bcnst", 0, 0);
+    cpgbox("0", 0, 0, "bcstnv", 0, 0);
+    cpgsch(1.0);
 
     cpgsci(12);
     cast_double_array_to_float(dd->freq, dd->count);
@@ -643,7 +645,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     snprintf(label, label_len, "Frequency (%sHz)", unit);
     cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
-    cpgmtxt("l", 2, 0.5, 0.5, "Amplitude (mma)");
+    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mma)");
 
     cpgswin(0, 1, 0, 1);
     snprintf(label, label_len, "Mean: %.2f mma", dd->mean_ampl);

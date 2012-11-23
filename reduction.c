@@ -1026,6 +1026,14 @@ int create_reduction_file(char *outname)
             // Set target parameters
             data->targets[data->target_count].aperture = a;
             data->targets[data->target_count].scale = 1.0;
+
+            char label[16];
+            if (data->target_count == 0)
+                strcpy(label, "Target");
+            else
+                snprintf(label, 16, "Comparison %zu", data->target_count);
+            data->targets[data->target_count].label = strdup(label);
+
             data->target_count++;
         }
         free(ds9buf);
@@ -1034,7 +1042,7 @@ int create_reduction_file(char *outname)
         for (size_t i = 0; i < data->target_count; i++)
             data->targets[i].aperture.r = largest_aperture;
 
-        printf("Aperture radius: %fpx\n", largest_aperture);
+        printf("Aperture radius: %.2fpx\n", largest_aperture);
 
         // Display results in ds9 - errors are non-fatal
         ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
@@ -1051,15 +1059,9 @@ int create_reduction_file(char *outname)
             snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #background select=0}'", x, y, t->s1, t->s2);
             ts_exec_write(command, NULL, 0);
 
-            char msg[16];
-            if (i == 0)
-                strcpy(msg, "Target");
-            else
-                snprintf(msg, 16, "Comparison %zu", i);
-
             double intensity = frame->data[frame->cols*((size_t)t->y) + (size_t)t->x] - sky[i];
 
-            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - t->s2 - 10/zoom, msg);
+            snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%s\"}'", x, y - t->s2 - 10/zoom, data->targets[i].label);
             ts_exec_write(command, NULL, 0);
             snprintf(command, 1024, "xpaset -p tsreduce regions command '{text %f %f #color=green select=0 text=\"%.0f ADU\"}'", x, y - t->s2 - 25/zoom, intensity);
             ts_exec_write(command, NULL, 0);

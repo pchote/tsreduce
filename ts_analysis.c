@@ -425,19 +425,12 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
                 cpgsci(15);
                 strncpy(label, "Mean Sky", label_len);
             }
-            else if (j == 0)
-            {
-                if (data->targets[j].scale == 1.0)
-                    strncpy(label, "Target", label_len);
-                else
-                    snprintf(label, label_len, "%g \\x Target", data->targets[j].scale);
-            }
             else
             {
                 if (data->targets[j].scale == 1.0)
-                    snprintf(label, label_len, "Comparison %zu", j);
+                    strncpy(label, data->targets[j].label, label_len);
                 else
-                    snprintf(label, label_len, "%g \\x Comparison %zu", data->targets[j].scale, j);
+                    snprintf(label, label_len, "%g \\x %s", data->targets[j].scale, data->targets[j].label);
             }
 
             cpgptxt(j+0.5, 0.5, 0, 0.5, label);

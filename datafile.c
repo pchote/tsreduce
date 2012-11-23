@@ -114,9 +114,10 @@ datafile* datafile_load(char *filename)
                  dp->target_count < target_count)
         {
             aperture *t = &dp->targets[dp->target_count].aperture;
-            sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf]\n",
+            sscanf(linebuf, "# Target: (%lf, %lf, %lf, %lf, %lf) [%lf] - %[^\n]\n",
                    &t->x, &t->y, &t->r, &t->s1, &t->s2,
-                   &dp->targets[dp->target_count].scale);
+                   &dp->targets[dp->target_count].scale, stringbuf);
+            dp->targets[dp->target_count].label = strdup(stringbuf);
             dp->target_count++;
         }
         else if (!strncmp(linebuf,"# ReferenceTime:", 16))
@@ -256,9 +257,13 @@ void datafile_free(datafile *data)
     free(data->coord_dec);
 
     datafile_discard_observations(data);
-
     hashmap_free(data->filename_map);
 
+    for (size_t i = 0; i < data->target_count; i++)
+        free(data->targets[i].label);
+    free(data->targets);
+
+    free(data->blocked_ranges);
     free(data);
 }
 
@@ -356,13 +361,13 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
 
-    fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale]\n");
+    fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale] - Label\n");
     for (size_t i = 0; i < data->target_count; i++)
     {
         aperture *t = &data->targets[i].aperture;
-        fprintf(out, "# Target: (%6.2f, %6.2f, %6.2f, %6.2f, %6.2f) [%.2f]\n",
+        fprintf(out, "# Target: (%6.2f, %6.2f, %6.2f, %6.2f, %6.2f) [%.2f] - %s\n",
                 t->x, t->y, t->r, t->s1, t->s2,
-                data->targets[i].scale);
+                data->targets[i].scale, data->targets[i].label);
     }
     if (data->num_blocked_ranges > 0)
         fprintf(out, "### (Start (s), End (s))\n");
@@ -370,15 +375,18 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# BlockRange: (%g, %g)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
-    fprintf(out, "### Filename,          Time  ");
-    for (size_t i = 0; i < data->target_count; i++)
-        fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
-    fprintf(out, "\n");
+    if (data->target_count)
+    {
+        fprintf(out, "### Filename,          Time  ");
+        for (size_t i = 0; i < data->target_count; i++)
+            fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
+        fprintf(out, "\n");
 
-    fprintf(out, "###                     (s)  ");
-    for (size_t i = 0; i < data->target_count; i++)
-        fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px)");
-    fprintf(out, "\n");
+        fprintf(out, "###                     (s)  ");
+        for (size_t i = 0; i < data->target_count; i++)
+            fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px)");
+        fprintf(out, "\n");
+    }
 
     struct observation *obs;
     for (obs = data->obs_start; obs; obs = obs->next)

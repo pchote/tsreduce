@@ -306,7 +306,7 @@ int detect_repeats(char *dataPath)
 static int plot_internal(datafile *data, const char *tsDevice, double tsSize, const char *dftDevice, double dftSize)
 {
     size_t plot_colors_max = 8;
-    uint8_t plot_colors[] = {4,2,8,3,5,6,7,9};
+    uint8_t plot_colors[] = {2,8,3,12,5,6,7,9};
 
     struct photometry_data *pd = datafile_generate_photometry(data);
     if (!pd)

@@ -331,14 +331,11 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         return error("DFT window calculation failed");
     }
 
+    double base_seconds = 3600*ts_time_to_utc_hour(data->reference_time);
     double min_seconds = pd->raw_time[0];
     double max_seconds = pd->raw_time[pd->raw_count - 1];
     int secexp = (int)(log10(max_seconds) / 3)*3;
     double sec_scale = 1.0/pow(10, secexp);
-
-    // Time in hours
-    double min_time = ts_time_to_utc_hour(data->reference_time) + min_seconds / 3600;
-    double max_time = min_time + (max_seconds - min_seconds)/3600;
 
     if (cpgopen(tsDevice) <= 0)
         return error("Unable to open PGPLOT window");
@@ -388,8 +385,8 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.9);
-        cpgswin(min_time, max_time, raw_scale*min_raw, raw_scale*max_raw);
-        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
+        cpgswin(base_seconds + min_seconds, base_seconds + max_seconds, raw_scale*min_raw, raw_scale*max_raw);
+        cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_raw, max_raw);
         cpgbox("bstn", 0, 0, "0", 0, 0);
         cpgsch(1.0);
@@ -462,7 +459,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     //
     {
         double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
-        double max_fwhm = pd->fwhm_mean + 5*pd->fwhm_std;
+        double max_fwhm = pd->fwhm_mean + 7.5*pd->fwhm_std;
 
         cpgsvp(0.075, 0.975, 0.54, 0.67);
         cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
@@ -470,19 +467,18 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         // Reserve the top 25% of the plot for the mean FWHM label
         cpgsch(0.9);
-        cpgswin(min_time, max_time, min_fwhm*data->ccd_platescale,
-                max_fwhm*data->ccd_platescale + 0.25*data->ccd_platescale*(max_fwhm - min_fwhm));
-        cpgbox("cst", 1, 4, "bcstnv", 0, 0);
-        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_fwhm, max_fwhm + 0.25*(max_fwhm - min_fwhm));
+        cpgswin(base_seconds + min_seconds, base_seconds + max_seconds, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
+        cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
+        cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_fwhm, max_fwhm);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
 
-        cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm + 0.25*(max_fwhm - min_fwhm));
+        cpgswin(min_seconds, max_seconds, min_fwhm, max_fwhm);
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
 
         snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
         cpgsch(0.9);
-        cpgptxt(max_seconds, max_fwhm - 0.05*(max_fwhm - min_fwhm), 0, 1.05, label);
+        cpgptxt(max_seconds, max_fwhm - 3*pd->fwhm_std, 0, 1.05, label);
         cpgsch(1.0);
     }
 
@@ -502,8 +498,8 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.9);
-        cpgswin(min_time, max_time, min_ratio, max_ratio);
-        cpgbox("cst", 1, 4, "bc", 0, 0);
+        cpgswin(base_seconds + min_seconds, base_seconds + max_seconds, min_ratio, max_ratio);
+        cpgtbox("cstZ", 0, 0, "bc", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_ratio, max_ratio);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
@@ -574,13 +570,13 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsvp(0.075, 0.975, 0.8, 0.93);
         cpgsch(1.0);
 
-        cpgmtxt("t", 1.75, 0.5, 0.5, "UTC Hour");
+        cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Time");
         cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.9);
-        cpgswin(min_time, max_time, min_mma, max_mma);
-        cpgbox("cstm", 1, 4, "bcstnv", 0, 0);
+        cpgswin(base_seconds + min_seconds, base_seconds + max_seconds, min_mma, max_mma);
+        cpgtbox("cstmXYZH", 0, 0, "bcstnv", 0, 0);
         cpgswin(sec_scale*min_seconds, sec_scale*max_seconds, min_mma, max_mma);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);

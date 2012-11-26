@@ -375,14 +375,25 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# BlockRange: (%g, %g)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
 
-    if (data->target_count)
+    if (data->obs_start)
     {
-        fprintf(out, "### Filename,        Mid Time");
+        fprintf(out, "### Filename ");
+        size_t padding = strlen(data->obs_start->filename);
+        padding = (padding < 10) ? 0 : padding - 10;
+
+        for (size_t i = 0; i < padding; i++)
+            fprintf(out, " ");
+
+        fprintf(out, "Mid Time");
         for (size_t i = 0; i < data->target_count; i++)
             fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
         fprintf(out, "\n");
 
-        fprintf(out, "###                     (s)  ");
+        fprintf(out, "### ");
+        for (size_t i = 0; i < padding + 12; i++)
+            fprintf(out, " ");
+        fprintf(out, "(s)  ");
+
         for (size_t i = 0; i < data->target_count; i++)
             fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px)");
         fprintf(out, "\n");
@@ -391,7 +402,7 @@ int datafile_save(datafile *data, char *filename)
     struct observation *obs;
     for (obs = data->obs_start; obs; obs = obs->next)
     {
-        fprintf(out, "%s ", obs->filename);
+        fprintf(out, "%10s ", obs->filename);
         fprintf(out, "%9.3f ", obs->time);
         for (size_t i = 0; i < data->target_count; i++)
         {

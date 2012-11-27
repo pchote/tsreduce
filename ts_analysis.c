@@ -381,7 +381,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         int raw_exp = (int)log10(max_raw);
         double raw_scale = 1.0/pow(10, raw_exp);
 
-        cpgsvp(0.075, 0.975, 0.075, 0.54);
+        cpgsvp(0.065, 0.98, 0.075, 0.55);
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.9);
@@ -423,7 +423,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->sky, 229);
 
         // Labels
-        cpgsvp(0.075, 0.975, 0.45, 0.55);
+        cpgsvp(0.065, 0.98, 0.45, 0.55);
         cpgswin(0, data->target_count + 1, 0, 1);
         for (size_t j = 0; j <= data->target_count; j++)
         {
@@ -461,7 +461,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
         double max_fwhm = pd->fwhm_mean + 7.5*pd->fwhm_std;
 
-        cpgsvp(0.075, 0.975, 0.54, 0.67);
+        cpgsvp(0.065, 0.98, 0.55, 0.67);
         cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
@@ -493,7 +493,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cast_double_array_to_float(pd->ratio_noise, pd->filtered_count);
         cast_double_array_to_float(pd->ratio_fit, pd->filtered_count);
 
-        cpgsvp(0.075, 0.975, 0.67, 0.8);
+        cpgsvp(0.065, 0.98, 0.67, 0.79);
         cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
@@ -567,7 +567,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cast_double_array_to_float(pd->mma, pd->filtered_count);
         cast_double_array_to_float(pd->mma_noise, pd->filtered_count);
 
-        cpgsvp(0.075, 0.975, 0.8, 0.93);
+        cpgsvp(0.065, 0.98, 0.79, 0.91);
         cpgsch(1.0);
 
         cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Time");
@@ -621,7 +621,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     }
 
     // DFT
-    cpgsvp(0.075, 0.975, 0.075, 0.975);
+    cpgsvp(0.065, 0.98, 0.07, 0.97);
     cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
     cpgsch(0.9);
     cpgbox("bcstn", 0, 0, "0", 0, 0);
@@ -650,7 +650,7 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cpgptxt(0.97, 0.90, 0, 1.0, label);
 
     // DFT Window
-    cpgsvp(0.1, 0.2125, 0.75, 0.94);
+    cpgsvp(0.09, 0.2025, 0.75, 0.94);
     cpgswin(wd->min_freq, wd->max_freq, 0, 1.1);
     cpgsci(2);
     cast_double_array_to_float(wd->freq, wd->count);

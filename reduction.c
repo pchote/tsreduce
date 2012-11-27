@@ -465,7 +465,6 @@ int display_frame(char *data_path, char *frame_name)
         error_jump(process_error, ret, "ds9 command failed: %s", command);
 
     ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0);
-    ts_exec_write("xpaset tsreduce orient x", NULL, 0);
     ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
 
     for (size_t i = 0; i < data->target_count; i++)
@@ -907,10 +906,6 @@ int create_reduction_file(char *outname)
 
         // Set scaling mode
         if (ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0))
-            error_jump(frameload_error, ret, "ds9 command failed");
-
-        // Flip X axis
-        if (ts_exec_write("xpaset tsreduce orient x", NULL, 0))
             error_jump(frameload_error, ret, "ds9 command failed");
 
         // Set region mode to annulus

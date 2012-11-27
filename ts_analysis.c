@@ -41,9 +41,6 @@ int display_tracer(char *dataPath)
     // Set scaling mode
     ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0);
 
-    // Flip X axis
-    ts_exec_write("xpaset tsreduce orient x", NULL, 0);
-
     // Display results in ds9 - errors are non-fatal
     ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
 

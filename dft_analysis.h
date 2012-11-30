@@ -16,5 +16,6 @@ int nonlinear_fit(char *tsFile, char *freqFile);
 int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats);
 
 int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width);
+int fit_baseline_polynomial(char *tsfile, size_t poly_degree);
 
 #endif

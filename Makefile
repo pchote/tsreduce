@@ -5,8 +5,6 @@
 
 USE_READLINE := TRUE
 
-CC = gcc
-LINKER = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
 LFLAGS = -lcfitsio -lcpgplot -lpgplot
 

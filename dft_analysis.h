@@ -19,4 +19,5 @@ int noise_histogram(const char *ts_path, const char *freq_path,
                     double fit_min_mma, double fit_max_mma, size_t randomize_count,
                     const char *output_prefix);
 int o_minus_c(const char *data, const char *ref_bjd, long double period, long double phase_offset);
+int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width);
 #endif

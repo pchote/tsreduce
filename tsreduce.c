@@ -166,6 +166,9 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strcmp(argv[1], "run-data") == 0)
         return print_run_data(argv[2], atof(argv[3]));
 
+    else if (argc == 6 && strcmp(argv[1], "phase") == 0)
+        return monitor_phase_amplitude(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]));
+
     else
         error("Invalid args");
     return 0;

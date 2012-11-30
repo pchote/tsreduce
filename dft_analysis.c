@@ -173,7 +173,42 @@ allocation_error:
     free_2d_array(data->freq_label, total); data->freq_label = NULL;
     free(data->freq_mode); data->freq_mode = NULL;
 file_error:
-    data->freq_count = 1;
+    data->freq_count = 0;
+    return ret;
+}
+
+static int load_freq_harmonics(double base_freq, size_t freq_count, struct ts_data *data)
+{
+    int ret = 0;
+
+    data->freq = calloc(freq_count, sizeof(double));
+    data->freq_amplitude = calloc(2*freq_count, sizeof(double));
+    data->freq_label = calloc(freq_count, sizeof(char **));
+    data->freq_mode = calloc(freq_count, sizeof(int));
+    if (!data->freq || !data->freq_amplitude || !data->freq_label || !data->freq_mode)
+        error_jump(allocation_error, ret, "Allocation error");
+
+    for (size_t i = 0; i < freq_count; i++)
+    {
+        char buf[32];
+        snprintf(buf, 32, "%zu", i);
+        data->freq[i] = (i+1)*base_freq;
+        data->freq_label[i] = strdup(buf);
+        data->freq_mode[i] = 1;
+    }
+    data->freq_count = freq_count;
+
+    if (ts_data_fit_sinusoids(data))
+        error_jump(fit_error, ret, "Amplitude fit failed");
+
+    return ret;
+fit_error:
+allocation_error:
+    free(data->freq); data->freq = NULL;
+    free(data->freq_amplitude); data->freq_amplitude = NULL;
+    free_2d_array(data->freq_label, freq_count); data->freq_label = NULL;
+    free(data->freq_mode); data->freq_mode = NULL;
+    data->freq_count = 0;
     return ret;
 }
 
@@ -235,7 +270,7 @@ struct ts_data *ts_data_load(const char *ts_path, const char *freq_path)
         return NULL;
 
     if (load_tsfile(ts_path, data))
-        error_jump(load_error, ret, "Error loading timeseries data", freq_path);
+        error_jump(load_error, ret, "Error loading timeseries data", ts_path);
 
     if (freq_path && load_freqfile(freq_path, data))
         error_jump(load_error, ret, "Error loading frequency data", freq_path);
@@ -368,6 +403,27 @@ int histogram_export(struct histogram_data *hd, double center, double amplitude,
     fclose(output);
 file_error:
     return ret;
+}
+
+struct ts_data *ts_data_load_harmonics(const char *ts_path, double base_freq, size_t freq_count)
+{
+    int ret = 0;
+    struct ts_data *data = calloc(1, sizeof(struct ts_data));
+    if (!data)
+        return NULL;
+
+    if (load_tsfile(ts_path, data))
+        error_jump(load_error, ret, "Error loading timeseries data", ts_path);
+
+    if (load_freq_harmonics(base_freq, freq_count, data))
+        error_jump(load_error, ret, "Error loading frequency data (base: %g, count: %zu)", base_freq, freq_count);
+
+    ts_data_print_table(data);
+
+    return data;
+load_error:
+    ts_data_free(data);
+    return NULL;
 }
 
 /*
@@ -1066,6 +1122,94 @@ bjd_alloc_error:
     return ret;
 }
 
+int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, double window_width)
+{
+    int ret = 0;
+    struct ts_data *data = ts_data_load_harmonics(ts_path, base_uhz*1e-6, freq_count);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+
+    double *phase_start = calloc(data->freq_count, sizeof(double));
+    if (!phase_start)
+        error_jump(load_failed_error, ret, "Error allocating phase_start array");
+
+    for (size_t i = 0; i < data->freq_count; i++)
+        data->freq[i] = (i + 1)*base_uhz*1e-6;
+
+    double *orig_time = data->time;
+    double *orig_mma = data->mma;
+    double *orig_err = data->err;
+    size_t orig_obs_count = data->obs_count;
+
+    for (size_t i = 0; i < orig_obs_count - 1; i++)
+    {
+        if (orig_time[i] + window_width > orig_time[orig_obs_count - 1])
+            break;
+
+        // Find the last observation within the time window
+        size_t j = 1;
+        while (j + 1 < orig_obs_count - i && orig_time[i + j] <= orig_time[i] + window_width)
+            j++;
+
+        if (j < 100)
+            continue;
+
+        data->time = &orig_time[i];
+        data->mma = &orig_mma[i];
+        data->err = &orig_err[i];
+        data->obs_count = j;
+
+        if (ts_data_fit_sinusoids(data))
+            error_jump(fit_failed_error, ret, "Sinusoid fit failed");
+
+        double mean_time =  (orig_time[i + j - 1] + orig_time[i])/86400/2;
+
+        double fit = 0;
+        for (size_t l = 0; l < data->freq_count; l++)
+        {
+            // convert time from BJD to seconds
+            double phase = 2*M_PI*data->freq[l]*mean_time*86400;
+            fit += data->freq_amplitude[2*l]*cos(phase);
+            fit += data->freq_amplitude[2*l+1]*sin(phase);
+        }
+
+        printf("%f %f ", mean_time, fit);
+
+        for (size_t k = 0; k < data->freq_count; k++)
+        {
+            double a = data->freq_amplitude[2*k+1];
+            double b = data->freq_amplitude[2*k];
+            double amp = sqrt(a*a + b*b);
+            double phase = atan2(b, a)/(2*M_PI) - phase_start[k];
+            while (phase > 1) phase -= 1;
+            while (phase < 0) phase += 1;
+
+            if (phase > 0.5)
+                phase -= 1;
+
+            if (i == 0)
+            {
+                phase_start[k] = phase;
+                phase = 0;
+            }
+
+            double time_offset = phase/(data->freq[k]*60);
+            printf("%f %f %f ", amp, phase, time_offset);
+        }
+
+        printf("\n");
+    }
+
+    data->time = orig_time;
+    data->mma = orig_mma;
+    data->err = orig_err;
+    data->obs_count = orig_obs_count;
+fit_failed_error:
+    ts_data_free(data);
+load_failed_error:
+    return ret;
+}
+
 int print_run_data(const char *ts_path, double exptime)
 {
     int ret = 0;
@@ -1076,9 +1220,7 @@ int print_run_data(const char *ts_path, double exptime)
     long double bjd = (long double)data->bjda + (long double)data->bjdb;
     double run_length = data->time[data->obs_count - 1] - data->time[0];
     printf("%s & %.8Lf & %.2f & %zu & %.0f\\\\\n", ts_path, bjd, run_length / 86400, data->obs_count, data->obs_count * exptime / run_length * 100);
-
     ts_data_free(data);
 load_failed_error:
     return ret;
 }
-

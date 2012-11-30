@@ -800,3 +800,15 @@ double mean_exclude_sigma(double *data, size_t n, double sigma)
 
     return total / count;
 }
+
+double evaluate_polynomial(double *coeffs, size_t degree, double x)
+{
+    double y = 0;
+    double pow = 1;
+    for (int i = 0; i <= degree; i++)
+    {
+        y += pow*coeffs[i];
+        pow *= x;
+    }
+    return y;
+}

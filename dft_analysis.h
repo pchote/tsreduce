@@ -20,4 +20,6 @@ int noise_histogram(const char *ts_path, const char *freq_path,
                     const char *output_prefix);
 int o_minus_c(const char *data, const char *ref_bjd, long double period, long double phase_offset);
 int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width);
+int fit_baseline_polynomial(char *tsfile, size_t poly_degree);
+
 #endif

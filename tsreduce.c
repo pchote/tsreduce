@@ -169,6 +169,9 @@ int main( int argc, char *argv[] )
     else if (argc == 6 && strcmp(argv[1], "phase") == 0)
         return monitor_phase_amplitude(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]));
 
+    else if (argc == 4 && strcmp(argv[1], "baseline") == 0)
+        return fit_baseline_polynomial(argv[2], atoi(argv[3]));
+
     else
         error("Invalid args");
     return 0;

@@ -1224,3 +1224,31 @@ int print_run_data(const char *ts_path, double exptime)
 load_failed_error:
     return ret;
 }
+
+int fit_baseline_polynomial(char *ts_path, size_t poly_degree)
+{
+    int ret = 0;
+    struct ts_data *data = ts_data_load(ts_path, NULL);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+
+    double *coeffs = calloc(poly_degree + 1, sizeof(double));
+    if (!coeffs)
+        error_jump(coeffs_alloc_error, ret, "Error allocating coeffs array");
+
+    if (fit_polynomial(data->time, data->mma, data->err, data->obs_count, coeffs, poly_degree))
+        error_jump(fit_failed_error, ret, "Polynomial fit failed");
+
+    for (size_t i = 0; i < data->obs_count; i++)
+    {
+        double model = evaluate_polynomial(coeffs, poly_degree, data->time[i]);
+        printf("%f %f %f\n", data->time[i]/86400, data->mma[i] - model, data->err[i]);
+        fprintf(stderr, "%f %f\n", data->time[i]/86400, model);
+    }
+fit_failed_error:
+    free(coeffs);
+coeffs_alloc_error:
+    ts_data_free(data);
+load_failed_error:
+    return ret;
+}

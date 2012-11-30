@@ -637,3 +637,87 @@ dftfreq_alloc_error:
 load_failed_error:
     return ret;
 }
+
+int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t harmonic_count, double window_width)
+{
+    int ret = 0;
+    struct ts_data *data = calloc(1, sizeof(struct ts_data));
+    if (!data)
+        return 1;
+
+    if (load_tsfile(ts_path, data))
+        error_jump(load_failed_error, ret, "Error loading timeseries data");
+
+    size_t num_freqs = harmonic_count + 1;
+    double *freqs = calloc(num_freqs, sizeof(double));
+    if (!freqs)
+        error_jump(load_failed_error, ret, "Error allocating freqs array");
+
+    double *freq_amplitudes = calloc(2*num_freqs, sizeof(double));
+    if (!freq_amplitudes)
+        error_jump(load_failed_error, ret, "Error allocating freq_amplitude array");
+
+    double *phase_start = calloc(num_freqs, sizeof(double));
+    if (!phase_start)
+        error_jump(load_failed_error, ret, "Error allocating phase_start array");
+
+    for (size_t i = 0; i <= harmonic_count; i++)
+        freqs[i] = (i+1)*base_uhz*1e-6;
+
+    for (size_t i = 0; i < data->obs_count-1; i++)
+    {
+        if (data->time[i] + window_width > data->time[data->obs_count-1])
+            break;
+
+        // Find the last observation within the time window
+        size_t j = 1;
+        while (j + 1 < data->obs_count - i && data->time[i + j] <= data->time[i] + window_width)
+            j++;
+
+        if (j < 100)
+            continue;
+
+        if (fit_sinusoids(&data->time[i], &data->mma[i], &data->err[i], j, freqs, num_freqs, freq_amplitudes))
+            error_jump(fit_failed_error, ret, "Sinusoid fit failed");
+
+        double mean_time =  (data->time[i + j - 1] + data->time[i])/86400/2;
+
+        double fit = 0;
+        for (size_t l = 0; l < num_freqs; l++)
+        {
+            // convert time from BJD to seconds
+            double phase = 2*M_PI*freqs[l]*mean_time*86400;
+            fit += freq_amplitudes[2*l]*cos(phase);
+            fit += freq_amplitudes[2*l+1]*sin(phase);
+        }
+
+        printf("%f %f ", mean_time, fit);
+
+        for (size_t k = 0; k < num_freqs; k++)
+        {
+            double a = freq_amplitudes[2*k+1];
+            double b = freq_amplitudes[2*k];
+            double amp = sqrt(a*a + b*b);
+            double phase = atan2(b, a)/(2*M_PI) - phase_start[k];
+            while (phase > 1) phase -= 1;
+            while (phase < 0) phase += 1;
+
+            if (phase > 0.5)
+                phase -= 1;
+
+            if (i == 0)
+            {
+                phase_start[k] = phase;
+                phase = 0;
+            }
+
+            double time_offset = phase/(freqs[k]*60);
+            printf("%f %f %f ", amp, phase, time_offset);
+        }
+
+        printf("\n");
+    }
+fit_failed_error:
+load_failed_error:
+    return ret;
+}

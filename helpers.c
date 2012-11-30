@@ -357,7 +357,8 @@ size_t get_matching_files(const char *pattern, char ***outList)
     {
         char errbuf[1024];
         regerror(regerr, &regex, errbuf, 1024);
-        return -error("Error compiling `%s` into a regular expression: %s", pattern, errbuf);
+        fprintf(stderr, "Error compiling `%s` into a regular expression: %s", pattern, errbuf);
+        return 0;
     }
 
     // Find the matching files
@@ -376,7 +377,8 @@ size_t get_matching_files(const char *pattern, char ***outList)
     {
         regfree(&regex);
         free(files);
-        return -error("Memory allocation for %d filenames failed.", numFiles);
+        fprintf(stderr, "Memory allocation for %d filenames failed.", numFiles);
+        return 0;
     }
 
     size_t numMatched = 0;
@@ -391,7 +393,8 @@ size_t get_matching_files(const char *pattern, char ***outList)
                 for (int j = i; j < numFiles; j++)
                     free(files[j]);
                 free(files);
-                return -error("Memory allocation failed.");
+                fprintf(stderr, "Memory allocation failed.");
+                return 0;
             }
             numMatched++;
         }
@@ -410,7 +413,7 @@ char *get_first_matching_file(char *pattern)
 {
     char **frame_paths;
     size_t num_frames = get_matching_files(pattern, &frame_paths);
-    if (num_frames <= 0)
+    if (num_frames == 0)
         return NULL;
 
     char *match = strdup(frame_paths[0]);

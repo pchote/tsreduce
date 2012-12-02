@@ -26,7 +26,7 @@
 #define CCD_GAIN_DEFAULT 0
 #define CCD_READNOISE_DEFAULT 0
 #define CCD_PLATESCALE_DEFAULT 1.0
-
+#define COORD_EPOCH_DEFAULT 0
 extern int verbosity;
 
 /*
@@ -45,6 +45,7 @@ datafile *datafile_alloc()
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
+    dp->coord_epoch = COORD_EPOCH_DEFAULT;
 
     dp->filename_map = hashmap_new();
     return dp;
@@ -360,6 +361,13 @@ int datafile_save(datafile *data, char *filename)
         serialize_time(data->reference_time, datetimebuf);
         fprintf(out, "# ReferenceTime: %s\n", datetimebuf);
     }
+
+    if (data->coord_ra)
+        fprintf(out, "# RA: %s\n", data->coord_ra);
+    if (data->coord_dec)
+        fprintf(out, "# DEC: %s\n", data->coord_dec);
+    if (data->coord_epoch != COORD_EPOCH_DEFAULT)
+        fprintf(out, "# Epoch: %g\n", data->coord_epoch);
 
     fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale] - Label\n");
     for (size_t i = 0; i < data->target_count; i++)

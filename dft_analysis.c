@@ -491,7 +491,7 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     if (!dftampl)
         error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
 
-    calculate_amplitude_spectrum(time, mma, minUHz*1e-6, maxUHz*1e-6, num_obs, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
 
     double max_ampl = 0;
     double max_ampl_freq = 0;

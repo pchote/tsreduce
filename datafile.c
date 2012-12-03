@@ -394,7 +394,7 @@ int datafile_save(datafile *data, char *filename)
 
         fprintf(out, "Mid Time");
         for (size_t i = 0; i < data->target_count; i++)
-            fprintf(out, " |  Star    Noise     Sky     x      y     FWHM");
+            fprintf(out, " |  Star    Noise     Sky     x      y     FWHM ");
         fprintf(out, "\n");
 
         fprintf(out, "### ");
@@ -403,7 +403,7 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "(s)  ");
 
         for (size_t i = 0; i < data->target_count; i++)
-            fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px)");
+            fprintf(out, " | (ADU/s) (ADU/s)  (ADU/s)  (px)   (px)   (px) ");
         fprintf(out, "\n");
     }
 
@@ -418,7 +418,7 @@ int datafile_save(datafile *data, char *filename)
             fprintf(out, "%6.2f ", obs->noise[i]);
             fprintf(out, "%9.2f ", obs->sky[i]);
             fprintf(out, "%6.2f %6.2f ", obs->pos[i].x, obs->pos[i].y);
-            fprintf(out, "%5.2f", obs->fwhm[i]);
+            fprintf(out, "%5.2f ", obs->fwhm[i]);
         }
         fprintf(out, "\n");
 

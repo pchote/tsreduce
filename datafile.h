@@ -60,6 +60,7 @@ typedef struct
 
     uint8_t ratio_fit_degree;
     double plot_max_raw;
+    double plot_max_dft;
     int plot_num_uhz;
     double plot_min_uhz;
     double plot_max_uhz;

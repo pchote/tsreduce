@@ -19,6 +19,7 @@
 
 #define RATIO_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 0
+#define PLOT_MAX_DFT_DEFAULT 0
 #define PLOT_NUM_UHZ_DEFAULT 1000
 #define PLOT_MIN_UHZ_DEFAULT 0
 #define PLOT_MAX_UHZ_DEFAULT 10000
@@ -38,6 +39,7 @@ datafile *datafile_alloc()
     dp->version = CUR_DATAFILE_VERSION;
     dp->ratio_fit_degree = RATIO_FIT_DEGREE_DEFAULT;
     dp->plot_max_raw = PLOT_MAX_RAW_DEFAULT;
+    dp->plot_max_dft = PLOT_MAX_DFT_DEFAULT;
     dp->plot_num_uhz = PLOT_NUM_UHZ_DEFAULT;
     dp->plot_min_uhz = PLOT_MIN_UHZ_DEFAULT;
     dp->plot_max_uhz = PLOT_MAX_UHZ_DEFAULT;
@@ -140,6 +142,8 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# RatioFitDegree: %hhu\n", &dp->ratio_fit_degree);
         else if (!strncmp(linebuf,"# PlotMaxRaw:", 13))
             sscanf(linebuf, "# PlotMaxRaw: %lf\n", &dp->plot_max_raw);
+        else if (!strncmp(linebuf,"# PlotMaxDft:", 13))
+            sscanf(linebuf, "# PlotMaxDft: %lf\n", &dp->plot_max_dft);
         else if (!strncmp(linebuf,"# PlotMinUhz:", 13))
             sscanf(linebuf, "# PlotMinUhz: %lf\n", &dp->plot_min_uhz);
         else if (!strncmp(linebuf,"# PlotErrorBars:", 16))
@@ -342,6 +346,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# RatioFitDegree: %d\n", data->ratio_fit_degree);
     if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)
         fprintf(out, "# PlotMaxRaw: %g\n", data->plot_max_raw);
+    if (data->plot_max_dft != PLOT_MAX_DFT_DEFAULT)
+        fprintf(out, "# PlotMaxDft: %g\n", data->plot_max_dft);
     if (data->plot_min_uhz != PLOT_MIN_UHZ_DEFAULT)
         fprintf(out, "# PlotMinUhz: %g\n", data->plot_min_uhz);
     if (data->plot_max_uhz != PLOT_MAX_UHZ_DEFAULT)

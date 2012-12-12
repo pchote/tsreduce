@@ -618,11 +618,12 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     }
 
     // DFT
+    double max_dft = data->plot_max_dft ? data->plot_max_dft : 1.1*dd->max_ampl;
     cpgsvp(0.065, 0.98, 0.07, 0.97);
     cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
     cpgsch(0.9);
     cpgbox("bcstn", 0, 0, "0", 0, 0);
-    cpgswin(dd->min_freq, dd->max_freq, 0, 1.1*dd->max_ampl);
+    cpgswin(dd->min_freq, dd->max_freq, 0, max_dft);
     cpgbox("0", 0, 0, "bcstnv", 0, 0);
     cpgsch(1.0);
 

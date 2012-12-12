@@ -1121,10 +1121,6 @@ int update_preview(char *preview_filename, char *ds9_title)
     float zoom = atof(ds9_zoom);
     free(ds9_zoom);
 
-    // Read binning from frame
-    long binning = 1;
-    framedata_get_header_long(frame, "CCD-BIN", &binning);
-
     // Set new frame
     snprintf(ds9_command_buf, 1024, "xpaset -p %s file %s", ds9_title, preview_filename);
     ts_exec_write(ds9_command_buf, NULL, 0);
@@ -1183,7 +1179,7 @@ int update_preview(char *preview_filename, char *ds9_title)
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM: %.2f arcsec\"}'",
-                 ds9_title, a.x + 1, a.y + 1 - a.s2 - 10/zoom, fwhm*binning*plate_scale);
+                 ds9_title, a.x + 1, a.y + 1 - a.s2 - 10/zoom, fwhm*plate_scale);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"Peak: %.0f ADU/px\"}'",

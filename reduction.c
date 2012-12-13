@@ -34,18 +34,18 @@ extern int verbosity;
 // Returns the mean intensity before normalization
 double prepare_flat(framedata *flat, framedata *dark, double *mean_out)
 {
-    long flatexp, darkexp;
-    if (framedata_get_header_long(flat, "EXPTIME", &flatexp))
+    double flatexp, darkexp;
+    if (framedata_get_header_dbl(flat, "EXPTIME", &flatexp))
         return error("EXPTIME is undefined in flat frame");
 
-    if (framedata_get_header_long(dark, "EXPTIME", &darkexp))
+    if (framedata_get_header_dbl(dark, "EXPTIME", &darkexp))
         return error("EXPTIME is undefined in dark frame");
 
     // Subtract bias
     subtract_bias(flat);
 
     // Subtract dark, normalized to the flat exposure time
-    double exp_ratio = flatexp*1.0/darkexp;
+    double exp_ratio = flatexp/darkexp;
     for (int i = 0; i < flat->rows*flat->cols; i++)
         flat->data[i] -= exp_ratio*dark->data[i];
 
@@ -341,8 +341,8 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
     if (!base)
         error_jump(insufficient_frames, ret, "Error loading frame %s", frame_paths[0]);
 
-    long exptime;
-    if (framedata_get_header_long(base, "EXPTIME", &exptime))
+    double exptime;
+    if (framedata_get_header_dbl(base, "EXPTIME", &exptime))
         error_jump(dark_failed, ret, "EXPTIME undefined in %s", frame_paths[0]);
 
     double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
@@ -404,7 +404,7 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
     
     // Create the primary array image (16-bit short integer pixels
     fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
-    fits_update_key(out, TLONG, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
+    fits_update_key(out, TDOUBLE, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
 
     if (base->regions.image_px != base->rows*base->cols)
     {

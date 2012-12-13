@@ -288,56 +288,6 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
     return FRAME_METADATA_OK;
 }
 
-struct frame_metadata *framedata_metadata(framedata *fd, char *key)
-{
-    struct frame_metadata *metadata;
-    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
-        return NULL;
-
-    return metadata;
-}
-
-int framedata_get_header_long(framedata *fd, const char *key, long *value)
-{
-    struct frame_metadata *metadata;
-    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
-        return FRAME_METADATA_MISSING;
-
-    if (metadata->type != FRAME_METADATA_INT)
-        return FRAME_METADATA_INVALID_TYPE;
-
-    *value = (long)metadata->value.i;
-    return FRAME_METADATA_OK;
-}
-
-int framedata_get_header_dbl(framedata *fd, const char *key, double *value)
-{
-    struct frame_metadata *metadata;
-    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
-        return FRAME_METADATA_MISSING;
-
-    if (metadata->type == FRAME_METADATA_DOUBLE)
-        *value = metadata->value.d;
-    else if (metadata->type == FRAME_METADATA_INT)
-        *value = (double)metadata->value.i;
-    else
-        return FRAME_METADATA_INVALID_TYPE;
-
-    return FRAME_METADATA_OK;
-}
-
-char *framedata_get_header_string(framedata *fd, const char *key)
-{
-    struct frame_metadata *metadata;
-    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
-        return NULL;
-
-    if (metadata->type != FRAME_METADATA_STRING)
-        return NULL;
-
-    return strdup(metadata->value.s);
-}
-
 int framedata_subtract(framedata *fd, framedata *other)
 {
     if (fd->cols != other->cols || fd->rows != other->rows)

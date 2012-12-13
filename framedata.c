@@ -11,21 +11,6 @@
 #include "framedata.h"
 #include "helpers.h"
 
-static framedata *framedata_alloc()
-{
-    framedata *fp = malloc(sizeof(framedata));
-    if (!fp)
-        return NULL;
-
-    fp->rows = 0;
-    fp->cols = 0;
-    fp->data = NULL;
-    fp->regions.has_overscan = false;
-    fp->metadata_map = hashmap_new();
-
-    return fp;
-}
-
 static int list_metadata_entry(any_t unused, any_t _meta)
 {
     struct frame_metadata *metadata = _meta;
@@ -65,16 +50,14 @@ static int free_metadata_entry(any_t unused, any_t _meta)
 framedata *framedata_load(const char *filename)
 {
     int ret = 0;
-
-    framedata *fp = framedata_alloc();
-    if (!fp)
-    {
-        error("framedata_alloc failed");
-        return NULL;
-    }
-
 	int status = 0;
     fitsfile *input;
+
+    framedata *fd = calloc(1, sizeof(framedata));
+    if (!fd)
+        return NULL;
+
+    fd->metadata_map = hashmap_new();
 
     if (fits_open_image(&input, filename, READONLY, &status))
     {
@@ -86,16 +69,16 @@ framedata *framedata_load(const char *filename)
     }
 
     // Query the image size
-    fits_read_key(input, TINT, "NAXIS1", &fp->cols, NULL, &status);
-    fits_read_key(input, TINT, "NAXIS2", &fp->rows, NULL, &status);
+    fits_read_key(input, TINT, "NAXIS1", &fd->cols, NULL, &status);
+    fits_read_key(input, TINT, "NAXIS2", &fd->rows, NULL, &status);
     if (status)
         error_jump(error, ret, "querying NAXIS failed");
 
-    fp->data = (double *)malloc(fp->cols*fp->rows*sizeof(double));
-    if (!fp->data)
+    fd->data = (double *)malloc(fd->cols*fd->rows*sizeof(double));
+    if (!fd->data)
         error_jump(error, ret, "Error allocating frame data");
 
-    if (fits_read_pix(input, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
+    if (fits_read_pix(input, TDOUBLE, (long []){1, 1}, fd->cols*fd->rows, 0, fd->data, NULL, &status))
         error_jump(error, ret, "fits_read_pix failed");
 
     // Load header keys
@@ -178,36 +161,36 @@ framedata *framedata_load(const char *filename)
         if (!metadata->key || !metadata->comment)
             error_jump(key_read_error, ret, "Error reading key %zu", i);
 
-        hashmap_put(fp->metadata_map, metadata->key, metadata);
+        hashmap_put(fd->metadata_map, metadata->key, metadata);
     }
 
     // Load image regions
-    int *ir = fp->regions.image_region;
-    int *br = fp->regions.bias_region;
-    ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
+    int *ir = fd->regions.image_region;
+    int *br = fd->regions.bias_region;
+    ir[0] = 0; ir[1] = fd->cols; ir[2] = 0; ir[3] = fd->rows;
     br[0] = br[1] = br[2] = br[3] = 0;
 
     struct frame_metadata *m;
-    if (hashmap_get(fp->metadata_map, "BIAS-RGN", (void**)(&m)) == MAP_OK)
+    if (hashmap_get(fd->metadata_map, "BIAS-RGN", (void**)(&m)) == MAP_OK)
     {
-        fp->regions.has_overscan = true;
+        fd->regions.has_overscan = true;
         sscanf(m->value.s, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
     }
 
-    if (hashmap_get(fp->metadata_map, "IMAG-RGN", (void**)(&m)) == MAP_OK)
+    if (hashmap_get(fd->metadata_map, "IMAG-RGN", (void**)(&m)) == MAP_OK)
         sscanf(m->value.s, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
 
-    fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
-    fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
+    fd->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
+    fd->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
 
     fits_close_file(input, &status);
 
-    return fp;
+    return fd;
 
 key_read_error:
-    hashmap_iterate(fp->metadata_map, free_metadata_entry, NULL);
+    hashmap_iterate(fd->metadata_map, free_metadata_entry, NULL);
 error:
-    framedata_free(fp);
+    framedata_free(fd);
 
     fits_close_file(input, &status);
     return NULL;

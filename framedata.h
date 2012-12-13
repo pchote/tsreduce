@@ -56,6 +56,7 @@ typedef struct
 
 framedata *framedata_load(const char *filename);
 void framedata_free(framedata *frame);
+void framedata_debug_framedata(framedata *fd);
 
 bool framedata_has_metadata(framedata *fd, const char *key);
 int framedata_get_metadata(framedata *fd, const char *key, int type, void *data);

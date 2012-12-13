@@ -349,6 +349,11 @@ void framedata_free(framedata *frame)
     free(frame);
 }
 
+void framedata_debug_framedata(framedata *fd)
+{
+    hashmap_iterate(fd->metadata_map, list_metadata_entry, NULL);
+}
+
 int framedata_start_time(framedata *fd, ts_time *out_time)
 {
     struct frame_metadata *date, *time;

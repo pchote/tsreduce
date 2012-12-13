@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <math.h>
 #include <string.h>
-#include <fitsio.h>
 
 #include "aperture.h"
 #include "helpers.h"

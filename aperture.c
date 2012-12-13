@@ -26,13 +26,10 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
     int r = ceil(rd) + 1;
 
     // Calculate x and y marginals (sum the image into 1d lines in x and y)
-    double *xm = (double *)malloc(2*r*sizeof(double));
-    double *ym = (double *)malloc(2*r*sizeof(double));
+    double *xm = calloc(2*r, sizeof(double));
+    double *ym = calloc(2*r, sizeof(double));
     if (xm == NULL || ym == NULL)
         return error("\tmalloc failed");
-
-    for (int i = 0; i < 2*r; i++)
-        xm[i] = ym[i] = 0;
 
     double total = 0;
     for (int j = 0; j < 2*r; j++)

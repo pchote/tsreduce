@@ -151,13 +151,13 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
         double profile[numIntensity];
 
         double readnoise, gain;
-        if (framedata_get_header_dbl(flat, "CCD-READ", &readnoise))
+        if (framedata_get_metadata(flat, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
             readnoise = data->ccd_readnoise;
 
         if (readnoise <= 0)
             error_jump(process_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
 
-        if (framedata_get_header_dbl(flat, "CCD-GAIN", &gain))
+        if (framedata_get_metadata(flat, "CCD-GAIN", FRAME_METADATA_DOUBLE, &gain))
             gain = data->ccd_gain;
 
         if (gain <= 0)

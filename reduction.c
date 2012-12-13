@@ -35,10 +35,10 @@ extern int verbosity;
 double prepare_flat(framedata *flat, framedata *dark, double *mean_out)
 {
     double flatexp, darkexp;
-    if (framedata_get_header_dbl(flat, "EXPTIME", &flatexp))
+    if (framedata_get_metadata(flat, "EXPTIME", FRAME_METADATA_DOUBLE, &flatexp))
         return error("EXPTIME is undefined in flat frame");
 
-    if (framedata_get_header_dbl(dark, "EXPTIME", &darkexp))
+    if (framedata_get_metadata(dark, "EXPTIME", FRAME_METADATA_DOUBLE, &darkexp))
         return error("EXPTIME is undefined in dark frame");
 
     // Subtract bias
@@ -342,7 +342,7 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
         error_jump(insufficient_frames, ret, "Error loading frame %s", frame_paths[0]);
 
     double exptime;
-    if (framedata_get_header_dbl(base, "EXPTIME", &exptime))
+    if (framedata_get_metadata(base, "EXPTIME", FRAME_METADATA_DOUBLE, &exptime))
         error_jump(dark_failed, ret, "EXPTIME undefined in %s", frame_paths[0]);
 
     double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
@@ -543,20 +543,35 @@ int update_reduction(char *dataPath)
     if (data->flat_template)
     {
         flat = framedata_load(data->flat_template);
-        if (framedata_get_header_dbl(flat, "CCD-READ", &readnoise))
+        if (!flat)
+        {
+            framedata_free(flat);
+            error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
+        }
+
+        if (framedata_get_metadata(flat, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
             readnoise = data->ccd_readnoise;
 
         if (readnoise <= 0)
             error_jump(flat_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
 
-        if (framedata_get_header_dbl(flat, "CCD-GAIN", &gain))
+        if (framedata_get_metadata(flat, "CCD-GAIN", FRAME_METADATA_DOUBLE, &gain))
             gain = data->ccd_gain;
 
         if (gain <= 0)
             error_jump(flat_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
     }
 
-    framedata *dark = data->dark_template ? framedata_load(data->dark_template) : NULL;
+    framedata *dark = NULL;
+    if (data->dark_template)
+    {
+        dark = framedata_load(data->dark_template);
+        if (!dark)
+        {
+            framedata_free(dark);
+            error_jump(dark_error, ret, "Error loading frame %s", data->dark_template);
+        }
+    }
 
     // Iterate through the files in the directory
     char **frame_paths;
@@ -579,7 +594,7 @@ int update_reduction(char *dataPath)
         }
 
         double exptime;
-        if (framedata_get_header_dbl(frame, "EXPTIME", &exptime))
+        if (framedata_get_metadata(frame, "EXPTIME", FRAME_METADATA_DOUBLE, &exptime))
         {
             framedata_free(frame);
             error_jump(process_error, ret, "EXPTIME undefined in %s", frame_paths[i]);
@@ -676,6 +691,7 @@ int update_reduction(char *dataPath)
 
 process_error:
     free_2d_array(frame_paths, num_frames);
+dark_error:
     if (dark)
         framedata_free(dark);
 flat_error:
@@ -870,7 +886,7 @@ int create_reduction_file(char *outname)
         if (!flat)
             error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
 
-        if (framedata_get_header_dbl(flat, "CCD-READ", (double[]){0}))
+        if (!framedata_has_metadata(flat, "CCD-READ"))
         {
             while (true)
             {
@@ -884,7 +900,7 @@ int create_reduction_file(char *outname)
             }
         }
 
-        if (framedata_get_header_dbl(flat, "CCD-GAIN", (double[]){0}))
+        if (!framedata_has_metadata(flat, "CCD-GAIN"))
         {
             while (true)
             {
@@ -899,7 +915,7 @@ int create_reduction_file(char *outname)
             }
         }
 
-        if (framedata_get_header_dbl(flat, "IM-SCALE", &data->ccd_platescale))
+        if (framedata_get_metadata(flat, "IM-SCALE", FRAME_METADATA_DOUBLE, &data->ccd_platescale))
         {
             char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66");
             data->ccd_platescale = atof(ret);
@@ -1161,7 +1177,7 @@ int update_preview(char *preview_filename, char *ds9_title)
     subtract_bias(frame);
 
     double plate_scale = 1;
-    if (framedata_get_header_dbl(frame, "IM-SCALE", &plate_scale))
+    if (framedata_get_metadata(frame, "IM-SCALE", FRAME_METADATA_DOUBLE, &plate_scale))
         printf("IM-SCALE header key not found. Assuming 1px = 1arcsec.\n");
 
     // Read regions from ds9
@@ -1253,11 +1269,16 @@ int update_preview(char *preview_filename, char *ds9_title)
     }
 
     // Display frame time
-    double frame_exp;
-    char *frame_end = framedata_get_header_string(frame, "UTC-END");
-    char *frame_date = framedata_get_header_string(frame, "UTC-DATE");
-    char *frame_object = framedata_get_header_string(frame, "OBJECT");
-    framedata_get_header_dbl(frame, "EXPTIME", &frame_exp);
+    double frame_exp = 0;
+    char *frame_end = "Unknown";
+    char *frame_date = "Unknown";
+    char *frame_object = "Unknown";
+
+    // Ignore errors
+    framedata_get_metadata(frame, "UTC-END", FRAME_METADATA_STRING, &frame_end);
+    framedata_get_metadata(frame, "UTC-DATE", FRAME_METADATA_STRING, &frame_date);
+    framedata_get_metadata(frame, "OBJECT", FRAME_METADATA_STRING, &frame_object);
+    framedata_get_metadata(frame, "EXPTIME", FRAME_METADATA_DOUBLE, &frame_exp);
 
     if (frame_object)
     {

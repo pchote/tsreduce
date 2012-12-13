@@ -187,16 +187,15 @@ framedata *framedata_load(const char *filename)
     ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
     br[0] = br[1] = br[2] = br[3] = 0;
 
-    char *bias_region_str = framedata_get_header_string(fp, "BIAS-RGN");
-    if (bias_region_str)
+    struct frame_metadata *m;
+    if (hashmap_get(fp->metadata_map, "BIAS-RGN", (void**)(&m)) == MAP_OK)
     {
         fp->regions.has_overscan = true;
-        sscanf(bias_region_str, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
+        sscanf(m->value.s, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
     }
 
-    char *image_region_str = framedata_get_header_string(fp, "IMAG-RGN");
-    if (image_region_str)
-        sscanf(image_region_str, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
+    if (hashmap_get(fp->metadata_map, "IMAG-RGN", (void**)(&m)) == MAP_OK)
+        sscanf(m->value.s, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
 
     fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
     fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
@@ -269,7 +268,7 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
                 metadata->type != FRAME_METADATA_INT)
                 return FRAME_METADATA_INVALID_TYPE;
 
-            *(double *)data = metadata->type == FRAME_METADATA_BOOL ?
+            *(double *)data = metadata->type == FRAME_METADATA_DOUBLE ?
                 metadata->value.d : (double)metadata->value.i;
             return FRAME_METADATA_OK;
         }
@@ -375,24 +374,24 @@ void framedata_free(framedata *frame)
     free(frame);
 }
 
-int framedata_start_time(framedata *frame, ts_time *out_time)
+int framedata_start_time(framedata *fd, ts_time *out_time)
 {
-    char *date = framedata_get_header_string(frame, "UTC-DATE");
-    char *time = framedata_get_header_string(frame, "UTC-BEG");
-    if (date && time)
+    struct frame_metadata *date, *time;
+    hashmap_get(fd->metadata_map, "UTC-DATE", (void **)(&date));
+    hashmap_get(fd->metadata_map, "UTC-BEG", (void **)(&time));
+
+    if (date && date->type == FRAME_METADATA_STRING &&
+        time && time->type == FRAME_METADATA_STRING)
     {
-        *out_time = parse_date_time(date, time);
-        free(date);
-        free(time);
+        *out_time = parse_date_time(date->value.s, time->value.s);
         return 0;
     }
 
     // Legacy keywords
-    char *datetime = framedata_get_header_string(frame, "GPSTIME");
-    if (datetime)
+    hashmap_get(fd->metadata_map, "GPSTIME", (void **)(&date));
+    if (date && date->type == FRAME_METADATA_STRING)
     {
-        *out_time = parse_time(datetime);
-        free(datetime);
+        *out_time = parse_time(date->value.s);
         return 0;
     }
 

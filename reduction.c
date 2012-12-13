@@ -243,7 +243,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     mean_gain /= num_frames;
 
     // Replace values outside the image region with 1, so overscan survives flatfielding
-    if (dark->regions.has_overscan)
+    if (dark->regions.image_px != dark->rows*dark->cols)
     {
         int *br = dark->regions.image_region;
         for (size_t k = 0; k < dark->rows*dark->cols; k++)
@@ -276,6 +276,22 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
 
         printf("Readnoise: %f\n", readnoise);
         printf("Gain: %f\n", median_gain);
+    }
+
+    if (dark->regions.image_px != dark->rows*dark->cols)
+    {
+        int *ir = dark->regions.image_region;
+        char buf[25];
+        snprintf(buf, 25, "[%d, %d, %d, %d]", ir[0], ir[1], ir[2], ir[3]);
+        fits_update_key(out, TSTRING, "IMAG-RGN", buf, "Frame image subregion", &status);
+    }
+
+    if (dark->regions.has_overscan)
+    {
+        int *br = dark->regions.bias_region;
+        char buf[25];
+        snprintf(buf, 25, "[%d, %d, %d, %d]", br[0], br[1], br[2], br[3]);
+        fits_update_key(out, TSTRING, "BIAS-RGN", buf, "Frame bias subregion", &status);
     }
 
     // Write the frame data to the image
@@ -389,7 +405,23 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
     // Create the primary array image (16-bit short integer pixels
     fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
     fits_update_key(out, TLONG, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
-    
+
+    if (base->regions.image_px != base->rows*base->cols)
+    {
+        int *ir = base->regions.image_region;
+        char buf[25];
+        snprintf(buf, 25, "[%d, %d, %d, %d]", ir[0], ir[1], ir[2], ir[3]);
+        fits_update_key(out, TSTRING, "IMAG-RGN", buf, "Frame image subregion", &status);
+    }
+
+    if (base->regions.has_overscan)
+    {
+        int *br = base->regions.bias_region;
+        char buf[25];
+        snprintf(buf, 25, "[%d, %d, %d, %d]", br[0], br[1], br[2], br[3]);
+        fits_update_key(out, TSTRING, "BIAS-RGN", buf, "Frame bias subregion", &status);
+    }
+
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, median_dark, &status))
     {

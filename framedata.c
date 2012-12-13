@@ -77,13 +77,15 @@ framedata *framedata_load(const char *filename)
     br[0] = br[1] = br[2] = br[3] = 0;
 
     char *bias_region_str = framedata_get_header_string(fp, "BIAS-RGN");
-    char *image_region_str = framedata_get_header_string(fp, "IMAG-RGN");
-    fp->regions.has_overscan = (bias_region_str && image_region_str);
-    if (fp->regions.has_overscan)
+    if (bias_region_str)
     {
+        fp->regions.has_overscan = true;
         sscanf(bias_region_str, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
-        sscanf(image_region_str, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
     }
+
+    char *image_region_str = framedata_get_header_string(fp, "IMAG-RGN");
+    if (image_region_str)
+        sscanf(image_region_str, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
 
     fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
     fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);

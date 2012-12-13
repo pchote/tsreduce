@@ -58,6 +58,9 @@ framedata *framedata_load(const char *filename);
 void framedata_free(framedata *frame);
 struct frame_metadata *framedata_metadata(framedata *fd, char *key);
 
+bool framedata_has_metadata(framedata *fd, const char *key);
+int framedata_get_metadata(framedata *fd, const char *key, int type, void *data);
+
 int framedata_get_header_long(framedata *fd, const char *key, long *value);
 int framedata_get_header_dbl(framedata *fd, const char *key, double *value);
 char *framedata_get_header_string(framedata *fd, const char *key);

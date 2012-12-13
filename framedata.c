@@ -214,6 +214,81 @@ error:
     return NULL;
 }
 
+bool framedata_has_metadata(framedata *fd, const char *key)
+{
+    struct frame_metadata *metadata;
+    return hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_OK;
+}
+
+int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
+{
+    struct frame_metadata *metadata;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
+        return FRAME_METADATA_MISSING;
+
+    switch (type)
+    {
+        case FRAME_METADATA_STRING:
+        {
+            // Allow any type to be returned as string
+            char buf[100];
+            char *val;
+            switch (metadata->type)
+            {
+                case FRAME_METADATA_STRING: val = metadata->value.s; break;
+                case FRAME_METADATA_BOOL: val = metadata->value.b ? "true" : "false"; break;
+                case FRAME_METADATA_DOUBLE:
+                {
+                    snprintf(buf, 100, "%f", metadata->value.d);
+                    val = buf;
+                    break;
+                }
+                case FRAME_METADATA_INT:
+                {
+                    snprintf(buf, 100, "%lld", metadata->value.i);
+                    val = buf;
+                    break;
+                }
+            }
+
+            *(char **)data = strdup(val);
+            return FRAME_METADATA_OK;
+        }
+        case FRAME_METADATA_INT:
+        {
+            if (metadata->type != FRAME_METADATA_INT)
+                return FRAME_METADATA_INVALID_TYPE;
+
+            *(int64_t *)data = metadata->value.i;
+            return FRAME_METADATA_OK;
+        }
+        case FRAME_METADATA_DOUBLE:
+        {
+            // Allow int to be returned as double
+            if (metadata->type != FRAME_METADATA_DOUBLE &&
+                metadata->type != FRAME_METADATA_INT)
+                return FRAME_METADATA_INVALID_TYPE;
+
+            *(double *)data = metadata->type == FRAME_METADATA_BOOL ?
+                metadata->value.d : (double)metadata->value.i;
+            return FRAME_METADATA_OK;
+        }
+        case FRAME_METADATA_BOOL:
+        {
+            // Allow int to be returned as bool
+            if (metadata->type != FRAME_METADATA_BOOL &&
+                metadata->type != FRAME_METADATA_INT)
+                return FRAME_METADATA_INVALID_TYPE;
+
+            *(bool *)data = metadata->type == FRAME_METADATA_BOOL ?
+                metadata->value.b : (bool)metadata->value.i;
+            return FRAME_METADATA_OK;
+        }
+    }
+
+    return FRAME_METADATA_OK;
+}
+
 struct frame_metadata *framedata_metadata(framedata *fd, char *key)
 {
     struct frame_metadata *metadata;

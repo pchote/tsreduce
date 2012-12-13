@@ -60,6 +60,7 @@ struct frame_metadata *framedata_metadata(framedata *fd, char *key);
 
 bool framedata_has_metadata(framedata *fd, const char *key);
 int framedata_get_metadata(framedata *fd, const char *key, int type, void *data);
+int framedata_remove_metadata(framedata *fd, const char *key);
 
 int framedata_subtract(framedata *fd, framedata *other);
 int framedata_divide(framedata *fd, framedata *other);

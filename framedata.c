@@ -271,6 +271,18 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
     return FRAME_METADATA_OK;
 }
 
+int framedata_remove_metadata(framedata *fd, const char *key)
+{
+    struct frame_metadata *metadata;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
+        return FRAME_METADATA_MISSING;
+
+    hashmap_remove(fd->metadata_map, key);
+    free_metadata_entry(NULL, metadata);
+
+    return FRAME_METADATA_OK;
+}
+
 int framedata_subtract(framedata *fd, framedata *other)
 {
     if (fd->cols != other->cols || fd->rows != other->rows)

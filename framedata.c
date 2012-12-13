@@ -271,6 +271,36 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
     return FRAME_METADATA_OK;
 }
 
+int framedata_put_metadata(framedata *fd, const char *key, int type, void *data, const char *comment)
+{
+    struct frame_metadata *metadata = calloc(1, sizeof(struct frame_metadata));
+    if (!metadata)
+        return error("Metadata allocation failed");
+
+    // Check for and remove existing key
+    struct frame_metadata *m;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&m)) == MAP_OK)
+        framedata_remove_metadata(fd, key);
+
+    switch (type)
+    {
+        case FRAME_METADATA_INT: metadata->value.i = *(int64_t *)data; break;
+        case FRAME_METADATA_DOUBLE: metadata->value.d = *(double *)data; break;
+        case FRAME_METADATA_BOOL: metadata->value.b = *(bool *)data; break;
+        case FRAME_METADATA_STRING: metadata->value.s = strdup((char *)data); break;
+        default:
+            free(metadata);
+            return error("Unknown metadata type: %d", type);
+    }
+
+    metadata->type = type;
+    metadata->key = strdup(key);
+    metadata->comment = strdup(comment);
+    hashmap_put(fd->metadata_map, metadata->key, metadata);
+
+    return 0;
+}
+
 int framedata_remove_metadata(framedata *fd, const char *key)
 {
     struct frame_metadata *metadata;

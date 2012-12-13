@@ -586,7 +586,10 @@ int update_reduction(char *dataPath)
         }
 
         // Calculate time at the start of the exposure relative to ReferenceTime
-        ts_time frame_time = framedata_start_time(frame);
+        ts_time frame_time;
+        if (framedata_start_time(frame, &frame_time))
+            error_jump(process_error, ret, "No known time headers found");
+
         double midtime = ts_difftime(frame_time, data->reference_time) + exptime / 2;
 
         // Process frame
@@ -843,7 +846,8 @@ int create_reduction_file(char *outname)
         error_jump(frameload_error, ret, "Error loading frame %s", preview_filename);
 
     subtract_bias(frame);
-    data->reference_time = framedata_start_time(frame);
+    if (framedata_start_time(frame, &data->reference_time))
+        error_jump(frameload_error, ret, "No known time headers found");
 
     if (data->dark_template)
     {

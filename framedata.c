@@ -300,28 +300,28 @@ void framedata_free(framedata *frame)
     free(frame);
 }
 
-ts_time framedata_start_time(framedata *frame)
+int framedata_start_time(framedata *frame, ts_time *out_time)
 {
     char *date = framedata_get_header_string(frame, "UTC-DATE");
     char *time = framedata_get_header_string(frame, "UTC-BEG");
     if (date && time)
     {
-        ts_time ret = parse_date_time(date, time);
+        *out_time = parse_date_time(date, time);
         free(date);
         free(time);
-        return ret;
+        return 0;
     }
 
     // Legacy keywords
     char *datetime = framedata_get_header_string(frame, "GPSTIME");
     if (datetime)
     {
-        ts_time ret = parse_time(datetime);
+        *out_time = parse_time(datetime);
         free(datetime);
-        return ret;
+        return 0;
     }
 
-    die("No known time headers found");
+    return 1;
 }
 
 // Convenience function for calculating the mean signal in a sub-region of a frame

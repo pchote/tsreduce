@@ -45,7 +45,6 @@ char *get_first_matching_file(char *pattern);
 int compare_double(const void *a, const void *b);
 int compare_float(const void *a, const void *b);
 int error(const char * format, ...);
-void die(const char * format, ...) __attribute__ ((noreturn));
 void millisleep(int ms);
 int ts_exec_read(const char *cmd, char **output);
 int ts_exec_write(const char *cmd, const void *restrict data, size_t size);

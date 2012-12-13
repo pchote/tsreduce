@@ -449,17 +449,6 @@ int error(const char * format, ...)
     return 1;
 }
 
-// Prints a vararg error and exits
-void die(const char * format, ...)
-{
-    va_list args;
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
-	fprintf(stderr, "\n");
-    exit(1);
-}
-
 // Sleep for ms milliseconds
 void millisleep(int ms)
 {

@@ -9,7 +9,29 @@
 #define FRAMEDATA_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "helpers.h"
+#include "hashmap.h"
+
+#define FRAME_METADATA_STRING 0
+#define FRAME_METADATA_INT 1
+#define FRAME_METADATA_DOUBLE 2
+#define FRAME_METADATA_BOOL 3
+
+struct frame_metadata
+{
+    char *key;
+    char *comment;
+
+    uint8_t type;
+    union
+    {
+        char *s;
+        bool b;
+        double d;
+        int64_t i;
+    } value;
+};
 
 typedef struct
 {
@@ -27,10 +49,12 @@ typedef struct
     int cols;
     double *data;
     frameregions regions;
+    map_t metadata_map;
 } framedata;
 
 framedata *framedata_load(const char *filename);
 void framedata_free(framedata *frame);
+struct frame_metadata *framedata_metadata(framedata *fd, char *key);
 
 int framedata_get_header_long(framedata *this, const char *key, long *value);
 int framedata_get_header_dbl(framedata *this, const char *key, double *value);

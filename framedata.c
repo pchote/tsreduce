@@ -5,7 +5,7 @@
 * published by the Free Software Foundation. For more information, see LICENSE.
 */
 
-#include <fitsio.h>
+#include <fitsio2.h>
 #include <string.h>
 
 #include "framedata.h"
@@ -21,11 +21,51 @@ static framedata *framedata_alloc()
     fp->cols = 0;
     fp->data = NULL;
     fp->regions.has_overscan = false;
+    fp->metadata_map = hashmap_new();
+
     return fp;
+}
+
+static int list_metadata_entry(any_t unused, any_t _meta)
+{
+    struct frame_metadata *metadata = _meta;
+    printf("%s = ", metadata->key);
+    switch(metadata->type)
+    {
+        case FRAME_METADATA_STRING:
+            printf("%s (string) / ", metadata->value.s);
+            break;
+        case FRAME_METADATA_INT:
+            printf("%lld (int) / ", metadata->value.i);
+            break;
+        case FRAME_METADATA_DOUBLE:
+            printf("%f (double) / ", metadata->value.d);
+            break;
+        case FRAME_METADATA_BOOL:
+            printf("%d (string) / ", metadata->value.b);
+            break;
+    }
+    printf("%s\n", metadata->comment);
+    return MAP_OK;
+}
+
+static int free_metadata_entry(any_t unused, any_t _meta)
+{
+    struct frame_metadata *metadata = _meta;
+    free(metadata->key);
+    free(metadata->comment);
+
+    if (metadata->type == FRAME_METADATA_STRING)
+        free(metadata->value.s);
+
+    free(metadata);
+    return MAP_OK;
 }
 
 framedata *framedata_load(const char *filename)
 {
+    int ret = 0;
+
     framedata *fp = framedata_alloc();
     if (!fp)
     {
@@ -40,35 +80,21 @@ framedata *framedata_load(const char *filename)
         while (fits_read_errmsg(fitserr))
             error("%s\n", fitserr);
 
-        error("fits_open_image failed with error %d; %s", status, filename);
-        framedata_free(fp);
-        return NULL;
+        error_jump(error, ret, "fits_open_image failed with error %d; %s", status, filename);
     }
 
     // Query the image size
     fits_read_key(fp->fptr, TINT, "NAXIS1", &fp->cols, NULL, &status);
     fits_read_key(fp->fptr, TINT, "NAXIS2", &fp->rows, NULL, &status);
     if (status)
-    {
-        error("querying NAXIS failed");
-        framedata_free(fp);
-        return NULL;
-    }
+        error_jump(error, ret, "querying NAXIS failed");
 
     fp->data = (double *)malloc(fp->cols*fp->rows*sizeof(double));
-    if (fp->data == NULL)
-    {
-        error("malloc failed");
-        framedata_free(fp);
-        return NULL;
-    }
+    if (!fp->data)
+        error_jump(error, ret, "Error allocating frame data");
 
     if (fits_read_pix(fp->fptr, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
-    {
-        error("fits_read_pix failed");
-        framedata_free(fp);
-        return NULL;
-    }
+        error_jump(error, ret, "fits_read_pix failed");
 
     // Load image regions
     int *ir = fp->regions.image_region;
@@ -89,7 +115,106 @@ framedata *framedata_load(const char *filename)
 
     fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
     fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
+
+    // Load header keys
+    int keyword_count = 0;
+    if (fits_get_hdrspace(fp->fptr, &keyword_count, NULL, &status))
+        error_jump(error, ret, "fits_get_hdrspace failed");
+
+    for (size_t i = 0; i < keyword_count; i++)
+    {
+        char card[FLEN_CARD];
+        char key[FLEN_KEYWORD];
+        char value[FLEN_VALUE];
+        char comment[FLEN_COMMENT];
+
+        struct frame_metadata *metadata = calloc(1, sizeof(struct frame_metadata));
+        if (!metadata)
+            error_jump(key_read_error, ret, "Error allocating key %zu", i);
+
+        // We're only interested in user keys
+        if (fits_read_record(fp->fptr, i + 1, card, &status))
+            error_jump(key_read_error, ret, "Error reading card %zu", i);
+
+        if (fits_get_keyclass(card) != TYP_USER_KEY)
+            continue;
+
+        if (fits_read_keyn(fp->fptr, i + 1, key, value, comment, &status))
+            error_jump(key_read_error, ret, "Error reading key %zu", i);
+
+        // Parse value
+        char type;
+        if (fits_get_keytype(value, &type, &status))
+            error_jump(key_read_error, ret, "Error determining type for '%s'", value);
+
+        switch (type)
+        {
+            case 'I':
+            {
+                LONGLONG val;
+                if (ffc2jj(value, &val, &status))
+                    error_jump(key_read_error, ret, "Error parsing '%s' as integer", value);
+
+                metadata->type = FRAME_METADATA_INT;
+                metadata->value.i = val;
+                break;
+            }
+            case 'F':
+            {
+                if (ffc2dd(value, &metadata->value.d, &status))
+                    error_jump(key_read_error, ret, "Error parsing '%s' as double", value);
+
+                metadata->type = FRAME_METADATA_DOUBLE;
+                break;
+            }
+            case 'L':
+            {
+                int val;
+                if (ffc2ll(value, &val, &status))
+                    error_jump(key_read_error, ret, "Error parsing '%s' as boolean", value);
+
+                metadata->type = FRAME_METADATA_BOOL;
+                metadata->value.b = val;
+                break;
+            }
+            default:
+            {
+                char val[FLEN_VALUE];
+                if (ffc2s(value, val, &status))
+                    error_jump(key_read_error, ret, "Error parsing '%s' as type '%c'", value, type);
+
+                metadata->type = FRAME_METADATA_STRING;
+                metadata->value.s = strdup(val);
+                if (!metadata->value.s)
+                    error_jump(key_read_error, ret, "Error parsing '%s' as type '%c'", value, type);
+                break;
+            }
+        }
+
+        metadata->key = strdup(key);
+        metadata->comment = strdup(comment);
+        if (!metadata->key || !metadata->comment)
+            error_jump(key_read_error, ret, "Error reading key %zu", i);
+
+        hashmap_put(fp->metadata_map, metadata->key, metadata);
+    }
+
     return fp;
+
+key_read_error:
+    hashmap_iterate(fp->metadata_map, free_metadata_entry, NULL);
+error:
+    framedata_free(fp);
+    return NULL;
+}
+
+struct frame_metadata *framedata_metadata(framedata *fd, char *key)
+{
+    struct frame_metadata *metadata;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
+        return NULL;
+
+    return metadata;
 }
 
 int framedata_get_header_long(framedata *this, const char *key, long *value)
@@ -171,6 +296,8 @@ void framedata_free(framedata *frame)
 
     if (frame->fptr)
         fits_close_file(frame->fptr, &status);
+
+    hashmap_iterate(frame->metadata_map, free_metadata_entry, NULL);
 
     free(frame);
 }

@@ -61,12 +61,8 @@ struct frame_metadata *framedata_metadata(framedata *fd, char *key);
 int framedata_get_header_long(framedata *fd, const char *key, long *value);
 int framedata_get_header_dbl(framedata *fd, const char *key, double *value);
 char *framedata_get_header_string(framedata *fd, const char *key);
-void framedata_subtract(framedata *this, framedata *other);
-void framedata_add(framedata *this, framedata *other);
-void framedata_subtract(framedata *this, framedata *other);
-void framedata_multiply(framedata *this, int div);
-void framedata_divide_const(framedata *this, int div);
-void framedata_divide(framedata *this, framedata *div);
+int framedata_subtract(framedata *fd, framedata *other);
+int framedata_divide(framedata *fd, framedata *other);
 ts_time framedata_start_time(framedata *frame);
 
 double mean_in_region(framedata *frame, int rgn[4]);

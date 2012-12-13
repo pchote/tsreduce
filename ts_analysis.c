@@ -115,12 +115,16 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)
         error_jump(dark_error, ret, "Error loading frame %s", data->dark_template);
-    framedata_subtract(frame, dark);
+
+    if (framedata_subtract(frame, dark))
+        error_jump(flat_error, ret, "Error dark-subtracting frame %s", filename);
 
     framedata *flat = framedata_load(data->flat_template);
     if (!flat)
         error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
-    framedata_divide(frame, flat);
+
+    if (framedata_divide(frame, flat))
+        error_jump(process_error, ret, "Error flat-fielding frame %s", filename);
 
     if (targetIndex < 0 || targetIndex >= data->target_count)
         error_jump(process_error, ret, "Invalid target `%d' selected", targetIndex);

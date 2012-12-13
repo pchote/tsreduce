@@ -468,7 +468,12 @@ int display_frame(char *data_path, char *frame_name)
         if (!dark)
             error_jump(process_error, ret, "Error loading frame %s", data->dark_template);
 
-        framedata_subtract(frame, dark);
+        if (framedata_subtract(frame, dark))
+        {
+            framedata_free(dark);
+            error_jump(process_error, ret, "Error dark-subtracting frame %s", obs->filename);
+        }
+
         framedata_free(dark);
     }
 
@@ -478,7 +483,12 @@ int display_frame(char *data_path, char *frame_name)
         if (!flat)
             error_jump(process_error, ret, "Error loading frame %s", data->flat_template);
 
-        framedata_divide(frame, flat);
+        if (framedata_divide(frame, flat))
+        {
+            framedata_free(flat);
+            error_jump(process_error, ret, "Error flat-fielding frame %s", obs->filename);
+        }
+
         framedata_free(flat);
     }
 
@@ -581,10 +591,11 @@ int update_reduction(char *dataPath)
 
         // Process frame
         subtract_bias(frame);
-        if (dark)
-            framedata_subtract(frame, dark);
-        if (flat)
-            framedata_divide(frame, flat);
+        if (dark && framedata_subtract(frame, dark))
+            error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_paths[i]);
+
+        if (flat && framedata_divide(frame, flat))
+            error_jump(process_error, ret, "Error flat-fielding frame %s", frame_paths[i]);
 
         struct observation *obs = datafile_new_observation(data);
         if (!obs)
@@ -840,7 +851,12 @@ int create_reduction_file(char *outname)
         if (!dark)
             error_jump(frameload_error, ret, "Error loading frame %s", data->dark_template);
 
-        framedata_subtract(frame, dark);
+        if (framedata_subtract(frame, dark))
+        {
+            framedata_free(dark);
+            error_jump(frameload_error, ret, "Error dark-subtracting frame %s", preview_filename);
+        }
+
         framedata_free(dark);
     }
 
@@ -886,7 +902,12 @@ int create_reduction_file(char *outname)
             free(ret);
         }
 
-        framedata_divide(frame, flat);
+        if (framedata_divide(frame, flat))
+        {
+            framedata_free(flat);
+            error_jump(frameload_error, ret, "Error flat-fielding frame %s", preview_filename);
+        }
+
         framedata_free(flat);
     }
 

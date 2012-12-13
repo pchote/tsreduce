@@ -264,40 +264,26 @@ char *framedata_get_header_string(framedata *fd, const char *key)
     return strdup(metadata->value.s);
 }
 
-void framedata_subtract(framedata *this, framedata *other)
+int framedata_subtract(framedata *fd, framedata *other)
 {
-    if (this->cols != other->cols || this->rows != other->rows)
-        die("Attempting to subtract frame with different size");
+    if (fd->cols != other->cols || fd->rows != other->rows)
+        return error("Frame size mismatch");
 
-    for (int i = 0; i < this->cols*this->rows; i++)
-        this->data[i] -= other->data[i];
+    for (size_t i = 0; i < fd->cols*fd->rows; i++)
+        fd->data[i] -= other->data[i];
+
+    return 0;
 }
 
-void framedata_add(framedata *this, framedata *other)
+int framedata_divide(framedata *fd, framedata *other)
 {
-    if (this->cols != other->cols || this->rows != other->rows)
-        die("Attempting to add frame with different size");
+    if (fd->cols != other->cols || fd->rows != other->rows)
+        return error("Frame size mismatch");
 
-    for (int i = 0; i < this->cols*this->rows; i++)
-        this->data[i] += other->data[i];
-}
+    for (size_t i = 0; i < fd->cols*fd->rows; i++)
+        fd->data[i] /= other->data[i];
 
-void framedata_multiply(framedata *this, int mul)
-{
-    for (int i = 0; i < this->cols*this->rows; i++)
-        this->data[i] *= mul;
-}
-
-void framedata_divide_const(framedata *this, int div)
-{
-    for (int i = 0; i < this->cols*this->rows; i++)
-        this->data[i] /= div;
-}
-
-void framedata_divide(framedata *this, framedata *div)
-{
-    for (int i = 0; i < this->cols*this->rows; i++)
-        this->data[i] /=  div->data[i];
+    return 0;
 }
 
 void framedata_free(framedata *frame)

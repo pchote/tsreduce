@@ -47,7 +47,6 @@ typedef struct
 
 typedef struct
 {
-    void *fptr;
     int rows;
     int cols;
     double *data;

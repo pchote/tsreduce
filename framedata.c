@@ -74,7 +74,9 @@ framedata *framedata_load(const char *filename)
     }
 
 	int status = 0;
-    if (fits_open_image((fitsfile **)(&fp->fptr), filename, READONLY, &status))
+    fitsfile *input;
+
+    if (fits_open_image(&input, filename, READONLY, &status))
     {
         char fitserr[128];
         while (fits_read_errmsg(fitserr))
@@ -84,8 +86,8 @@ framedata *framedata_load(const char *filename)
     }
 
     // Query the image size
-    fits_read_key(fp->fptr, TINT, "NAXIS1", &fp->cols, NULL, &status);
-    fits_read_key(fp->fptr, TINT, "NAXIS2", &fp->rows, NULL, &status);
+    fits_read_key(input, TINT, "NAXIS1", &fp->cols, NULL, &status);
+    fits_read_key(input, TINT, "NAXIS2", &fp->rows, NULL, &status);
     if (status)
         error_jump(error, ret, "querying NAXIS failed");
 
@@ -93,12 +95,12 @@ framedata *framedata_load(const char *filename)
     if (!fp->data)
         error_jump(error, ret, "Error allocating frame data");
 
-    if (fits_read_pix(fp->fptr, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
+    if (fits_read_pix(input, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
         error_jump(error, ret, "fits_read_pix failed");
 
     // Load header keys
     int keyword_count = 0;
-    if (fits_get_hdrspace(fp->fptr, &keyword_count, NULL, &status))
+    if (fits_get_hdrspace(input, &keyword_count, NULL, &status))
         error_jump(error, ret, "fits_get_hdrspace failed");
 
     for (size_t i = 0; i < keyword_count; i++)
@@ -113,13 +115,13 @@ framedata *framedata_load(const char *filename)
             error_jump(key_read_error, ret, "Error allocating key %zu", i);
 
         // We're only interested in user keys
-        if (fits_read_record(fp->fptr, i + 1, card, &status))
+        if (fits_read_record(input, i + 1, card, &status))
             error_jump(key_read_error, ret, "Error reading card %zu", i);
 
         if (fits_get_keyclass(card) != TYP_USER_KEY)
             continue;
 
-        if (fits_read_keyn(fp->fptr, i + 1, key, value, comment, &status))
+        if (fits_read_keyn(input, i + 1, key, value, comment, &status))
             error_jump(key_read_error, ret, "Error reading key %zu", i);
 
         // Parse value
@@ -199,12 +201,16 @@ framedata *framedata_load(const char *filename)
     fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
     fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
 
+    fits_close_file(input, &status);
+
     return fp;
 
 key_read_error:
     hashmap_iterate(fp->metadata_map, free_metadata_entry, NULL);
 error:
     framedata_free(fp);
+
+    fits_close_file(input, &status);
     return NULL;
 }
 
@@ -299,14 +305,11 @@ void framedata_free(framedata *frame)
     if (!frame)
         return;
 
-    int status;
     if (frame->data)
         free(frame->data);
 
-    if (frame->fptr)
-        fits_close_file(frame->fptr, &status);
-
     hashmap_iterate(frame->metadata_map, free_metadata_entry, NULL);
+    hashmap_free(frame->metadata_map);
 
     free(frame);
 }

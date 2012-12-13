@@ -96,26 +96,6 @@ framedata *framedata_load(const char *filename)
     if (fits_read_pix(fp->fptr, TDOUBLE, (long []){1, 1}, fp->cols*fp->rows, 0, fp->data, NULL, &status))
         error_jump(error, ret, "fits_read_pix failed");
 
-    // Load image regions
-    int *ir = fp->regions.image_region;
-    int *br = fp->regions.bias_region;
-    ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
-    br[0] = br[1] = br[2] = br[3] = 0;
-
-    char *bias_region_str = framedata_get_header_string(fp, "BIAS-RGN");
-    if (bias_region_str)
-    {
-        fp->regions.has_overscan = true;
-        sscanf(bias_region_str, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
-    }
-
-    char *image_region_str = framedata_get_header_string(fp, "IMAG-RGN");
-    if (image_region_str)
-        sscanf(image_region_str, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
-
-    fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
-    fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
-
     // Load header keys
     int keyword_count = 0;
     if (fits_get_hdrspace(fp->fptr, &keyword_count, NULL, &status))
@@ -199,6 +179,26 @@ framedata *framedata_load(const char *filename)
         hashmap_put(fp->metadata_map, metadata->key, metadata);
     }
 
+    // Load image regions
+    int *ir = fp->regions.image_region;
+    int *br = fp->regions.bias_region;
+    ir[0] = 0; ir[1] = fp->cols; ir[2] = 0; ir[3] = fp->rows;
+    br[0] = br[1] = br[2] = br[3] = 0;
+
+    char *bias_region_str = framedata_get_header_string(fp, "BIAS-RGN");
+    if (bias_region_str)
+    {
+        fp->regions.has_overscan = true;
+        sscanf(bias_region_str, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
+    }
+
+    char *image_region_str = framedata_get_header_string(fp, "IMAG-RGN");
+    if (image_region_str)
+        sscanf(image_region_str, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
+
+    fp->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
+    fp->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
+
     return fp;
 
 key_read_error:
@@ -217,36 +217,45 @@ struct frame_metadata *framedata_metadata(framedata *fd, char *key)
     return metadata;
 }
 
-int framedata_get_header_long(framedata *this, const char *key, long *value)
+int framedata_get_header_long(framedata *fd, const char *key, long *value)
 {
-    int ret, status = 0;
-    if (fits_read_key(this->fptr, TLONG, key, &ret, NULL, &status))
-        return 1;
+    struct frame_metadata *metadata;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
+        return FRAME_METADATA_MISSING;
 
-    *value = ret;
-    return 0;
+    if (metadata->type != FRAME_METADATA_INT)
+        return FRAME_METADATA_INVALID_TYPE;
+
+    *value = (long)metadata->value.i;
+    return FRAME_METADATA_OK;
 }
 
-int framedata_get_header_dbl(framedata *this, const char *key, double *value)
+int framedata_get_header_dbl(framedata *fd, const char *key, double *value)
 {
-    double ret;
-    int status = 0;
-    if (fits_read_key(this->fptr, TDOUBLE, key, &ret, NULL, &status))
-        return 1;
+    struct frame_metadata *metadata;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
+        return FRAME_METADATA_MISSING;
 
-    *value = ret;
-    return 0;
+    if (metadata->type == FRAME_METADATA_DOUBLE)
+        *value = metadata->value.d;
+    else if (metadata->type == FRAME_METADATA_INT)
+        *value = (double)metadata->value.i;
+    else
+        return FRAME_METADATA_INVALID_TYPE;
+
+    return FRAME_METADATA_OK;
 }
 
-char *framedata_get_header_string(framedata *this, const char *key)
+char *framedata_get_header_string(framedata *fd, const char *key)
 {
-    int status = 0;
-    char buf[FLEN_VALUE];
-    fits_read_key(this->fptr, TSTRING, key, &buf, NULL, &status);
-    if (status == KEY_NO_EXIST)
+    struct frame_metadata *metadata;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
         return NULL;
 
-    return strdup(buf);
+    if (metadata->type != FRAME_METADATA_STRING)
+        return NULL;
+
+    return strdup(metadata->value.s);
 }
 
 void framedata_subtract(framedata *this, framedata *other)

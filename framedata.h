@@ -18,6 +18,9 @@
 #define FRAME_METADATA_DOUBLE 2
 #define FRAME_METADATA_BOOL 3
 
+#define FRAME_METADATA_OK 0
+#define FRAME_METADATA_MISSING 1
+#define FRAME_METADATA_INVALID_TYPE 2
 struct frame_metadata
 {
     char *key;
@@ -56,9 +59,9 @@ framedata *framedata_load(const char *filename);
 void framedata_free(framedata *frame);
 struct frame_metadata *framedata_metadata(framedata *fd, char *key);
 
-int framedata_get_header_long(framedata *this, const char *key, long *value);
-int framedata_get_header_dbl(framedata *this, const char *key, double *value);
-char *framedata_get_header_string(framedata *this, const char *key);
+int framedata_get_header_long(framedata *fd, const char *key, long *value);
+int framedata_get_header_dbl(framedata *fd, const char *key, double *value);
+char *framedata_get_header_string(framedata *fd, const char *key);
 void framedata_subtract(framedata *this, framedata *other);
 void framedata_add(framedata *this, framedata *other);
 void framedata_subtract(framedata *this, framedata *other);

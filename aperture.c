@@ -21,19 +21,19 @@ extern int verbosity;
 static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, double sky_std_dev, framedata *frame)
 {
     // Square within the frame to sample
-    int x = floor(xy->x);
-    int y = floor(xy->y);
-    int r = ceil(rd) + 1;
+    uint16_t x = floor(xy->x);
+    uint16_t y = floor(xy->y);
+    uint16_t r = ceil(rd) + 1;
 
     // Calculate x and y marginals (sum the image into 1d lines in x and y)
     double *xm = calloc(2*r, sizeof(double));
     double *ym = calloc(2*r, sizeof(double));
-    if (xm == NULL || ym == NULL)
+    if (!xm || !ym)
         return error("\tmalloc failed");
 
     double total = 0;
-    for (int j = 0; j < 2*r; j++)
-        for (int i = 0; i < 2*r; i++)
+    for (uint16_t j = 0; j < 2*r; j++)
+        for (uint16_t i = 0; i < 2*r; i++)
         {            
             // Ignore pixels outside the circle
             if ((i-r)*(i-r) + (j-r)*(j-r) > r*r)
@@ -53,10 +53,10 @@ static int center_aperture_inner(double2 *xy, double rd, double sky_intensity, d
 
     // Calculate x and y moments
     double xc = 0, yc = 0;
-    for (int i = 0; i < 2*r; i++)
+    for (size_t i = 0; i < 2*r; i++)
     {
-        xc += (double)i*xm[i] / total;
-        yc += (double)i*ym[i] / total;
+        xc += i*xm[i] / total;
+        yc += i*ym[i] / total;
     }
 
     free(xm);
@@ -74,7 +74,7 @@ int center_aperture(aperture r, framedata *frame, double2 *center)
     // Allow up to 20 iterations to center
     double2 pos[20];
     double move;
-    int n = 0;
+    uint8_t n = 0;
 
     // Set initial center from the given aperture
     pos[0].x = r.x;
@@ -90,7 +90,7 @@ int center_aperture(aperture r, framedata *frame, double2 *center)
         if (n == 19)
         {
             pos[n].x = pos[n].y = 0;
-            for (int i = 14; i < 19; i++)
+            for (uint8_t i = 14; i < 19; i++)
             {
                 pos[n].x += pos[i].x;
                 pos[n].y += pos[i].y;
@@ -106,11 +106,11 @@ int center_aperture(aperture r, framedata *frame, double2 *center)
         pos[n] = pos[n-1];
 
         // Check that the position is valid
-        int tx = floor(pos[n].x);
-        int ty = floor(pos[n].y);
-        int tr = ceil(r.r) + 1;
-        if (tx - tr < 0 || tx + tr >= frame->cols ||
-            ty - tr < 0 || ty + tr >= frame->rows)
+        int16_t tx = floor(pos[n].x);
+        int16_t ty = floor(pos[n].y);
+        int16_t tr = ceil(r.r) + 1;
+        if (tx < tr || tx + tr >= frame->cols ||
+            ty < tr || ty + tr >= frame->rows)
             return (verbosity >= 1) ? error("\tAperture outside chip - skipping %f %f", pos[n].x, pos[n].y) : 1;
 
         // Calculate new background
@@ -136,23 +136,23 @@ int center_aperture(aperture r, framedata *frame, double2 *center)
 // This provides a robust method for calculating the background sky intensity and uncertainty
 int calculate_background(aperture r, framedata *frame, double *sky_mode, double *sky_std_dev)
 {
-    int minx = (int)fmax(floor(r.x - r.s2), 0);
-    int maxx = (int)fmin(ceil(r.x + r.s2), frame->cols-1);
-    int miny = (int)fmax(floor(r.y - r.s2), 0);
-    int maxy = (int)fmin(ceil(r.y + r.s2), frame->rows-1);
+    uint16_t minx = (uint16_t)fmax(floor(r.x - r.s2), 0);
+    uint16_t maxx = (uint16_t)fmin(ceil(r.x + r.s2), frame->cols-1);
+    uint16_t miny = (uint16_t)fmax(floor(r.y - r.s2), 0);
+    uint16_t maxy = (uint16_t)fmin(ceil(r.y + r.s2), frame->rows-1);
 
     // Copy pixels into a flat list that can be sorted
     // Allocate enough space to store the entire aperture region, but only copy pixels
     // within the annulus.
-    double *data = (double *)malloc((maxy - miny + 1)*(maxx - minx + 1)*sizeof(double));
-    if (data == NULL)
+    double *data = calloc((maxy - miny + 1)*(maxx - minx + 1), sizeof(double));
+    if (!data)
         return error("malloc failed");
 
-    int n = 0;
-    for (int j = miny; j <= maxy; j++)
-        for (int i = minx; i <= maxx; i++)
+    size_t n = 0;
+    for (uint16_t j = miny; j <= maxy; j++)
+        for (uint16_t i = minx; i <= maxx; i++)
         {
-            double d2 = (r.x-i)*(r.x-i) + (r.y-j)*(r.y-j);
+            double d2 = (r.x - i)*(r.x - i) + (r.y - j)*(r.y - j);
             if (d2 > r.s1*r.s1 && d2 < r.s2*r.s2)
                 data[n++] = frame->data[frame->cols*j + i];
         }
@@ -162,43 +162,43 @@ int calculate_background(aperture r, framedata *frame, double *sky_mode, double 
 
     // Calculate initial mean value
     double mean = 0;
-    for (int i = 0; i < n; i++)
+    for (size_t i = 0; i < n; i++)
         mean += data[i];
     mean /= n;
 
     // Calculate initial stddev
     double std = 0;
-    for (int i = 0; i < n; i++)
+    for (size_t i = 0; i < n; i++)
         std += (data[i] - mean)*(data[i] - mean);
     std = sqrt(std/n);
 
     // Discard pixels brighter than mean + 10*stddev
-    int filtered_n = n;
+    size_t filtered_n = n;
     while (data[filtered_n - 1] > mean + 10*std)
         filtered_n--;
 
     if (verbosity >= 1 && filtered_n != n)
-        printf("\tdiscarding %d bright sky pixels\n", n - filtered_n);
+        printf("\tdiscarding %zu bright sky pixels\n", n - filtered_n);
 
     // Recalculate mean and median ignoring discarded pixels
     if (n != filtered_n)
     {
         mean = std = 0;
-        for (int i = 0; i < filtered_n; i++)
+        for (size_t i = 0; i < filtered_n; i++)
             mean += data[i];
         mean /= filtered_n;
 
-        for (int i = 0; i < filtered_n; i++)
+        for (size_t i = 0; i < filtered_n; i++)
             std += (data[i] - mean)*(data[i] - mean);
         std = sqrt(std/filtered_n);
     }
 
     // Set return values and clean up
     double median = (data[filtered_n/2] + data[filtered_n/2+1])/2;
-    if (sky_mode != NULL)
+    if (sky_mode)
         *sky_mode = 3*mean - 2*median;
 
-    if (sky_std_dev != NULL)
+    if (sky_std_dev)
         *sky_std_dev = std;
 
     free(data);
@@ -245,11 +245,11 @@ static double chord_area(double2 p1, double2 p2, double r)
 
 // Calculate the area of a polygon defined by a list of points
 //   Returns the area
-static double polygon_area(double2 v[], int nv)
+static double polygon_area(double2 v[], size_t nv)
 {
     double a = 0;
-    int n = 0;
-    for (int i = 0; i < nv; i++)
+    size_t n = 0;
+    for (size_t i = 0; i < nv; i++)
     {
         n = i == 0 ? nv-1 : i-1;
         a += v[n].x*v[i].y - v[i].x*v[n].y;
@@ -266,7 +266,7 @@ static double2 corners[4] = {
     {1,0}
 };
 
-static double2 c(int k)
+static double2 c(int8_t k)
 {
     while (k < 0) k += 4;
     while (k > 3) k -= 4;
@@ -284,9 +284,9 @@ static double pixel_aperture_intesection(double x, double y, double r)
         return 0;
 
     // Determine which pixels are inside and outside the aperture
-    int hit[4];
-    int numhit = 0;
-    for (int k = 0; k < 4; k++)
+    uint8_t hit[4];
+    uint8_t numhit = 0;
+    for (uint8_t k = 0; k < 4; k++)
         if ((corners[k].x - x)*(corners[k].x - x) + (corners[k].y - y)*(corners[k].y - y) <= r*r)
             hit[numhit++] = k;
     
@@ -326,9 +326,9 @@ static double pixel_aperture_intesection(double x, double y, double r)
             // Intersection points
             double2 pts[3] =
             {
-                line_circle_intersection(x,y,r, c(hit[0] - 1), c(hit[0])),
+                line_circle_intersection(x, y, r, c(hit[0] - 1), c(hit[0])),
                 c(hit[0]),
-                line_circle_intersection(x,y,r, c(hit[0]), c(hit[0] + 1))
+                line_circle_intersection(x, y, r, c(hit[0]), c(hit[0] + 1))
             };
 
             // Area is triangle + chord
@@ -343,20 +343,20 @@ static double pixel_aperture_intesection(double x, double y, double r)
             // Intersection points
             double2 pts[4] =
             {
-                line_circle_intersection(x,y,r, c(first-1), c(first)),
+                line_circle_intersection(x, y, r, c(first - 1), c(first)),
                 c(first),
                 c(first+1),
-                line_circle_intersection(x,y,r, c(first+1), c(first+2))
+                line_circle_intersection(x, y, r, c(first + 1), c(first + 2))
             };
             
             // Area is a quadralateral + chord
-            return polygon_area(pts,4) + chord_area(pts[0], pts[3], r);
+            return polygon_area(pts, 4) + chord_area(pts[0], pts[3], r);
         }
         break;
         case 3:
         {
             int outside = 3;
-            for (int k = 0; k < numhit; k++)
+            for (uint8_t k = 0; k < numhit; k++)
                 if (hit[k] != k)
                 {
                     outside = k;
@@ -366,13 +366,13 @@ static double pixel_aperture_intesection(double x, double y, double r)
             // Intersection points
             double2 pts[3] =
             {
-                line_circle_intersection(x,y,r, c(outside-1), c(outside)),
+                line_circle_intersection(x, y, r, c(outside - 1), c(outside)),
                 c(outside),
-                line_circle_intersection(x,y,r, c(outside), c(outside+1))
+                line_circle_intersection(x, y, r, c(outside), c(outside + 1))
             };
             
             // Area is square - triangle + chord
-            return 1 - polygon_area(pts,3) + chord_area(pts[0], pts[2], r);
+            return 1 - polygon_area(pts, 3) + chord_area(pts[0], pts[2], r);
         }
         break;
     }
@@ -381,15 +381,18 @@ static double pixel_aperture_intesection(double x, double y, double r)
 
 // Integrates the flux within the specified aperture, 
 // accounting for partially covered pixels.
-//   Takes the aperture (x,y,r) and the image data (2d numpy array)
+//   Takes the aperture (x,y,r) and the image data
 //   Returns the contained flux (including background)
 double integrate_aperture(double2 xy, double r, framedata *frame)
 {
     double total = 0;
-    int bx = floor(xy.x), by = floor(xy.y), br = ceil(r) + 1;
-    for (int i = bx-br; i < bx+br; i++)
-        for (int j = by-br; j < by+br; j++)
-            total += pixel_aperture_intesection(xy.x-i, xy.y-j, r)*frame->data[i + frame->cols*j];
+    uint16_t bx = floor(xy.x);
+    uint16_t by = floor(xy.y);
+    uint16_t br = ceil(r) + 1;
+
+    for (int32_t i = bx - br; i < bx + br; i++)
+        for (int32_t j = by - br; j < by + br; j++)
+            total += pixel_aperture_intesection(xy.x - i, xy.y - j, r)*frame->data[i + frame->cols*j];
 
     return total;
 }
@@ -399,11 +402,14 @@ void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framed
     *signal = 0;
     *noise = 0;
 
-    int bx = floor(xy.x), by = floor(xy.y), br = ceil(r) + 1;
-    for (int i = bx-br; i < bx+br; i++)
-        for (int j = by-br; j < by+br; j++)
+    uint16_t bx = floor(xy.x);
+    uint16_t by = floor(xy.y);
+    uint16_t br = ceil(r) + 1;
+
+    for (int32_t i = bx - br; i < bx + br; i++)
+        for (int32_t j = by - br; j < by + br; j++)
         {
-            double area = pixel_aperture_intesection(xy.x-i, xy.y-j, r);
+            double area = pixel_aperture_intesection(xy.x - i, xy.y - j, r);
             double flux = frame->data[i + frame->cols*j];
             double darkflux = dark ? dark->data[i + frame->cols*j] : 0;
 
@@ -417,15 +423,15 @@ void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framed
 
 double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
 {
-    double center_profile = frame->data[frame->cols*((int)xy.y) + (int)xy.x] - bg;
+    double center_profile = frame->data[frame->cols*((uint16_t)xy.y) + (uint16_t)xy.x] - bg;
     double last_intensity = 0;
     double last_profile = center_profile;
 
     double fwhm = 0;
-    for (int radius = 1; radius <= (int)max_radius; radius++)
+    for (uint16_t radius = 1; radius <= (uint16_t)max_radius; radius++)
     {
         double intensity = integrate_aperture(xy, radius, frame) - bg*M_PI*radius*radius;
-        double profile = (intensity - last_intensity) / (M_PI*(2*radius-1));
+        double profile = (intensity - last_intensity) / (M_PI*(2*radius - 1));
 
         if (profile < center_profile/2)
         {

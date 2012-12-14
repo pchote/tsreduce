@@ -102,7 +102,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         }
 
         // Subtract dark, normalized to the flat exposure time
-        subtract_bias(frame);
+        framedata_subtract_bias(frame);
         for (size_t i = 0; i < base->rows*base->cols; i++)
             frame->data[i] -= exp/dark_exp*dark->data[i];
 
@@ -289,7 +289,7 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
                 frame_paths[k], base->rows, base->cols, frame->rows, frame->cols);
         }
 
-        subtract_bias(frame);
+        framedata_subtract_bias(frame);
         for (size_t j = 0; j < base->rows*base->cols; j++)
             data_cube[num_frames*j + k] = frame->data[j];
 
@@ -337,7 +337,7 @@ int display_frame(char *data_path, char *frame_name)
     if (!frame)
         error_jump(setup_error, ret, "Error loading frame %s", obs->filename);
 
-    subtract_bias(frame);
+    framedata_subtract_bias(frame);
 
     if (data->dark_template)
     {
@@ -496,7 +496,7 @@ int update_reduction(char *dataPath)
         double midtime = ts_difftime(frame_time, data->reference_time) + exptime / 2;
 
         // Process frame
-        subtract_bias(frame);
+        framedata_subtract_bias(frame);
         if (dark && framedata_subtract(frame, dark))
             error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_paths[i]);
 
@@ -749,7 +749,7 @@ int create_reduction_file(char *outname)
     if (!frame)
         error_jump(frameload_error, ret, "Error loading frame %s", preview_filename);
 
-    subtract_bias(frame);
+    framedata_subtract_bias(frame);
     if (framedata_start_time(frame, &data->reference_time))
         error_jump(frameload_error, ret, "No known time headers found");
 
@@ -1062,7 +1062,7 @@ int update_preview(char *preview_filename, char *ds9_title)
     framedata *frame = framedata_load(preview_filename);
     if (!frame)
         error_jump(frame_error, ret, "Error loading frame %s", preview_filename);
-    subtract_bias(frame);
+    framedata_subtract_bias(frame);
 
     double plate_scale = 1;
     if (framedata_get_metadata(frame, "IM-SCALE", FRAME_METADATA_DOUBLE, &plate_scale))

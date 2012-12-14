@@ -357,6 +357,17 @@ int framedata_subtract(framedata *fd, framedata *other)
     return 0;
 }
 
+void framedata_subtract_bias(framedata *frame)
+{
+    // Calculate and subtract bias if the frame has overscan
+    if (!frame->regions.has_overscan)
+        return;
+
+    double mean_bias = mean_in_region(frame, frame->regions.bias_region);
+    for (int i = 0; i < frame->rows*frame->cols; i++)
+        frame->data[i] -= mean_bias;
+}
+
 int framedata_divide(framedata *fd, framedata *other)
 {
     if (fd->cols != other->cols || fd->rows != other->rows)
@@ -440,16 +451,4 @@ double mean_in_region(framedata *frame, int rgn[4])
         for (int i = rgn[0]; i < rgn[1]; i++)
             mean += frame->data[j*frame->cols + i]/num_px;
     return mean;
-}
-
-// Calculate and subtract the mean bias level from a frame
-void subtract_bias(framedata *frame)
-{
-    // Calculate and subtract bias if the frame has overscan
-    if (!frame->regions.has_overscan)
-        return;
-
-    double mean_bias = mean_in_region(frame, frame->regions.bias_region);
-    for (int i = 0; i < frame->rows*frame->cols; i++)
-        frame->data[i] -= mean_bias;
 }

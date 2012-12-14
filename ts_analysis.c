@@ -110,7 +110,7 @@ int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
     framedata *frame = framedata_load(filename);
     if (!frame)
         error_jump(setup_error, ret, "Error loading frame %s", filename);
-    subtract_bias(frame);
+    framedata_subtract_bias(frame);
 
     framedata *dark = framedata_load(data->dark_template);
     if (!dark)

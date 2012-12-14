@@ -13,6 +13,7 @@
 int create_flat(const char *pattern, size_t minmax, const char *masterdark, const char *outname);
 int create_dark(const char *pattern, size_t minmax, const char *outname);
 int display_frame(char *data_path, char *frame_name);
+int print_frame_metadata(char *frame_path);
 
 int update_reduction(char *dataPath);
 int create_reduction_file(char *filePath);

@@ -39,6 +39,10 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strcmp(argv[1], "display") == 0)
         return display_frame(argv[2], argv[3]);
 
+    // `tsreduce display test.dat l19-2-0660.fits.gz`
+    else if (argc == 3 && strcmp(argv[1], "metadata") == 0)
+        return print_frame_metadata(argv[2]);
+
     // `tsreduce model july2011_run2.ts dftfreq.dat 0.0678829 6.3125 0.0001 fit.dat [residuals.dat]`
     else if ((argc == 8 || argc == 9) && strcmp(argv[1], "model") == 0)
         return model_fit(argv[2], argv[3], atof(argv[4]), atof(argv[5]), atof(argv[6]), argv[7], (argc == 9) ? argv[8] : NULL);

@@ -11,29 +11,6 @@
 #include "framedata.h"
 #include "helpers.h"
 
-static int list_metadata_entry(any_t unused, any_t _meta)
-{
-    struct frame_metadata *metadata = _meta;
-    printf("%s = ", metadata->key);
-    switch(metadata->type)
-    {
-        case FRAME_METADATA_STRING:
-            printf("%s (string) / ", metadata->value.s);
-            break;
-        case FRAME_METADATA_INT:
-            printf("%lld (int) / ", metadata->value.i);
-            break;
-        case FRAME_METADATA_DOUBLE:
-            printf("%f (double) / ", metadata->value.d);
-            break;
-        case FRAME_METADATA_BOOL:
-            printf("%d (string) / ", metadata->value.b);
-            break;
-    }
-    printf("%s\n", metadata->comment);
-    return MAP_OK;
-}
-
 static int free_metadata_entry(any_t unused, any_t _meta)
 {
     struct frame_metadata *metadata = _meta;
@@ -359,9 +336,28 @@ void framedata_free(framedata *frame)
     free(frame);
 }
 
-void framedata_debug_framedata(framedata *fd)
+void framedata_print_metadata(framedata *fd)
 {
-    hashmap_iterate(fd->metadata_map, list_metadata_entry, NULL);
+    for (struct frame_metadata *m = fd->metadata_start; m; m = m->next)
+    {
+        printf("%s = ", m->key);
+        switch (m->type)
+        {
+            case FRAME_METADATA_STRING:
+                printf("%s (string) / ", m->value.s);
+                break;
+            case FRAME_METADATA_INT:
+                printf("%lld (int) / ", m->value.i);
+                break;
+            case FRAME_METADATA_DOUBLE:
+                printf("%f (double) / ", m->value.d);
+                break;
+            case FRAME_METADATA_BOOL:
+                printf("%s (bool) / ", m->value.b ? "T" : "F");
+                break;
+        }
+        printf("%s\n", m->comment);
+    }
 }
 
 int framedata_start_time(framedata *fd, ts_time *out_time)

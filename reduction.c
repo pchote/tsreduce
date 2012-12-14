@@ -440,7 +440,6 @@ insufficient_frames:
     return ret;
 }
 
-
 int display_frame(char *data_path, char *frame_name)
 {
     int ret = 0;
@@ -521,6 +520,17 @@ process_error:
 setup_error:
     datafile_free(data);
     return ret;
+}
+
+int print_frame_metadata(char *frame_path)
+{
+    framedata *frame = framedata_load(frame_path);
+    if (!frame)
+        return error("Error loading frame %s", frame_path);
+
+    framedata_print_metadata(frame);
+    framedata_free(frame);
+    return 0;
 }
 
 // Load the reduction file at dataPath and reduce any new data

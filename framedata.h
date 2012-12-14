@@ -21,23 +21,6 @@
 #define FRAME_METADATA_OK 0
 #define FRAME_METADATA_MISSING 1
 #define FRAME_METADATA_INVALID_TYPE 2
-struct frame_metadata
-{
-    char *key;
-    char *comment;
-
-    uint8_t type;
-    union
-    {
-        char *s;
-        bool b;
-        double d;
-        int64_t i;
-    } value;
-
-    struct frame_metadata *prev;
-    struct frame_metadata *next;
-};
 
 typedef struct
 {

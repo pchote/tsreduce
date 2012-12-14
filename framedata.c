@@ -11,6 +11,24 @@
 #include "framedata.h"
 #include "helpers.h"
 
+struct frame_metadata
+{
+    char *key;
+    char *comment;
+
+    uint8_t type;
+    union
+    {
+        char *s;
+        bool b;
+        double d;
+        int64_t i;
+    } value;
+
+    struct frame_metadata *prev;
+    struct frame_metadata *next;
+};
+
 static int free_metadata_entry(any_t unused, any_t _meta)
 {
     struct frame_metadata *metadata = _meta;

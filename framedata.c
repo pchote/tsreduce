@@ -90,18 +90,18 @@ framedata *framedata_load(const char *filename)
 
         // We're only interested in user keys
         if (fits_read_record(input, i + 1, card, &status))
-            error_jump(key_read_error, ret, "Error reading card %zu", i);
+            error_jump(error, ret, "Error reading card %zu", i);
 
         if (fits_get_keyclass(card) != TYP_USER_KEY)
             continue;
 
         if (fits_read_keyn(input, i + 1, key, value, comment, &status))
-            error_jump(key_read_error, ret, "Error reading key %zu", i);
+            error_jump(error, ret, "Error reading key %zu", i);
 
         // Parse value
         char type;
         if (fits_get_keytype(value, &type, &status))
-            error_jump(key_read_error, ret, "Error determining type for '%s'", value);
+            error_jump(error, ret, "Error determining type for '%s'", value);
 
         switch (type)
         {
@@ -109,7 +109,7 @@ framedata *framedata_load(const char *filename)
             {
                 LONGLONG val;
                 if (ffc2jj(value, &val, &status))
-                    error_jump(key_read_error, ret, "Error parsing '%s' as integer", value);
+                    error_jump(error, ret, "Error parsing '%s' as integer", value);
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_INT, &(int64_t){val}, comment);
                 break;
@@ -118,7 +118,7 @@ framedata *framedata_load(const char *filename)
             {
                 double val;
                 if (ffc2dd(value, &val, &status))
-                    error_jump(key_read_error, ret, "Error parsing '%s' as double", value);
+                    error_jump(error, ret, "Error parsing '%s' as double", value);
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_DOUBLE, &val, comment);
                 break;
@@ -127,7 +127,7 @@ framedata *framedata_load(const char *filename)
             {
                 int val;
                 if (ffc2ll(value, &val, &status))
-                    error_jump(key_read_error, ret, "Error parsing '%s' as boolean", value);
+                    error_jump(error, ret, "Error parsing '%s' as boolean", value);
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_BOOL, &(bool){val}, comment);
                 break;
@@ -136,7 +136,7 @@ framedata *framedata_load(const char *filename)
             {
                 char val[FLEN_VALUE];
                 if (ffc2s(value, val, &status))
-                    error_jump(key_read_error, ret, "Error parsing '%s' as type '%c'", value, type);
+                    error_jump(error, ret, "Error parsing '%s' as type '%c'", value, type);
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_STRING, val, comment);
                 break;
@@ -149,8 +149,6 @@ framedata *framedata_load(const char *filename)
 
     return fd;
 
-key_read_error:
-    hashmap_iterate(fd->metadata_map, free_metadata_entry, NULL);
 error:
     framedata_free(fd);
 

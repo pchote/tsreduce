@@ -259,47 +259,43 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
     size_t num_frames = get_matching_files(pattern, &frame_paths);
 
     if (num_frames < 2*minmax)
-        error_jump(insufficient_frames, ret,
+        error_jump(insufficient_frames_error, ret,
             "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
 
     framedata *base = framedata_load(frame_paths[0]);
     if (!base)
-        error_jump(insufficient_frames, ret, "Error loading frame %s", frame_paths[0]);
-
-    double exptime;
-    if (framedata_get_metadata(base, "EXPTIME", FRAME_METADATA_DOUBLE, &exptime))
-        error_jump(setup_error, ret, "EXPTIME undefined in %s", frame_paths[0]);
+        error_jump(insufficient_frames_error, ret, "Error loading frame %s", frame_paths[0]);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
-    double *data_cube = (double *)malloc(num_frames*base->cols*base->rows*sizeof(double));
-    if (data_cube == NULL)
+    double *data_cube = calloc(num_frames*base->cols*base->rows, sizeof(double));
+    if (!data_cube)
         error_jump(setup_error, ret, "data_cube alloc failed");
 
-    for (size_t i = 0; i < num_frames; i++)
+    for (size_t k = 0; k < num_frames; k++)
     {
         if (verbosity >= 1)
-            printf("loading `%s`\n", frame_paths[i]);
+            printf("loading `%s`\n", frame_paths[k]);
 
-        framedata *f = framedata_load(frame_paths[i]);
-        if (!f)
-            error_jump(process_error, ret, "Error loading frame %s", frame_paths[i]);
+        framedata *frame = framedata_load(frame_paths[k]);
+        if (!frame)
+            error_jump(process_error, ret, "Error loading frame %s", frame_paths[k]);
 
-        if (f->rows != base->rows || f->cols != base->cols)
+        if (frame->rows != base->rows || frame->cols != base->cols)
         {
-            framedata_free(f);
+            framedata_free(frame);
             error_jump(process_error, ret,
                 "Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
-                frame_paths[i], base->rows, base->cols, f->rows, f->cols);
+                frame_paths[k], base->rows, base->cols, frame->rows, frame->cols);
         }
 
-        subtract_bias(f);
-        for (int j = 0; j < base->rows*base->cols; j++)
-            data_cube[num_frames*j+i] = f->data[j];
+        subtract_bias(frame);
+        for (size_t j = 0; j < base->rows*base->cols; j++)
+            data_cube[num_frames*j + k] = frame->data[j];
 
-        framedata_free(f);
+        framedata_free(frame);
     }
-    
+
     // Loop over the pixels, sorting the values from each image into increasing order
     for (size_t j = 0; j < base->rows*base->cols; j++)
     {
@@ -317,7 +313,7 @@ process_error:
     free(data_cube);
 setup_error:
     framedata_free(base);
-insufficient_frames:
+insufficient_frames_error:
     free_2d_array(frame_paths, num_frames);
     return ret;
 }

@@ -34,6 +34,9 @@ struct frame_metadata
         double d;
         int64_t i;
     } value;
+
+    struct frame_metadata *prev;
+    struct frame_metadata *next;
 };
 
 typedef struct
@@ -51,6 +54,9 @@ typedef struct
     int cols;
     double *data;
     frameregions regions;
+
+    struct frame_metadata *metadata_start;
+    struct frame_metadata *metadata_end;
     map_t metadata_map;
 } framedata;
 

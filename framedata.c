@@ -93,10 +93,6 @@ framedata *framedata_load(const char *filename)
         char value[FLEN_VALUE];
         char comment[FLEN_COMMENT];
 
-        struct frame_metadata *metadata = calloc(1, sizeof(struct frame_metadata));
-        if (!metadata)
-            error_jump(key_read_error, ret, "Error allocating key %zu", i);
-
         // We're only interested in user keys
         if (fits_read_record(input, i + 1, card, &status))
             error_jump(key_read_error, ret, "Error reading card %zu", i);
@@ -120,16 +116,16 @@ framedata *framedata_load(const char *filename)
                 if (ffc2jj(value, &val, &status))
                     error_jump(key_read_error, ret, "Error parsing '%s' as integer", value);
 
-                metadata->type = FRAME_METADATA_INT;
-                metadata->value.i = val;
+                framedata_put_metadata(fd, key, FRAME_METADATA_INT, &(int64_t){val}, comment);
                 break;
             }
             case 'F':
             {
-                if (ffc2dd(value, &metadata->value.d, &status))
+                double val;
+                if (ffc2dd(value, &val, &status))
                     error_jump(key_read_error, ret, "Error parsing '%s' as double", value);
 
-                metadata->type = FRAME_METADATA_DOUBLE;
+                framedata_put_metadata(fd, key, FRAME_METADATA_DOUBLE, &val, comment);
                 break;
             }
             case 'L':
@@ -138,8 +134,7 @@ framedata *framedata_load(const char *filename)
                 if (ffc2ll(value, &val, &status))
                     error_jump(key_read_error, ret, "Error parsing '%s' as boolean", value);
 
-                metadata->type = FRAME_METADATA_BOOL;
-                metadata->value.b = val;
+                framedata_put_metadata(fd, key, FRAME_METADATA_BOOL, &(bool){val}, comment);
                 break;
             }
             default:
@@ -148,20 +143,11 @@ framedata *framedata_load(const char *filename)
                 if (ffc2s(value, val, &status))
                     error_jump(key_read_error, ret, "Error parsing '%s' as type '%c'", value, type);
 
-                metadata->type = FRAME_METADATA_STRING;
-                metadata->value.s = strdup(val);
-                if (!metadata->value.s)
-                    error_jump(key_read_error, ret, "Error parsing '%s' as type '%c'", value, type);
+                framedata_put_metadata(fd, key, FRAME_METADATA_STRING, val, comment);
                 break;
             }
         }
 
-        metadata->key = strdup(key);
-        metadata->comment = strdup(comment);
-        if (!metadata->key || !metadata->comment)
-            error_jump(key_read_error, ret, "Error reading key %zu", i);
-
-        hashmap_put(fd->metadata_map, metadata->key, metadata);
     }
 
     // Load image regions
@@ -273,42 +259,66 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
 
 int framedata_put_metadata(framedata *fd, const char *key, int type, void *data, const char *comment)
 {
-    struct frame_metadata *metadata = calloc(1, sizeof(struct frame_metadata));
-    if (!metadata)
+    struct frame_metadata *m = calloc(1, sizeof(struct frame_metadata));
+    if (!m)
         return error("Metadata allocation failed");
 
     // Check for and remove existing key
-    struct frame_metadata *m;
-    if (hashmap_get(fd->metadata_map, key, (void**)(&m)) == MAP_OK)
+    struct frame_metadata *find;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&find)) == MAP_OK)
         framedata_remove_metadata(fd, key);
 
     switch (type)
     {
-        case FRAME_METADATA_INT: metadata->value.i = *(int64_t *)data; break;
-        case FRAME_METADATA_DOUBLE: metadata->value.d = *(double *)data; break;
-        case FRAME_METADATA_BOOL: metadata->value.b = *(bool *)data; break;
-        case FRAME_METADATA_STRING: metadata->value.s = strdup((char *)data); break;
+        case FRAME_METADATA_INT: m->value.i = *(int64_t *)data; break;
+        case FRAME_METADATA_DOUBLE: m->value.d = *(double *)data; break;
+        case FRAME_METADATA_BOOL: m->value.b = *(bool *)data; break;
+        case FRAME_METADATA_STRING: m->value.s = strdup((char *)data); break;
         default:
-            free(metadata);
+            free(m);
             return error("Unknown metadata type: %d", type);
     }
 
-    metadata->type = type;
-    metadata->key = strdup(key);
-    metadata->comment = strdup(comment);
-    hashmap_put(fd->metadata_map, metadata->key, metadata);
+    m->type = type;
+    m->key = strdup(key);
+    m->comment = strdup(comment);
+
+    if (!m->key || !m->comment ||
+        (type == FRAME_METADATA_STRING && !m->value.s))
+    {
+        if (type == FRAME_METADATA_STRING)
+            free(m->value.s);
+        free(m);
+        return error("Null string when inserting metadata");
+    }
+
+    // Add to list and hashmap
+    m->prev = fd->metadata_end;
+    m->next = NULL;
+    if (fd->metadata_end)
+        fd->metadata_end->next = m;
+    else
+        fd->metadata_start = m;
+    fd->metadata_end = m;
+
+    hashmap_put(fd->metadata_map, m->key, m);
 
     return 0;
 }
 
 int framedata_remove_metadata(framedata *fd, const char *key)
 {
-    struct frame_metadata *metadata;
-    if (hashmap_get(fd->metadata_map, key, (void**)(&metadata)) == MAP_MISSING)
+    struct frame_metadata *m;
+    if (hashmap_get(fd->metadata_map, key, (void**)(&m)) == MAP_MISSING)
         return FRAME_METADATA_MISSING;
 
+    if (m->prev)
+        m->prev->next = m->next;
+    if (m->next)
+        m->next->prev = m->prev;
+
     hashmap_remove(fd->metadata_map, key);
-    free_metadata_entry(NULL, metadata);
+    free_metadata_entry(NULL, m);
 
     return FRAME_METADATA_OK;
 }

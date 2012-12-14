@@ -24,11 +24,6 @@
 
 extern int verbosity;
 
-static bool region_contains(int r[4], size_t x, size_t y)
-{
-    return x >= r[0] && x < r[1] && y >= r[2] && y < r[3];
-}
-
 // Create a flat field frame from the frames listed by the command `flatcmd',
 // rejecting `minmax' highest and lowest pixel values after subtracting
 // the dark frame `masterdark'.
@@ -67,10 +62,25 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         error_jump(setup_error, ret, "Dark and flat frame sizes don't match");
 
 
+    uint16_t image_region[4] = {0, base->cols, 0, base->rows};
+    uint16_t bias_region[4] = {0, 0, 0, 0};
+
+    {
+        char *str;
+        if (framedata_get_metadata(base, "IMAG-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
+            sscanf(str, "[%hu, %hu, %hu, %hu]", &image_region[0], &image_region[1],
+                                                &image_region[2], &image_region[3]);
+
+        if (framedata_get_metadata(base, "BIAS-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
+            sscanf(str, "[%hu, %hu, %hu, %hu]", &bias_region[0], &bias_region[1],
+                                                &bias_region[2], &bias_region[3]);
+    }
+    size_t image_region_px = (image_region[1] - image_region[0])*(image_region[3] - image_region[2]);
+    size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
+
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
     double bias_variance = 0;
-    size_t bias_pixels = 0;
 
     double *data_cube = calloc(num_frames*base->cols*base->rows, sizeof(double));
     double *frame_mean = calloc(num_frames, sizeof(double));
@@ -113,32 +123,28 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
 
             // The frame has been bias subtracted, so the remaining signal
             // in the bias region is caused by readout noise
-            if (region_contains(base->regions.bias_region, j % base->cols, j / base->cols))
-            {
+            if (region_contains(bias_region, j % base->cols, j / base->cols))
                 bias_variance += frame->data[j]*frame->data[j];
-                bias_pixels++;
-            }
         }
 
         // Calculate normalization factor to make the image region 1
-        int *ir = frame->regions.image_region;
-        double mean = mean_in_region(frame, ir);
+        double mean = region_mean(image_region, frame->data, frame->cols);
 
         // Calculate standard deviation
         double std = 0;
-        for (int j = ir[2]; j < ir[3]; j++)
-            for (int i = ir[0]; i < ir[1]; i++)
+        for (uint16_t j = image_region[2]; j < image_region[3]; j++)
+            for (uint16_t i = image_region[0]; i < image_region[1]; i++)
             {
                 double temp = frame->data[base->cols*j + i] - mean;
                 std += temp*temp;
             }
-        std = sqrt(std/frame->regions.image_px);
+        std = sqrt(std/image_region_px);
 
         // Recalculate the mean, excluding outliers at 3 sigma
         frame_mean[k] = 0;
-        int count = 0;
-        for (int j = ir[2]; j < ir[3]; j++)
-            for (int i = ir[0]; i < ir[1]; i++)
+        size_t count = 0;
+        for (uint16_t j = image_region[2]; j < image_region[3]; j++)
+            for (uint16_t i = image_region[0]; i < image_region[1]; i++)
                 if (fabs(frame->data[base->cols*j + i] - mean) < 3*std)
                 {
                     frame_mean[k] += frame->data[base->cols*j + i];
@@ -173,9 +179,9 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         free(cube_slice);
     }
 
-    if (base->regions.has_overscan)
+    if (bias_region_px)
     {
-        double readnoise = sqrt(bias_variance/bias_pixels);
+        double readnoise = sqrt(bias_variance/(num_frames*bias_region_px));
 
         // Calculate gain from each image
         double *gain = calloc(num_frames, sizeof(double));
@@ -183,8 +189,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
             error_jump(processing_error, ret, "gain alloc failed");
 
         // Calculate mean dark level for gain calculation
-        int *ir = dark->regions.image_region;
-        double mean_dark = mean_in_region(dark, ir);
+        double mean_dark = region_mean(image_region, dark->data, dark->cols);
         double mean_gain = 0;
 
         for (size_t k = 0; k < num_frames; k++)
@@ -192,8 +197,8 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
             // Calculate the variance by taking the difference between
             // the frame and the master-flat
             double var = 0;
-            for (int j = ir[2]; j < ir[3]; j++)
-                for (int i = ir[0]; i < ir[1]; i++)
+            for (uint16_t j = image_region[2]; j < image_region[3]; j++)
+                for (uint16_t i = image_region[0]; i < image_region[1]; i++)
                 {
                     // Scale master-flat to the same level as the original frame
                     size_t l = base->cols*j + i;
@@ -201,7 +206,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
                     var += temp*temp;
                 }
 
-            var /= dark->regions.image_px;
+            var /= image_region_px;
             gain[k] = (frame_mean[k] + mean_dark) / (var - readnoise*readnoise);
             mean_gain += gain[k];
 
@@ -215,7 +220,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         double median_gain = gain[num_frames/2];
 
         // Set header keys for readout noise and gain
-        if (base->regions.has_overscan)
+        if (bias_region_px)
         {
             framedata_put_metadata(base, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
             framedata_put_metadata(base, "CCD-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");
@@ -228,10 +233,11 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     }
 
     // Replace values outside the image region with 1, so overscan survives flatfielding
-    if (base->regions.image_px != base->rows*base->cols)
-        for (size_t k = 0; k < base->rows*base->cols; k++)
-            if (!region_contains(base->regions.image_region, k % base->cols, k / base->cols))
-                base->data[k] = 1;
+    if (image_region_px != base->rows*base->cols)
+        for (uint16_t j = 0; j < base->rows; j++)
+            for (uint16_t i = 0; i < base->cols; i++)
+                if (!region_contains(image_region, i, j))
+                    base->data[j*base->cols + i] = 1;
 
     framedata_save(base, outname);
 

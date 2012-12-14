@@ -41,19 +41,9 @@ struct frame_metadata
 
 typedef struct
 {
-    bool has_overscan;
-    int image_region[4];
-    int image_px;
-    int bias_region[4];
-    int bias_px;
-} frameregions;
-
-typedef struct
-{
     int rows;
     int cols;
     double *data;
-    frameregions regions;
 
     struct frame_metadata *metadata_start;
     struct frame_metadata *metadata_end;
@@ -71,10 +61,8 @@ int framedata_put_metadata(framedata *fd, const char *key, int type, void *data,
 int framedata_remove_metadata(framedata *fd, const char *key);
 
 int framedata_subtract(framedata *fd, framedata *other);
-void framedata_subtract_bias(framedata *frame);
+void framedata_subtract_bias(framedata *fd);
 int framedata_divide(framedata *fd, framedata *other);
 int framedata_start_time(framedata *frame, ts_time *time);
-
-double mean_in_region(framedata *frame, int rgn[4]);
 
 #endif

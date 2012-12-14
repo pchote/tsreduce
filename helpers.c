@@ -628,3 +628,20 @@ void calculate_amplitude_spectrum(double *time, double *mma, size_t count,
         ampl[j] = 2*sqrt(real*real + imag*imag);
     }
 }
+
+bool region_contains(uint16_t r[4], size_t x, size_t y)
+{
+    return x >= r[0] && x < r[1] && y >= r[2] && y < r[3];
+}
+
+// Convenience function for calculating the mean signal in a sub-region of a frame
+// Assumes that the frame type is double, and that the region is inside the frame
+double region_mean(uint16_t r[4], double *data, size_t stride)
+{
+    int num_px = (r[1] - r[0])*(r[3] - r[2]);
+    double mean = 0;
+    for (uint16_t j = r[2]; j < r[3]; j++)
+        for (uint16_t i = r[0]; i < r[1]; i++)
+            mean += data[j*stride + i]/num_px;
+    return mean;
+}

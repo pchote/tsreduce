@@ -127,25 +127,6 @@ framedata *framedata_load(const char *filename)
 
     }
 
-    // Load image regions
-    int *ir = fd->regions.image_region;
-    int *br = fd->regions.bias_region;
-    ir[0] = 0; ir[1] = fd->cols; ir[2] = 0; ir[3] = fd->rows;
-    br[0] = br[1] = br[2] = br[3] = 0;
-
-    struct frame_metadata *m;
-    if (hashmap_get(fd->metadata_map, "BIAS-RGN", (void**)(&m)) == MAP_OK)
-    {
-        fd->regions.has_overscan = true;
-        sscanf(m->value.s, "[%d, %d, %d, %d]", &br[0], &br[1], &br[2], &br[3]);
-    }
-
-    if (hashmap_get(fd->metadata_map, "IMAG-RGN", (void**)(&m)) == MAP_OK)
-        sscanf(m->value.s, "[%d, %d, %d, %d]", &ir[0], &ir[1], &ir[2], &ir[3]);
-
-    fd->regions.image_px = (ir[1] - ir[0])*(ir[3] - ir[2]);
-    fd->regions.bias_px = (br[1] - br[0])*(br[3] - br[2]);
-
     fits_close_file(input, &status);
 
     return fd;
@@ -357,15 +338,18 @@ int framedata_subtract(framedata *fd, framedata *other)
     return 0;
 }
 
-void framedata_subtract_bias(framedata *frame)
+void framedata_subtract_bias(framedata *fd)
 {
-    // Calculate and subtract bias if the frame has overscan
-    if (!frame->regions.has_overscan)
+    struct frame_metadata *m;
+    if (hashmap_get(fd->metadata_map, "BIAS-RGN", (void**)(&m)) == MAP_MISSING)
         return;
 
-    double mean_bias = mean_in_region(frame, frame->regions.bias_region);
-    for (int i = 0; i < frame->rows*frame->cols; i++)
-        frame->data[i] -= mean_bias;
+    uint16_t br[4] = {0, 0, 0, 0};
+    sscanf(m->value.s, "[%hu, %hu, %hu, %hu]", &br[0], &br[1], &br[2], &br[3]);
+
+    double mean_bias = region_mean(br, fd->data, fd->cols);
+    for (size_t i = 0; i < fd->rows*fd->cols; i++)
+        fd->data[i] -= mean_bias;
 }
 
 int framedata_divide(framedata *fd, framedata *other)
@@ -439,16 +423,4 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
     }
 
     return 1;
-}
-
-// Convenience function for calculating the mean signal in a sub-region of a frame
-// Assumes that the frame type is double, and that the region is inside the frame
-double mean_in_region(framedata *frame, int rgn[4])
-{
-    int num_px = (rgn[1] - rgn[0])*(rgn[3] - rgn[2]);
-    double mean = 0;
-    for (int j = rgn[2]; j < rgn[3]; j++)
-        for (int i = rgn[0]; i < rgn[1]; i++)
-            mean += frame->data[j*frame->cols + i]/num_px;
-    return mean;
 }

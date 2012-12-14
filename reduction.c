@@ -14,7 +14,6 @@
 #include <regex.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <fitsio.h>
 
 #include "datafile.h"
 #include "framedata.h"
@@ -109,9 +108,16 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     if (!dark)
         error_jump(insufficient_frames, ret, "Error loading frame %s", masterdark);
 
+    framedata *base = framedata_load(frame_paths[0]);
+    if (!base)
+        error_jump(base_failed, ret, "Error loading frame %s", frame_paths[0]);
+
+    if (base->rows != dark->rows || base->cols != dark->cols)
+        error_jump(datacube_failed, ret, "Dark and flat frame sizes don't match");
+
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
-    double *data_cube = (double *)malloc(num_frames*dark->cols*dark->rows*sizeof(double));
+    double *data_cube = (double *)malloc(num_frames*base->cols*base->rows*sizeof(double));
     if (data_cube == NULL)
         error_jump(datacube_failed, ret, "data_cube alloc failed");
 
@@ -141,7 +147,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
             error_jump(loadflat_failed, ret, "Error loading frame %s", frame_paths[i]);
         }
 
-        if (frames[i]->rows != dark->rows || frames[i]->cols != dark->cols)
+        if (frames[i]->rows != base->rows || frames[i]->cols != base->cols)
         {
             // Cleanup the frames that we have allocated
             for (int j = 0; j <= i; j++)
@@ -149,7 +155,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
 
             error_jump(loadflat_failed, ret,
                 "Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
-                frames[i], dark->rows, dark->cols, frames[i]->rows, frames[i]->cols);
+                frames[i], base->rows, base->cols, frames[i]->rows, frames[i]->cols);
         }
 
         // Dark-subtract and normalize the frame, recording the mean level for calculating the gain
@@ -163,48 +169,44 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         }
 
         // Store normalized data in data cube
-        for (size_t j = 0; j < dark->rows*dark->cols; j++)
+        for (size_t j = 0; j < base->rows*base->cols; j++)
             data_cube[num_frames*j+i] = frames[i]->data[j];
     }
 
     // Calculate read noise from overscan region
     // Subtracting master-dark removed the mean level, so just add
     double readnoise = 0;
-    if (dark->regions.has_overscan)
+    if (base->regions.has_overscan)
     {
-        int *br = dark->regions.bias_region;
+        int *br = base->regions.bias_region;
         double var = 0;
         for (int j = br[2]; j < br[3]; j++)
             for (int i = br[0]; i < br[1]; i++)
                 for (int k = 0; k < num_frames; k++)
                 {
                     // Need to multiply by the mean level for the frame to give the variance in ADU
-                    double temp = mean_flat[k]*data_cube[num_frames*(dark->cols*j + i) + k];
+                    double temp = mean_flat[k]*data_cube[num_frames*(base->cols*j + i) + k];
                     var += temp*temp;
                 }
-        readnoise = sqrt(var/(dark->regions.bias_px*num_frames));
+        readnoise = sqrt(var/(base->regions.bias_px*num_frames));
     }
 
     // Calculate median image for the master-flat
     // Loop over the pixels, sorting the values from each image into increasing order
-    double *median_flat = (double *)malloc(dark->rows*dark->cols*sizeof(double));
-    if (median_flat == NULL)
-        error_jump(median_failed, ret, "median_flat alloc failed");
-
-    for (size_t j = 0; j < dark->rows*dark->cols; j++)
+    for (size_t j = 0; j < base->rows*base->cols; j++)
     {
         qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
 
         // then average the non-rejected pixels into the output array
-        median_flat[j] = 0;
+        base->data[j] = 0;
         for (int i = minmax; i < num_frames - minmax; i++)
-            median_flat[j] += data_cube[num_frames*j + i];
-        median_flat[j] /= (num_frames - 2*minmax);
+            base->data[j] += data_cube[num_frames*j + i];
+        base->data[j] /= (num_frames - 2*minmax);
     }
 
     // Calculate gain from each image
-    double *gain = (double *)malloc(num_frames*sizeof(double));
-    if (gain == NULL)
+    double *gain = calloc(num_frames, sizeof(double));
+    if (!gain)
         error_jump(gain_failed, ret, "gain alloc failed");
 
     if (dark->regions.has_overscan)
@@ -213,7 +215,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         int *ir = dark->regions.image_region;
         double mean_dark = mean_in_region(dark, ir);
 
-        for(size_t k = 0; k < num_frames; k++)
+        for (size_t k = 0; k < num_frames; k++)
         {
             // Calculate the variance by taking the difference between
             // the (normalized) frame and the (normalized) master-flat
@@ -221,7 +223,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
             for (int j = ir[2]; j < ir[3]; j++)
                 for (int i = ir[0]; i < ir[1]; i++)
                 {
-                    double temp = mean_flat[k]*(frames[k]->data[dark->cols*j + i] - median_flat[dark->cols*j + i]);
+                    double temp = mean_flat[k]*(frames[k]->data[dark->cols*j + i] - base->data[dark->cols*j + i]);
                     var += temp*temp;
                 }
             var /= dark->regions.image_px;
@@ -238,76 +240,39 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
 
     // Find mean value
     double mean_gain = 0;
-    for(int k = 0; k < num_frames; k++)
+    for (int k = 0; k < num_frames; k++)
         mean_gain += gain[k];
     mean_gain /= num_frames;
 
     // Replace values outside the image region with 1, so overscan survives flatfielding
-    if (dark->regions.image_px != dark->rows*dark->cols)
+    if (base->regions.image_px != base->rows*base->cols)
     {
-        int *br = dark->regions.image_region;
-        for (size_t k = 0; k < dark->rows*dark->cols; k++)
+        int *br = base->regions.image_region;
+        for (size_t k = 0; k < base->rows*base->cols; k++)
         {
-            size_t x = k % dark->cols;
-            size_t y = k / dark->cols;
+            size_t x = k % base->cols;
+            size_t y = k / base->cols;
             bool in_image = x >= br[0] && x < br[1] && y >= br[2] && y < br[3];
             if (!in_image)
-                median_flat[k] = 1;
+                base->data[k] = 1;
         }
     }
-
-    // Create a new fits file
-    fitsfile *out;
-    int status = 0;
-    size_t filename_len = strlen(outname) + 2;
-    char *filename = malloc(filename_len*sizeof(char));
-    snprintf(filename, filename_len, "!%s", outname);
-    fits_create_file(&out, filename, &status);
-    free(filename);
-
-    // Create the primary array image (16-bit short integer pixels
-    fits_create_img(out, DOUBLE_IMG, 2, (long []){dark->cols, dark->rows}, &status);
-
+    
     // Set header keys for readout noise and gain
-    if (dark->regions.has_overscan)
+    if (base->regions.has_overscan)
     {
-        fits_update_key(out, TDOUBLE, "CCD-READ", &readnoise, "Estimated read noise (ADU)", &status);
-        fits_update_key(out, TDOUBLE, "CCD-GAIN", &median_gain, "Estimated gain (electrons/ADU)", &status);
+        framedata_put_metadata(base, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
+        framedata_put_metadata(base, "CCD-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");
 
         printf("Readnoise: %f\n", readnoise);
         printf("Gain: %f\n", median_gain);
     }
 
-    if (dark->regions.image_px != dark->rows*dark->cols)
-    {
-        int *ir = dark->regions.image_region;
-        char buf[25];
-        snprintf(buf, 25, "[%d, %d, %d, %d]", ir[0], ir[1], ir[2], ir[3]);
-        fits_update_key(out, TSTRING, "IMAG-RGN", buf, "Frame image subregion", &status);
-    }
-
-    if (dark->regions.has_overscan)
-    {
-        int *br = dark->regions.bias_region;
-        char buf[25];
-        snprintf(buf, 25, "[%d, %d, %d, %d]", br[0], br[1], br[2], br[3]);
-        fits_update_key(out, TSTRING, "BIAS-RGN", buf, "Frame bias subregion", &status);
-    }
-
-    // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, dark->rows*dark->cols, median_flat, &status))
-    {
-        // Warn, but continue
-        error("fits_write_img failed with status %d", status);
-    }
-
-    fits_close_file(out, &status);
+    framedata_save(base, outname);
 
     // Cleanup
     free(gain);
 gain_failed:
-    free(median_flat);
-median_failed:
     for (size_t j = 0; j < num_frames; j++)
         framedata_free(frames[j]);
 loadflat_failed:
@@ -317,6 +282,8 @@ frames_failed:
 meanflat_failed:
     free(data_cube);
 datacube_failed:
+    framedata_free(base);
+base_failed:
     framedata_free(dark);
 insufficient_frames:
     free_2d_array(frame_paths, num_frames);
@@ -343,17 +310,13 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
 
     double exptime;
     if (framedata_get_metadata(base, "EXPTIME", FRAME_METADATA_DOUBLE, &exptime))
-        error_jump(dark_failed, ret, "EXPTIME undefined in %s", frame_paths[0]);
-
-    double *median_dark = (double *)malloc(base->rows*base->cols*sizeof(double));
-    if (median_dark == NULL)
-        error_jump(dark_failed, ret, "median_dark alloc failed");
+        error_jump(setup_error, ret, "EXPTIME undefined in %s", frame_paths[0]);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
     double *data_cube = (double *)malloc(num_frames*base->cols*base->rows*sizeof(double));
     if (data_cube == NULL)
-        error_jump(datacube_failed, ret, "data_cube alloc failed");
+        error_jump(setup_error, ret, "data_cube alloc failed");
 
     for (size_t i = 0; i < num_frames; i++)
     {
@@ -362,12 +325,12 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
 
         framedata *f = framedata_load(frame_paths[i]);
         if (!f)
-            error_jump(loaddark_failed, ret, "Error loading frame %s", frame_paths[i]);
+            error_jump(process_error, ret, "Error loading frame %s", frame_paths[i]);
 
         if (f->rows != base->rows || f->cols != base->cols)
         {
             framedata_free(f);
-            error_jump(loaddark_failed, ret,
+            error_jump(process_error, ret,
                 "Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
                 frame_paths[i], base->rows, base->cols, f->rows, f->cols);
         }
@@ -385,55 +348,16 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
         qsort(data_cube + num_frames*j, num_frames, sizeof(double), compare_double);
 
         // then average the non-rejected pixels into the output array
-        median_dark[j] = 0;
+        base->data[j] = 0;
         for (int i = minmax; i < num_frames - minmax; i++)
-            median_dark[j] += data_cube[num_frames*j + i];
-        median_dark[j] /= (num_frames - 2*minmax);
+            base->data[j] += data_cube[num_frames*j + i];
+        base->data[j] /= (num_frames - 2*minmax);
     }
+
+    framedata_save(base, outname);
+process_error:
     free(data_cube);
-
-    // Create a new fits file
-    fitsfile *out;
-    int status = 0;
-    
-    size_t filename_len = strlen(outname) + 2;
-    char *filename = malloc(filename_len*sizeof(char));
-    snprintf(filename, filename_len, "!%s", outname);
-    fits_create_file(&out, filename, &status);
-    free(filename);
-    
-    // Create the primary array image (16-bit short integer pixels
-    fits_create_img(out, DOUBLE_IMG, 2, (long []){base->cols, base->rows}, &status);
-    fits_update_key(out, TDOUBLE, "EXPTIME", &exptime, "Actual integration time (sec)", &status);
-
-    if (base->regions.image_px != base->rows*base->cols)
-    {
-        int *ir = base->regions.image_region;
-        char buf[25];
-        snprintf(buf, 25, "[%d, %d, %d, %d]", ir[0], ir[1], ir[2], ir[3]);
-        fits_update_key(out, TSTRING, "IMAG-RGN", buf, "Frame image subregion", &status);
-    }
-
-    if (base->regions.has_overscan)
-    {
-        int *br = base->regions.bias_region;
-        char buf[25];
-        snprintf(buf, 25, "[%d, %d, %d, %d]", br[0], br[1], br[2], br[3]);
-        fits_update_key(out, TSTRING, "BIAS-RGN", buf, "Frame bias subregion", &status);
-    }
-
-    // Write the frame data to the image
-    if (fits_write_img(out, TDOUBLE, 1, base->rows*base->cols, median_dark, &status))
-    {
-        // Warn, but continue
-        error("fits_write_img failed with status %d", status);
-    }
-
-    fits_close_file(out, &status);
-loaddark_failed:
-datacube_failed:
-    free(median_dark);
-dark_failed:
+setup_error:
     framedata_free(base);
 insufficient_frames:
     free_2d_array(frame_paths, num_frames);

@@ -159,6 +159,52 @@ error:
     return NULL;
 }
 
+int framedata_save(framedata *fd, const char *path)
+{
+    fitsfile *out;
+    int status = 0;
+
+    // Prepending path with a '!' tells cfitsio to
+    // overwrite any existing file.
+    size_t filepath_len = strlen(path) + 2;
+    char *filepath = malloc(filepath_len*sizeof(char));
+    snprintf(filepath, filepath_len, "!%s", path);
+
+    fits_create_file(&out, filepath, &status);
+    free(filepath);
+
+    // Create the primary array image (16-bit short integer pixels
+    fits_create_img(out, DOUBLE_IMG, 2, (long []){fd->cols, fd->rows}, &status);
+
+    // Set header keys
+    for (struct frame_metadata *m = fd->metadata_start; m; m = m->next)
+    {
+        switch (m->type)
+        {
+            case FRAME_METADATA_STRING:
+                fits_update_key(out, TSTRING, m->key, m->value.s, m->comment, &status);
+                break;
+            case FRAME_METADATA_INT:
+                fits_update_key(out, TLONG, m->key, &(long){m->value.i}, m->comment, &status);
+                break;
+            case FRAME_METADATA_DOUBLE:
+                fits_update_key(out, TDOUBLE, m->key, &m->value.d, m->comment, &status);
+                break;
+            case FRAME_METADATA_BOOL:
+                fits_update_key(out, TLOGICAL, m->key, &(int){m->value.b}, m->comment, &status);
+                break;
+        }
+
+    }
+
+    // Write the frame data to the image
+    if (fits_write_img(out, TDOUBLE, 1, fd->rows*fd->cols, fd->data, &status))
+        error("fits_write_img failed with status %d", status);
+
+    fits_close_file(out, &status);
+    return 0;
+}
+
 bool framedata_has_metadata(framedata *fd, const char *key)
 {
     struct frame_metadata *metadata;

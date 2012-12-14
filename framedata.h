@@ -61,6 +61,7 @@ typedef struct
 } framedata;
 
 framedata *framedata_load(const char *filename);
+int framedata_save(framedata *fd, const char *path);
 void framedata_free(framedata *frame);
 void framedata_print_metadata(framedata *fd);
 

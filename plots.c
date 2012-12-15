@@ -154,6 +154,50 @@ target_allocation_error:
     return ret;
 }
 
+static int plot_fwhm_panel(float x1, float x2, float y1, float y2,
+                           datafile *data, struct photometry_data *pd)
+{
+    int ret = 0;
+
+    // PGPLOT requires float arrays
+    float *time = malloc(pd->raw_count*sizeof(float));
+    float *fwhm = malloc(pd->raw_count*sizeof(float));
+    if (!time || !fwhm)
+        error_jump(allocation_error, ret, "Allocation error");
+
+    for (size_t i = 0; i < pd->raw_count; i++)
+    {
+        time[i] = pd->raw_time[i];
+        fwhm[i] = pd->fwhm[i];
+    }
+
+    double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
+    double max_fwhm = pd->fwhm_mean + 7.5*pd->fwhm_std;
+
+    cpgsvp(x1, x2, y1, y2);
+
+    // Plot top axis markers in UTC hour, bottom axis markers in seconds
+    // Reserve the top 25% of the plot for the mean FWHM label
+    cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
+
+    cpgsch(0.9);
+    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
+    cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
+    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_fwhm, max_fwhm);
+    cpgbox("bst", 0, 0, "0", 0, 0);
+    cpgsch(1.0);
+
+    cpgswin(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
+    cpgpt(pd->raw_count, time, fwhm, 229);
+    cpgsci(1);
+
+allocation_error:
+    free(time);
+    free(fwhm);
+
+    return ret;
+}
+
 int online_focus_plot(char *data_path, const char *device, double size)
 {
     int ret = 0;
@@ -164,16 +208,10 @@ int online_focus_plot(char *data_path, const char *device, double size)
 
     struct photometry_data *pd = datafile_generate_photometry(data);
     if (!pd)
-    {
-        datafile_free(data);
-        return error("Photometry calculation failed");
-    }
+        error_jump(photometry_error, ret, "Photometry calculation failed");
 
     if (cpgopen(device) <= 0)
-    {
-        datafile_free(data);
-        return error("Unable to open PGPLOT window");
-    }
+        error_jump(setup_error, ret, "Unable to open PGPLOT window");
 
     cpgpap(size, 0.6);
     cpgask(0);
@@ -184,40 +222,17 @@ int online_focus_plot(char *data_path, const char *device, double size)
     if (plot_raw_panel(0.065, 0.98, 0.075, 0.55, data, pd))
         error_jump(plot_error, ret, "Error plotting raw panel");
 
-    //
-    // Plot FWHM
-    //
-    cast_double_array_to_float(pd->raw_time, pd->raw_count);
-    cast_double_array_to_float(pd->fwhm, pd->raw_count);
-    {
-        double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
-        double max_fwhm = pd->fwhm_mean + 7.5*pd->fwhm_std;
-
-        cpgsvp(0.065, 0.98, 0.55, 0.91);
-
-        // Plot top axis markers in UTC hour, bottom axis markers in seconds
-        // Reserve the top 25% of the plot for the mean FWHM label
-        cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
-
-        cpgsch(0.9);
-        cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
-        cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
-        cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_fwhm, max_fwhm);
-        cpgbox("bst", 0, 0, "0", 0, 0);
-        cpgsch(1.0);
-
-        cpgswin(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
-        cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
-    }
+    if (plot_fwhm_panel(0.065, 0.98, 0.55, 0.91, data, pd))
+        error_jump(plot_error, ret, "Error plotting fwhm panel");
 
     plot_time_axes(0.065, 0.98, 0.075, 0.91, data, pd);
 
-    cpgend();
-
 plot_error:
+    cpgend();
+setup_error:
     datafile_free_photometry(pd);
+photometry_error:
     datafile_free(data);
-
     return ret;
 }
 
@@ -227,14 +242,11 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
     struct photometry_data *pd = datafile_generate_photometry(data);
     if (!pd)
-        return error("Photometry calculation failed");
+        error_jump(photometry_error, ret, "Photometry calculation failed");
 
     struct dft_data *dd = datafile_generate_dft(data, pd);
     if (!dd)
-    {
-        datafile_free_photometry(pd);
-        return error("DFT calculation failed");
-    }
+        error_jump(dft_error, ret, "DFT calculation failed");
 
     double window_range = (data->plot_max_uhz - data->plot_min_uhz)/16;
     double window_freq = (data->plot_max_uhz + data->plot_min_uhz)/2;
@@ -242,14 +254,10 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
     struct dft_data *wd = datafile_generate_window(data, pd, window_freq, window_range, window_count);
     if (!wd)
-    {
-        datafile_free_photometry(pd);
-        datafile_free_dft(dd);
-        return error("DFT window calculation failed");
-    }
+        error_jump(window_error, ret, "DFT window calculation failed");
 
     if (cpgopen(tsDevice) <= 0)
-        return error("Unable to open PGPLOT window");
+        error_jump(setup_error, ret, "Unable to open PGPLOT window");
 
     cpgpap(tsSize, 0.6);
     cpgask(0);
@@ -279,35 +287,14 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     if (plot_raw_panel(0.065, 0.98, 0.075, 0.55, data, pd))
         error_jump(plot_error, ret, "Error plotting raw panel");
 
-    //
-    // Plot FWHM
-    //
-    cast_double_array_to_float(pd->raw_time, pd->raw_count);
-    cast_double_array_to_float(pd->fwhm, pd->raw_count);
-    {
-        double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
-        double max_fwhm = pd->fwhm_mean + 7.5*pd->fwhm_std;
+    if (plot_fwhm_panel(0.065, 0.98, 0.55, 0.67, data, pd))
+        error_jump(plot_error, ret, "Error plotting fwhm panel");
 
-        cpgsvp(0.065, 0.98, 0.55, 0.67);
-        cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
-
-        // Plot top axis markers in UTC hour, bottom axis markers in seconds
-        // Reserve the top 25% of the plot for the mean FWHM label
-        cpgsch(0.9);
-        cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
-        cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
-        cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_fwhm, max_fwhm);
-        cpgbox("bst", 0, 0, "0", 0, 0);
-        cpgsch(1.0);
-
-        cpgswin(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
-        cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
-
-        snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
-        cpgsch(0.9);
-        cpgptxt(pd->time_max, max_fwhm - 3*pd->fwhm_std, 0, 1.05, label);
-        cpgsch(1.0);
-    }
+    // Mean FWHM label
+    snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
+    cpgsch(0.9);
+    cpgmtxt("t", -1.2, 1.0, 1.05, label);
+    cpgsch(1.0);
 
     //
     // Plot Ratio
@@ -489,14 +476,16 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cpgsci(1);
     cpgbox("bc", 0, 0, "bc", 0, 0);
 
-    cpgend();
-
 plot_error:
+    cpgend();
+setup_error:
     datafile_free_dft(wd);
+window_error:
     datafile_free_dft(dd);
+dft_error:
     datafile_free_photometry(pd);
-
-    return 0;
+photometry_error:
+    return ret;
 }
 
 int online_plot(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)

@@ -17,10 +17,10 @@
          location = "group:reduction.h">
       </FileRef>
       <FileRef
-         location = "group:ts_analysis.c">
+         location = "group:plots.c">
       </FileRef>
       <FileRef
-         location = "group:ts_analysis.h">
+         location = "group:plots.h">
       </FileRef>
    </Group>
    <Group

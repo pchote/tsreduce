@@ -27,7 +27,7 @@ ifeq ($(shell uname),Darwin)
     endif
 endif
 
-SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c ts_analysis.c astro_convert.c random.c hashmap.c
+SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c plots.c astro_convert.c random.c hashmap.c
 OBJ = $(SRC:.c=.o)
 
 ifeq ($(MSYSTEM),MINGW32)

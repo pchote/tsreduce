@@ -13,7 +13,7 @@
 #include <float.h>
 #include <cpgplot.h>
 
-#include "reduction.h"
+#include "plots.h"
 #include "datafile.h"
 #include "helpers.h"
 #include "fit.h"

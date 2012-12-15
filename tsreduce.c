@@ -13,7 +13,7 @@
 #include "helpers.h"
 #include "dft_analysis.h"
 #include "reduction.h"
-#include "ts_analysis.h"
+#include "plots.h"
 
 int verbosity = 0;
 

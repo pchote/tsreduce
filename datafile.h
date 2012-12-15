@@ -65,6 +65,7 @@ typedef struct
     double plot_min_uhz;
     double plot_max_uhz;
     bool plot_error_bars;
+    int8_t plot_fwhm_smooth;
 
     double ccd_gain;
     double ccd_readnoise;

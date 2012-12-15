@@ -172,7 +172,7 @@ static int plot_fwhm_panel(float x1, float x2, float y1, float y2,
     }
 
     double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
-    double max_fwhm = pd->fwhm_mean + 7.5*pd->fwhm_std;
+    double max_fwhm = pd->fwhm_mean + 8*pd->fwhm_std;
 
     cpgsvp(x1, x2, y1, y2);
 
@@ -189,7 +189,59 @@ static int plot_fwhm_panel(float x1, float x2, float y1, float y2,
 
     cpgswin(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
     cpgpt(pd->raw_count, time, fwhm, 229);
+
+    // Calculate running mean
+    for (size_t i = 0; i < pd->raw_count; i++)
+    {
+        int8_t lower = -data->plot_fwhm_smooth/2;
+        int8_t upper = data->plot_fwhm_smooth + lower - 1;
+
+        if (i < -lower)
+            lower = -i;
+
+        if (i + upper >= pd->raw_count)
+            upper = pd->raw_count - i - 1;
+
+        // Estimate mean
+        double mean = 0;
+        size_t count = 0;
+        for (int8_t j = lower; j <= upper; j++)
+        {
+            mean += fwhm[i + j];
+            count++;
+        }
+
+        // Estimate standard deviation
+        double std = 0;
+        for (int8_t j = lower; j <= upper; j++)
+            std += (fwhm[i + j] - mean)*(fwhm[i + j] - mean);
+
+        count = 0;
+        mean = 0;
+        for (int8_t j = lower; j <= upper; j++)
+            if (fabs(fwhm[i + j] - mean) < 3*std)
+            {
+                mean += fwhm[i + j];
+                count++;
+            }
+
+        // Estimate improved mean
+        fwhm[i] = mean / count;
+    }
+
+    cpgsci(2);
+    cpgline(pd->raw_count, time, fwhm);
     cpgsci(1);
+
+    // Mean FWHM label
+    cpgsch(0.9);
+    char label[32];
+    snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
+    cpgmtxt("t", -1.25, 0.0, -0.1, label);
+
+    snprintf(label, 32, "Current: %.2f\" (%.2fpx)", fwhm[pd->raw_count - 1]*data->ccd_platescale, fwhm[pd->raw_count - 1]);
+    cpgmtxt("t", -1.25, 1.0, 1.1, label);
+    cpgsch(1.0);
 
 allocation_error:
     free(time);
@@ -435,12 +487,6 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
 
     if (plot_fwhm_panel(0.065, 0.98, 0.55, 0.67, data, pd))
         error_jump(plot_error, ret, "Error plotting fwhm panel");
-
-    // Mean FWHM label
-    snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
-    cpgsch(0.9);
-    cpgmtxt("t", -1.2, 1.0, 1.05, label);
-    cpgsch(1.0);
 
     if (plot_ratio_panel(0.065, 0.98, 0.67, 0.79, data, pd))
         error_jump(plot_error, ret, "Error plotting ratio panel");

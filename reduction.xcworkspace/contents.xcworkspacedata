@@ -63,6 +63,9 @@
          location = "group:astro_convert.h">
       </FileRef>
       <FileRef
+         location = "group:leapseconds.h">
+      </FileRef>
+      <FileRef
          location = "group:random.c">
       </FileRef>
       <FileRef

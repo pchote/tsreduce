@@ -115,6 +115,13 @@ struct photometry_data
     // Polynomial fit coefficients to ratio
     double *fit_coeffs;
     size_t fit_coeffs_count;
+
+    // Time scale
+    double time_offset;
+    double time_min;
+    double time_max;
+    int time_exponent;
+    double time_scale;
 };
 
 struct dft_data

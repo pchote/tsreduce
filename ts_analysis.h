@@ -11,6 +11,7 @@
 int display_tracer(char *dataPath);
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);
+int online_focus_plot(const char *data_path, const char *device, double size);
 int online_plot(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize);
 int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, double tsSize, char *dftDevice, double dftSize);
 

@@ -91,6 +91,24 @@ int main( int argc, char *argv[] )
             return online_plot(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
     }
 
+    // `tsreduce focus-plot focus.dat [focus.gif/gif 10]
+    else if ((argc == 3 || argc == 5) && strcmp(argv[1], "focus-plot") == 0)
+    {
+        if (argc == 3)
+        {
+#if (defined _WIN32)
+            double size = 10;
+            char *device = "focus.gif/gif";
+#else
+            double size = 9.41;
+            char *device = "5/xs";
+#endif
+            return online_focus_plot(argv[2], device, size);
+        }
+        else
+            return online_focus_plot(argv[2], argv[3], atof(argv[4]));
+    }
+
     // `tsreduce playback ec04207.dat 100 1 [ts.ps/cps 10 dft.ps/cps 10]
     else if ((argc == 5 || argc == 9) && strcmp(argv[1], "playback") == 0)
     {

@@ -575,7 +575,7 @@ int update_reduction(char *dataPath)
         datafile_append_observation(data, obs);
         framedata_free(frame);
     }
-    
+
     if (chdir(datadir))
         error_jump(process_error, ret, "Invalid data path: %s", datadir);
 
@@ -679,7 +679,7 @@ int create_reduction_file(char *outname)
         }
 
         data->flat_template = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
-    
+
         // Create master-flat if necessary
         if (access(data->flat_template, F_OK) != -1)
             printf("Skipping master flat creation - file already exists\n");
@@ -1311,5 +1311,325 @@ coord_error:
         datafile_free(datafiles[i]);
     free(datafiles);
 datafile_error:
+    return ret;
+}
+
+int display_tracer(char *dataPath)
+{
+    int ret = 0;
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    if (chdir(data->frame_dir))
+        error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
+
+    if (init_ds9())
+        error_jump(setup_error, ret, "Unable to launch ds9");
+
+    if (!data->obs_start)
+        error_jump(setup_error, ret, "No observations to display");
+
+    char command[1024];
+    snprintf(command, 1024, "xpaset tsreduce file %s/%s", data->frame_dir, data->obs_end->filename);
+    ts_exec_write(command, NULL, 0);
+
+    // Set scaling mode
+    ts_exec_write("xpaset tsreduce scale mode zscale", NULL, 0);
+
+    // Display results in ds9 - errors are non-fatal
+    ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
+
+    if (data->obs_start->next)
+        for (struct observation *obs = data->obs_start->next; obs; obs = obs->next)
+            for (size_t i = 0; i < data->target_count; i++)
+            {
+                snprintf(command, 1024, "xpaset tsreduce regions command '{line %f %f %f %f # line= 0 0 color=red select=0}'",
+                         obs->prev->pos[i].x + 1, obs->prev->pos[i].y + 1,
+                         obs->pos[i].x + 1, obs->pos[i].y + 1);
+                ts_exec_write(command, NULL, 0);
+            }
+
+    // Draw apertures
+    for (size_t i = 0; i < data->target_count; i++)
+    {
+        double2 xy = data->obs_end->pos[i];
+        aperture *t = &data->targets[i].aperture;
+        snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, t->r);
+        ts_exec_write(command, NULL, 0);
+
+        snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #select=0}'",
+                 xy.x + 1, xy.y + 1, t->s1, t->s2);
+        ts_exec_write(command, NULL, 0);
+    }
+
+    ts_exec_write(command, NULL, 0);
+    ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
+
+setup_error:
+    datafile_free(data);
+    return ret;
+}
+
+// Output radial profile information for the given targetIndex, obsIndex in
+// the reduction file at dataPath
+int calculate_profile(char *dataPath, int obsIndex, int targetIndex)
+{
+    int ret = 0;
+
+    // Read file header
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    if (obsIndex >= data->obs_count)
+        error_jump(setup_error, ret, "Requested observation is out of range: max is %d", data->obs_count-1);
+
+    if (chdir(data->frame_dir))
+        error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
+
+    char *filename;
+    if (obsIndex >= 0)
+    {
+        struct observation *obs = data->obs_start;
+        for (size_t i = 0; obs && i < obsIndex; i++, obs = obs->next);
+        // Do nothing
+
+        filename = strdup(obs->filename);
+    }
+    else
+        filename = get_first_matching_file(data->frame_pattern);
+
+    if (!filename)
+        error_jump(setup_error, ret, "No matching files found");
+
+    framedata *frame = framedata_load(filename);
+    if (!frame)
+        error_jump(setup_error, ret, "Error loading frame %s", filename);
+    framedata_subtract_bias(frame);
+
+    framedata *dark = framedata_load(data->dark_template);
+    if (!dark)
+        error_jump(dark_error, ret, "Error loading frame %s", data->dark_template);
+
+    if (framedata_subtract(frame, dark))
+        error_jump(flat_error, ret, "Error dark-subtracting frame %s", filename);
+
+    framedata *flat = framedata_load(data->flat_template);
+    if (!flat)
+        error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
+
+    if (framedata_divide(frame, flat))
+        error_jump(process_error, ret, "Error flat-fielding frame %s", filename);
+
+    if (targetIndex < 0 || targetIndex >= data->target_count)
+        error_jump(process_error, ret, "Invalid target `%d' selected", targetIndex);
+
+    aperture a = data->targets[targetIndex].aperture;
+    double2 xy;
+    if (center_aperture(a, frame, &xy))
+        error_jump(process_error, ret, "Aperture centering failed");
+
+    a.x = xy.x;
+    a.y = xy.y;
+
+    double sky_intensity, sky_std_dev;
+    if (calculate_background(a, frame, &sky_intensity, &sky_std_dev))
+        error_jump(process_error, ret, "Background calculation failed");
+
+    // Calculation lives in its own scope to ensure jumping to the error handling is safe
+    // TODO: this is a mess - either tidy this up or remove the function completely
+    {
+        const int numIntensity = 46;
+        double intensity[numIntensity];
+        double noise[numIntensity];
+        double radii[numIntensity];
+        double profile[numIntensity];
+
+        double readnoise, gain;
+        if (framedata_get_metadata(flat, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
+            readnoise = data->ccd_readnoise;
+
+        if (readnoise <= 0)
+            error_jump(process_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
+
+        if (framedata_get_metadata(flat, "CCD-GAIN", FRAME_METADATA_DOUBLE, &gain))
+            gain = data->ccd_gain;
+
+        if (gain <= 0)
+            error_jump(process_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
+
+        printf("# Read noise: %f\n", readnoise);
+        printf("# Gain: %f\n", gain);
+
+        // Calculate the remaining integrated intensities
+        for (int i = 1; i < numIntensity; i++)
+        {
+            radii[i] = i/5.0 + 1;
+            integrate_aperture_and_noise(xy, radii[i], frame, dark, readnoise, gain, &intensity[i], &noise[i]);
+            intensity[i] -= sky_intensity*M_PI*radii[i]*radii[i];
+        }
+
+        // Normalize integrated count by area to give an intensity profile
+        // r = 0 value is sampled from the central pixel directly
+        radii[0] = 0;
+        noise[0] = 0;
+        intensity[0] = 0;
+        profile[0] = frame->data[frame->cols*((int)xy.y) + (int)xy.x];
+
+        // Central integrated value is a disk
+        profile[1] = intensity[1]/(M_PI*radii[1]*radii[1]);
+
+        // Remaining areas are annuli
+        for (int i = 2; i < numIntensity; i++)
+        {
+            double area = M_PI*(radii[i]*radii[i] - radii[i-1]*radii[i-1]);
+            profile[i] = (intensity[i] - intensity[i-1])/area;
+        }
+
+        // Print sky value
+        printf("# Sky background: %f\n", sky_intensity);
+        printf("# Sky stddev: %f\n", sky_std_dev);
+
+        // Estimate FWHM by linear interpolation between points
+        for (int i = 1; i < numIntensity; i++)
+            if (profile[i] < profile[0]/2)
+            {
+                double fwhm = 2*(radii[i - 1] + (radii[i] - radii[i-1])*(profile[0]/2 - profile[i-1])/(profile[i] - profile[i-1]));
+                printf("# Estimated FWHM: %f px (%f arcsec)\n", fwhm, fwhm*0.68083798727887213);
+                break;
+            }
+
+        // Estimate radius that encloses 85%, 90%, 95% intensity
+        for (int i = 0; i < numIntensity - 1; i++)
+            if (intensity[i + 1] > 0.85*intensity[numIntensity-1])
+            {
+                printf("# Estimated 85%%: %f\n", i + (0.85*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+                break;
+            }
+        for (int i = 0; i < numIntensity - 1; i++)
+            if (intensity[i + 1] > 0.90*intensity[numIntensity-1])
+            {
+                printf("# Estimated 90%%: %f\n", i + (0.90*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+                break;
+            }
+        for (int i = 0; i < numIntensity - 1; i++)
+            if (intensity[i + 1] > 0.95*intensity[numIntensity-1])
+            {
+                printf("# Estimated 95%%: %f\n", i + (0.95*intensity[numIntensity-1] - intensity[i]) / (intensity[i+1] - intensity[i]));
+                break;
+            }
+
+        // Estimate radius where signal reaches 5x,10x sky sigma
+        for (int i = 1; i < numIntensity; i++)
+            if (profile[i] < 5*sky_std_dev)
+            {
+                printf("# Estimated 5 sky sigma: %f\n", i - 1 + (5*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
+                break;
+            }
+        for (int i = 1; i < numIntensity; i++)
+            if (profile[i] < 10*sky_std_dev)
+            {
+                printf("# Estimated 10 sky sigma: %f\n", i - 1 + (10*sky_std_dev - profile[i-1])/(profile[i] - profile[i-1]));
+                break;
+            }
+
+        // Print profile values
+        for (int i = 0; i < numIntensity; i++)
+            printf("%f %f %f %f\n", radii[i], profile[i], intensity[i], intensity[i]/noise[i]);
+    }
+
+process_error:
+    framedata_free(flat);
+flat_error:
+    framedata_free(dark);
+dark_error:
+    framedata_free(frame);
+    free(filename);
+setup_error:
+    datafile_free(data);
+    return ret;
+}
+
+// List the timestamps/filenames that are corrupted by continous downloads
+int detect_repeats(char *dataPath)
+{
+    // Read file header
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    // No data
+    if (!data->obs_start)
+    {
+        datafile_free(data);
+        return error("File specifies no observations");
+    }
+
+    if (!data->obs_start->next)
+    {
+        datafile_free(data);
+        return error("File requires at least two observations");
+    }
+
+    bool bad_range = false;
+    for (struct observation *obs = data->obs_start->next; obs; obs = obs->next)
+    {
+        double time = obs->time;
+        if (obs->time - obs->prev->time < 0.1f)
+            bad_range = true;
+
+        if (bad_range)
+        {
+            printf("%s @ %.1f", obs->filename, time);
+            for (int j = 0; j < data->num_blocked_ranges; j++)
+                if (obs->time >= data->blocked_ranges[j].x && obs->time <= data->blocked_ranges[j].y)
+                {
+                    printf(" blocked");
+                    break;
+                }
+            printf("\n");
+        }
+
+        if (bad_range && obs->time - obs->prev->time >= 0.1f)
+            bad_range = false;
+    }
+
+    datafile_free(data);
+    return 0;
+}
+
+int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix)
+{
+    int ret = 0;
+    datafile *data = datafile_load(base_name);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    datafile_discard_observations(data);
+
+    char *dir = getcwd(NULL, 0);
+    // Create and update a datafile for each aperture
+    double radius = min;
+    do
+    {
+        for (size_t i = 0; i < data->target_count; i++)
+            data->targets[i].aperture.r = radius;
+
+        size_t filename_len = strlen(prefix) + 11;
+        char *filename = malloc(filename_len*sizeof(char));
+        snprintf(filename, filename_len, "%s-%0.2f.dat", prefix, radius);
+
+        chdir(dir);
+        // Errors are non-fatal -> proceeed to the next file
+        if (!datafile_save(data, filename))
+            update_reduction(filename);
+
+        free(filename);
+        radius += step;
+    } while (radius < max);
+
+    free(dir);
+    datafile_free(data);
     return ret;
 }

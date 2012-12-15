@@ -21,4 +21,9 @@ int update_preview(char *preview_filename, char *ds9_title);
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch);
 int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename);
 
+int display_tracer(char *dataPath);
+int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
+int detect_repeats(char *dataPath);
+int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
+
 #endif

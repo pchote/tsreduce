@@ -382,7 +382,7 @@ photometry_error:
     return ret;
 }
 
-static int plot_internal(datafile *data, const char *tsDevice, double tsSize, const char *dftDevice, double dftSize)
+static int plot_internal(datafile *data, const char *ts_device, const char *dft_device, double size)
 {
     int ret = 0;
 
@@ -402,10 +402,10 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     if (!wd)
         error_jump(window_error, ret, "DFT window calculation failed");
 
-    if (cpgopen(tsDevice) <= 0)
+    if (cpgopen(ts_device) <= 0)
         error_jump(setup_error, ret, "Unable to open PGPLOT window");
 
-    cpgpap(tsSize, 0.6);
+    cpgpap(size, 0.6);
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
@@ -455,14 +455,15 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     //
     // Plot DFT
     //
-    if (cpgopen(dftDevice) <= 0)
-        return error("Unable to open PGPLOT window");
+    if (cpgopen(dft_device) <= 0)
+        error_jump(setup_error, ret, "Unable to open PGPLOT window");
 
-    cpgpap(dftSize, 0.6);
+    cpgpap(size, 0.6);
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
     cpgscf(1);
+
     // Calculate baseline scale
     double scale = 1e6;
     char *unit = "\\gm";
@@ -522,6 +523,8 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cpgline(wd->count, (float *)wd->freq, (float *)wd->ampl);
     cpgsci(1);
     cpgbox("bc", 0, 0, "bc", 0, 0);
+    cpgmtxt("b", 1.25, 0.5, 0.5, "Window");
+
 
 plot_error:
     cpgend();
@@ -535,25 +538,25 @@ photometry_error:
     return ret;
 }
 
-int online_plot(char *dataPath, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+int online_plot(char *data_path, char *ts_device, char *dft_device, double size)
 {
-    datafile *data = datafile_load(dataPath);
+    datafile *data = datafile_load(data_path);
     if (!data)
-        return error("Error opening data file %s", dataPath);
+        return error("Error opening data file %s", data_path);
 
-    int ret = plot_internal(data, tsDevice, tsSize, dftDevice, dftSize);
+    int ret = plot_internal(data, ts_device, dft_device, size);
     datafile_free(data);
     return ret;
 }
 
-int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, double tsSize, char *dftDevice, double dftSize)
+int playback_reduction(char *data_path, int delay, int step, char *ts_device, char *dft_device, double size)
 {
     int ret = 0;
 
     // Count the number of observations
-    datafile *data = datafile_load(dataPath);
+    datafile *data = datafile_load(data_path);
     if (!data)
-        return error("Error opening data file %s", dataPath);
+        return error("Error opening data file %s", data_path);
 
     size_t limit = data->obs_count;
     for (size_t i = data->ratio_fit_degree + 1; i < limit; i += step)
@@ -562,7 +565,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
         data->obs_count = i;
 
         clock_t start = clock();
-        if (plot_internal(data, tsDevice, tsSize, dftDevice, dftSize))
+        if (plot_internal(data, ts_device, dft_device, size))
             error_jump(plot_error, ret, "Plotting error");
 
         // Attempt to compensate for calculation time
@@ -573,7 +576,7 @@ int playback_reduction(char *dataPath, int delay, int step, char *tsDevice, doub
 
     // Finish by plotting with all data
     data->obs_count = limit;
-    if (plot_internal(data, tsDevice, tsSize, dftDevice, dftSize))
+    if (plot_internal(data, ts_device, dft_device, size))
         error_jump(plot_error, ret, "Plotting error");
 
 plot_error:
@@ -597,7 +600,7 @@ int plot_range(char *datafile_pattern)
     char c;
     while (true)
     {
-        online_plot(datafile_names[i], "5/xs", 9.41, "6/xs", 9.41);
+        online_plot(datafile_names[i], "5/xs", "6/xs", 9.41);
 
         if (cpgopen("9/xs") <= 0)
         {

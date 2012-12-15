@@ -71,8 +71,8 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "plot-range") == 0)
         return plot_range(argv[2]);
 
-    // `tsreduce plot ec04207.dat [ts.ps/cps 10 dft.ps/cps 10]
-    else if ((argc == 3 || argc == 7) && strcmp(argv[1], "plot") == 0)
+    // `tsreduce plot ec04207.dat [ts.ps/cps dft.ps/cps 10]
+    else if ((argc == 3 || argc == 6 || argc == 7) && strcmp(argv[1], "plot") == 0)
     {
         if (argc == 3)
         {
@@ -85,10 +85,12 @@ int main( int argc, char *argv[] )
             char *ts_device = "5/xs";
             char *dft_device = "6/xs";
 #endif
-            return online_plot(argv[2], ts_device, size, dft_device, size);
+            return online_plot(argv[2], ts_device, dft_device, size);
         }
+        else if (argc == 7) // Legacy format with separate ts and dft size parameters
+            return online_plot(argv[2], argv[3], argv[5], atof(argv[6]));
         else
-            return online_plot(argv[2], argv[3], atof(argv[4]), argv[5], atof(argv[6]));
+            return online_plot(argv[2], argv[3], argv[4], atof(argv[5]));
     }
 
     // `tsreduce focus-plot focus.dat [focus.gif/gif 10]
@@ -109,8 +111,8 @@ int main( int argc, char *argv[] )
             return online_focus_plot(argv[2], argv[3], atof(argv[4]));
     }
 
-    // `tsreduce playback ec04207.dat 100 1 [ts.ps/cps 10 dft.ps/cps 10]
-    else if ((argc == 5 || argc == 9) && strcmp(argv[1], "playback") == 0)
+    // `tsreduce playback ec04207.dat 100 1 [ts.ps/cps dft.ps/cps 10]
+    else if ((argc == 5 || argc == 8 || argc == 9) && strcmp(argv[1], "playback") == 0)
     {
         if (argc == 5)
         {
@@ -123,10 +125,12 @@ int main( int argc, char *argv[] )
             char *ts_device = "5/xs";
             char *dft_device = "6/xs";
 #endif
-            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), ts_device, size, dft_device, size);
+            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), ts_device, dft_device, size);
         }
+        else if (argc == 9) // Legacy format with separate ts and dft size parameters
+            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), argv[5], argv[7], atof(argv[8]));
         else
-            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), argv[5], atof(argv[6]), argv[7], atof(argv[8]));
+            return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), argv[5], argv[6], atof(argv[7]));
     }
 
     // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`

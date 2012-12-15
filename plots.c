@@ -198,6 +198,103 @@ allocation_error:
     return ret;
 }
 
+static int plot_ratio_panel(float x1, float x2, float y1, float y2,
+                            datafile *data, struct photometry_data *pd)
+{
+    int ret = 0;
+
+    // PGPLOT requires float arrays
+    float *time = malloc(pd->filtered_count*sizeof(float));
+    float *ratio = malloc(pd->filtered_count*sizeof(float));
+    float *noise = malloc(pd->filtered_count*sizeof(float));
+    float *fit = malloc(pd->filtered_count*sizeof(float));
+    if (!time || !ratio || !noise || !fit)
+        error_jump(allocation_error, ret, "Allocation error");
+
+    for (size_t i = 0; i < pd->filtered_count; i++)
+    {
+        time[i] = pd->time[i];
+        ratio[i] = pd->ratio[i];
+        noise[i] = pd->ratio_noise[i];
+        fit[i] = pd->ratio_fit[i];
+    }
+
+    double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
+    double max_ratio = pd->ratio_mean + 5*pd->ratio_std;
+
+    cpgsvp(x1, x2, y1, y2);
+    cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
+
+    // Plot top axis markers in UTC hour, bottom axis markers in seconds
+    cpgsch(0.9);
+    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_ratio, max_ratio);
+    cpgtbox("cstZ", 0, 0, "bc", 0, 0);
+    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_ratio, max_ratio);
+    cpgbox("bst", 0, 0, "0", 0, 0);
+    cpgsch(1.0);
+
+    cpgswin(pd->time_min, pd->time_max, min_ratio, max_ratio);
+    if (data->plot_error_bars)
+        cpgerrb(6, pd->filtered_count, time, ratio, noise, 0.0);
+    else
+        cpgpt(pd->filtered_count, time, ratio, 229);
+
+    // Plot the polynomial fit
+    cpgsci(2);
+
+    // Don't plot the fit through blocked regions
+    float *t = time;
+    float *t_end = &t[pd->filtered_count];
+    float *f = fit;
+    do
+    {
+        double min_time = t[0];
+        double max_time = pd->time_max;
+
+        // Find the first blocked range that affects the data
+        for (size_t j = 0; j < data->num_blocked_ranges; j++)
+        {
+            double2 r = data->blocked_ranges[j];
+            if (min_time > r.x && min_time < r.y)
+                min_time = r.y;
+
+            if (max_time > r.x && min_time < r.y)
+                max_time = r.x;
+        }
+
+        // Find the first point to draw
+        while (t < t_end && *t < min_time)
+        {
+            t++;
+            f++;
+        }
+
+        if (t == t_end)
+            break;
+
+        // Find the last point to draw
+        size_t count = 0;
+        while (t + count < t_end && *(t + count) <= max_time)
+            count++;
+
+        cpgline(count, t, f);
+
+        // Start next search from end of this section
+        t += count + 1;
+        f += count + 1;
+    } while (t + 1 < t_end);
+
+    cpgsci(1);
+
+allocation_error:
+    free(time);
+    free(ratio);
+    free(noise);
+    free(fit);
+
+    return ret;
+}
+
 int online_focus_plot(char *data_path, const char *device, double size)
 {
     int ret = 0;
@@ -296,81 +393,10 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
     cpgmtxt("t", -1.2, 1.0, 1.05, label);
     cpgsch(1.0);
 
-    //
-    // Plot Ratio
-    //
+    if (plot_ratio_panel(0.065, 0.98, 0.67, 0.79, data, pd))
+        error_jump(plot_error, ret, "Error plotting ratio panel");
+
     cast_double_array_to_float(pd->time, pd->filtered_count);
-    {
-        double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
-        double max_ratio = pd->ratio_mean + 5*pd->ratio_std;
-        cast_double_array_to_float(pd->ratio, pd->filtered_count);
-        cast_double_array_to_float(pd->ratio_noise, pd->filtered_count);
-        cast_double_array_to_float(pd->ratio_fit, pd->filtered_count);
-
-        cpgsvp(0.065, 0.98, 0.67, 0.79);
-        cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
-
-        // Plot top axis markers in UTC hour, bottom axis markers in seconds
-        cpgsch(0.9);
-        cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_ratio, max_ratio);
-        cpgtbox("cstZ", 0, 0, "bc", 0, 0);
-        cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_ratio, max_ratio);
-        cpgbox("bst", 0, 0, "0", 0, 0);
-        cpgsch(1.0);
-
-        cpgswin(pd->time_min, pd->time_max, min_ratio, max_ratio);
-        if (data->plot_error_bars)
-            cpgerrb(6, pd->filtered_count, (float *)pd->time, (float *)pd->ratio, (float *)pd->ratio_noise, 0.0);
-        else
-            cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->ratio, 229);
-
-        // Plot the polynomial fit
-        cpgsci(2);
-
-        // Don't plot the fit through blocked regions
-        float *t = (float *)pd->time;
-        float *t_end = &t[pd->filtered_count];
-        float *f = (float *)pd->ratio_fit;
-        do
-        {
-            double min_time = t[0];
-            double max_time = pd->time_max;
-
-            // Find the first blocked range that affects the data
-            for (size_t j = 0; j < data->num_blocked_ranges; j++)
-            {
-                double2 r = data->blocked_ranges[j];
-                if (min_time > r.x && min_time < r.y)
-                    min_time = r.y;
-
-                if (max_time > r.x && min_time < r.y)
-                    max_time = r.x;
-            }
-
-            // Find the first point to draw
-            while (t < t_end && *t < min_time)
-            {
-                t++;
-                f++;
-            }
-
-            if (t == t_end)
-                break;
-
-            // Find the last point to draw
-            size_t count = 0;
-            while (t + count < t_end && *(t + count) <= max_time)
-                count++;
-
-            cpgline(count, t, f);
-
-            // Start next search from end of this section
-            t += count + 1;
-            f += count + 1;
-        } while (t + 1 < t_end);
-
-        cpgsci(1);
-    }
 
     //
     // Plot mma

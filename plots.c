@@ -21,6 +21,27 @@
 static size_t plot_colors_max = 8;
 static uint8_t plot_colors[] = {2,8,3,12,5,6,7,9};
 
+static void plot_time_axes(float x1, float x2, float y1, float y2,
+                           datafile *data, struct photometry_data *pd)
+{
+    cpgsvp(x1, x2, y1, y2);
+    cpgsch(0.9);
+    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, 0, 1);
+    cpgtbox("cstmXYZH", 0, 0, "0", 0, 0);
+    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, 0, 1);
+    cpgbox("bstn", 0, 0, "0", 0, 0);
+    cpgsch(1.0);
+
+    cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Time");
+
+    char label[64];
+    if (pd->time_exponent == 0)
+        strncpy(label, "Run Time (s)", 64);
+    else
+        snprintf(label, 64, "Run Time (10\\u%d\\d s)", pd->time_exponent);
+
+    cpgmtxt("b", 2.5, 0.5, 0.5, label);
+}
 
 static int plot_raw_panel(float x1, float x2, float y1, float y2,
                           datafile *data, struct photometry_data *pd)
@@ -66,7 +87,7 @@ static int plot_raw_panel(float x1, float x2, float y1, float y2,
     cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, raw_scale*min_raw, raw_scale*max_raw);
     cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
     cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_raw, max_raw);
-    cpgbox("bstn", 0, 0, "0", 0, 0);
+    cpgbox("bst", 0, 0, "0", 0, 0);
     cpgsch(1.0);
 
     snprintf(label, label_len, "Count Rate (10\\u%d\\d ADU/s)", raw_exp);
@@ -160,20 +181,8 @@ int online_focus_plot(char *data_path, const char *device, double size)
     cpgsfs(2);
     cpgscf(1);
 
-    // Generic label buffer for passing data to pgplot
-    char label[64];
-    const size_t label_len = 64;
-
     if (plot_raw_panel(0.065, 0.98, 0.075, 0.55, data, pd))
         error_jump(plot_error, ret, "Error plotting raw panel");
-
-    if (pd->time_exponent == 0)
-        strncpy(label, "Run Time (s)", label_len);
-    else
-        snprintf(label, label_len, "Run Time (10\\u%d\\d s)", pd->time_exponent);
-
-    cpgsvp(0.065, 0.98, 0.075, 0.55);
-    cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
     //
     // Plot FWHM
@@ -188,12 +197,11 @@ int online_focus_plot(char *data_path, const char *device, double size)
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         // Reserve the top 25% of the plot for the mean FWHM label
-        cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Time");
         cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
 
         cpgsch(0.9);
         cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
-        cpgtbox("cstmXYZH", 0, 0, "bcstnv", 0, 0);
+        cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
         cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_fwhm, max_fwhm);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
@@ -201,6 +209,8 @@ int online_focus_plot(char *data_path, const char *device, double size)
         cpgswin(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
         cpgpt(pd->raw_count, (float *)pd->raw_time, (float *)pd->fwhm, 229);
     }
+
+    plot_time_axes(0.065, 0.98, 0.075, 0.91, data, pd);
 
     cpgend();
 
@@ -268,14 +278,6 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
 
     if (plot_raw_panel(0.065, 0.98, 0.075, 0.55, data, pd))
         error_jump(plot_error, ret, "Error plotting raw panel");
-
-    if (pd->time_exponent == 0)
-        strncpy(label, "Run Time (s)", label_len);
-    else
-        snprintf(label, label_len, "Run Time (10\\u%d\\d s)", pd->time_exponent);
-
-    cpgsvp(0.065, 0.98, 0.075, 0.55);
-    cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
     //
     // Plot FWHM
@@ -395,13 +397,12 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         cpgsvp(0.065, 0.98, 0.79, 0.91);
         cpgsch(1.0);
 
-        cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Time");
         cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
 
         // Plot top axis markers in UTC hour, bottom axis markers in seconds
         cpgsch(0.9);
         cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_mma, max_mma);
-        cpgtbox("cstmXYZH", 0, 0, "bcstnv", 0, 0);
+        cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
         cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_mma, max_mma);
         cpgbox("bst", 0, 0, "0", 0, 0);
         cpgsch(1.0);
@@ -412,6 +413,9 @@ static int plot_internal(datafile *data, const char *tsDevice, double tsSize, co
         else
             cpgpt(pd->filtered_count, (float *)pd->time, (float *)pd->mma, 229);
     }
+
+    plot_time_axes(0.065, 0.98, 0.075, 0.91, data, pd);
+
     cpgend();
 
     //

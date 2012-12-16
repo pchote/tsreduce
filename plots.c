@@ -375,6 +375,94 @@ allocation_error:
     return ret;
 }
 
+static int plot_dft_panel(float x1, float x2, float y1, float y2,
+                          datafile *data, struct dft_data *dft, struct dft_data *window)
+{
+    int ret = 0;
+    char label[64];
+    const size_t label_len = 64;
+
+    // Calculate baseline scale
+    double scale = 1e6;
+    char *unit = "\\gm";
+
+    if (dft->max_freq > 1.5e4)
+    {
+        scale = 1.0e-3;
+        unit = "k";
+    }
+    else if (dft->max_freq > 1.5e1)
+    {
+        scale = 1.0;
+        unit = "";
+    }
+    else if (dft->max_freq > 1.5e-2)
+    {
+        scale = 1.0e3;
+        unit = "m";
+    }
+
+    // PGPLOT requires float arrays
+    float *freq = malloc(dft->count*sizeof(float));
+    float *ampl = malloc(dft->count*sizeof(float));
+    float *window_freq = malloc(window->count*sizeof(float));
+    float *window_ampl = malloc(window->count*sizeof(float));
+    if (!freq || !ampl || !window_freq || !window_ampl)
+        error_jump(allocation_error, ret, "Allocation error");
+
+    for (size_t i = 0; i < dft->count; i++)
+    {
+        freq[i] = dft->freq[i];
+        ampl[i] = dft->ampl[i];
+    }
+
+    for (size_t i = 0; i < window->count; i++)
+    {
+        window_freq[i] = window->freq[i];
+        window_ampl[i] = window->ampl[i];
+    }
+
+    double max_dft = data->plot_max_dft ? data->plot_max_dft : 1.1*dft->max_ampl;
+    cpgsvp(x1, x2, y1, y2);
+    cpgswin(scale*dft->min_freq, scale*dft->max_freq, 0, 1);
+    cpgsch(0.9);
+    cpgbox("bcstn", 0, 0, "0", 0, 0);
+    cpgswin(dft->min_freq, dft->max_freq, 0, max_dft);
+    cpgbox("0", 0, 0, "bcstnv", 0, 0);
+    cpgsch(1.0);
+
+    cpgsci(2);
+    cpgline(dft->count, freq, ampl);
+    cpgsci(1);
+
+    snprintf(label, label_len, "Frequency (%sHz)", unit);
+    cpgmtxt("b", 2.5, 0.5, 0.5, label);
+
+    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mma)");
+
+    // DFT Window
+    float wx1 = x1 + 0.025;
+    float wx2 = wx1 + (x2 - x1)/8;
+    float wy2 = y2 - 0.04;
+    float wy1 = y2 - (y2 - y1)/3.5;
+
+    cpgsvp(wx1, wx2, wy1, wy2);
+    cpgswin(window->min_freq, window->max_freq, 0, 1.1);
+    cpgsci(2);
+    cpgline(window->count, window_freq, window_ampl);
+    cpgsci(1);
+    cpgbox("bc", 0, 0, "bc", 0, 0);
+    cpgmtxt("b", 1.25, 0.5, 0.5, "Window");
+
+allocation_error:
+    free(freq);
+    free(ampl);
+    free(window_freq);
+    free(window_ampl);
+
+    return ret;
+}
+
 int online_focus_plot(char *data_path, const char *device, double size)
 {
     int ret = 0;
@@ -489,67 +577,19 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     cpgsfs(2);
     cpgscf(1);
 
-    // Calculate baseline scale
-    double scale = 1e6;
-    char *unit = "\\gm";
-
-    if (dd->max_freq > 1.5e4)
-    {
-        scale = 1.0e-3;
-        unit = "k";
-    }
-    else if (dd->max_freq > 1.5e1)
-    {
-        scale = 1.0;
-        unit = "";
-    }
-    else if (dd->max_freq > 1.5e-2)
-    {
-        scale = 1.0e3;
-        unit = "m";
-    }
-
     // DFT
-    double max_dft = data->plot_max_dft ? data->plot_max_dft : 1.1*dd->max_ampl;
-    cpgsvp(0.065, 0.98, 0.07, 0.97);
-    cpgswin(scale*dd->min_freq, scale*dd->max_freq, 0, 1);
-    cpgsch(0.9);
-    cpgbox("bcstn", 0, 0, "0", 0, 0);
-    cpgswin(dd->min_freq, dd->max_freq, 0, max_dft);
-    cpgbox("0", 0, 0, "bcstnv", 0, 0);
-    cpgsch(1.0);
-
-    cpgsci(2);
-    cast_double_array_to_float(dd->freq, dd->count);
-    cast_double_array_to_float(dd->ampl, dd->count);
-    cpgline(dd->count, (float *)dd->freq, (float *)dd->ampl);
-    cpgsci(1);
+    if (plot_dft_panel(0.065, 0.98, 0.07, 0.97, data, dd, wd))
+        error_jump(plot_error, ret, "Error plotting dft panel");
 
     // Calculate median intensity
-    qsort(dd->ampl, dd->count, sizeof(float), compare_float);
+    qsort(dd->ampl, dd->count, sizeof(double), compare_double);
 
-    snprintf(label, label_len, "Frequency (%sHz)", unit);
-    cpgmtxt("b", 2.5, 0.5, 0.5, label);
-
-    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mma)");
-
+    cpgsvp(0.065, 0.98, 0.07, 0.97);
     cpgswin(0, 1, 0, 1);
     snprintf(label, label_len, "Mean: %.2f mma", dd->mean_ampl);
     cpgptxt(0.97, 0.94, 0, 1.0, label);
-    snprintf(label, label_len, "Median: %.2f mma", ((float *)dd->ampl)[dd->count/2]);
+    snprintf(label, label_len, "Median: %.2f mma", dd->ampl[dd->count/2]);
     cpgptxt(0.97, 0.90, 0, 1.0, label);
-
-    // DFT Window
-    cpgsvp(0.09, 0.2025, 0.75, 0.94);
-    cpgswin(wd->min_freq, wd->max_freq, 0, 1.1);
-    cpgsci(2);
-    cast_double_array_to_float(wd->freq, wd->count);
-    cast_double_array_to_float(wd->ampl, wd->count);
-    cpgline(wd->count, (float *)wd->freq, (float *)wd->ampl);
-    cpgsci(1);
-    cpgbox("bc", 0, 0, "bc", 0, 0);
-    cpgmtxt("b", 1.25, 0.5, 0.5, "Window");
-
 
 plot_error:
     cpgend();

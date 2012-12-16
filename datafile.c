@@ -323,10 +323,18 @@ void datafile_discard_observations(datafile *data)
     data->obs_count = 0;
 }
 
+static int compare_observation(const void *_a, const void *_b)
+{
+    const struct observation *a = *(const struct observation **)_a;
+    const struct observation *b = *(const struct observation **)_b;
+
+    return (a->time > b->time) - (a->time < b->time);
+}
+
 int datafile_save(datafile *data, char *filename)
 {
-    // data->file may point at a different file, so
-    // create a new output
+    int ret = 0;
+
     FILE *out = fopen(filename, "w");
     if (!out)
         return error("Error opening file %s", filename);
@@ -414,25 +422,39 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "\n");
     }
 
-    struct observation *obs;
-    for (obs = data->obs_start; obs; obs = obs->next)
-    {
-        fprintf(out, "%10s ", obs->filename);
-        fprintf(out, "%9.3f ", obs->time);
-        for (size_t i = 0; i < data->target_count; i++)
-        {
-            fprintf(out, "%10.2f ", obs->star[i]);
-            fprintf(out, "%6.2f ", obs->noise[i]);
-            fprintf(out, "%9.2f ", obs->sky[i]);
-            fprintf(out, "%6.2f %6.2f ", obs->pos[i].x, obs->pos[i].y);
-            fprintf(out, "%5.2f ", obs->fwhm[i]);
-        }
-        fprintf(out, "\n");
+    // Ensure observations are sorted by increasing time
+    struct observation **obs = malloc(data->obs_count*sizeof(struct observation *));
+    if (!obs)
+        error_jump(allocation_error, ret, "Allocation failed for sorting array");
 
+    struct observation *o = data->obs_start;
+    for (size_t i = 0; i < data->obs_count; i++)
+    {
+        obs[i] = o;
+        o = o->next;
     }
 
+    qsort(obs, data->obs_count, sizeof(struct observation *), compare_observation);
+
+    for (size_t i = 0; i < data->obs_count; i++)
+    {
+        fprintf(out, "%10s ", obs[i]->filename);
+        fprintf(out, "%9.3f ", obs[i]->time);
+        for (size_t j = 0; j < data->target_count; j++)
+        {
+            fprintf(out, "%10.2f ", obs[i]->star[j]);
+            fprintf(out, "%6.2f ", obs[i]->noise[j]);
+            fprintf(out, "%9.2f ", obs[i]->sky[j]);
+            fprintf(out, "%6.2f %6.2f ", obs[i]->pos[j].x, obs[i]->pos[j].y);
+            fprintf(out, "%5.2f ", obs[i]->fwhm[j]);
+        }
+        fprintf(out, "\n");
+    }
+    free(obs);
+
+allocation_error:
     fclose(out);
-    return 0;
+    return ret;
 }
 
 struct photometry_data *datafile_generate_photometry(datafile *data)

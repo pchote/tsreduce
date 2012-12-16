@@ -466,7 +466,7 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     //
     // Plot blocked ranges
     //
-    cpgsvp(0.075, 0.975, 0.075, 0.93);
+    cpgsvp(0.065, 0.98, 0.075, 0.93);
     cpgswin(pd->time_min, pd->time_max, 0, 1);
     cpgsci(14);
     for (size_t j = 0; j < data->num_blocked_ranges; j++)

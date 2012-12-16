@@ -423,6 +423,16 @@ static int plot_dft_panel(float x1, float x2, float y1, float y2,
     }
 
     double max_dft = data->plot_max_dft ? data->plot_max_dft : 1.1*dft->max_ampl;
+
+    // Check for overlap with the DFT panel
+    double max = 0;
+    double threshold_ampl = 0.65*max_dft;
+    double threshold_freq = 0.16*dft->max_freq;
+    for (size_t i = 0; i < dft->count && freq[i] < threshold_freq; i++)
+        max = fmax(max, ampl[i]);
+    if (max > threshold_ampl)
+        max_dft *= max/threshold_ampl;
+
     cpgsvp(x1, x2, y1, y2);
     cpgswin(scale*dft->min_freq, scale*dft->max_freq, 0, 1);
     cpgsch(0.9);

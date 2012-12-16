@@ -19,7 +19,7 @@
 #include "fit.h"
 
 static size_t plot_colors_max = 8;
-static uint8_t plot_colors[] = {2,8,3,12,5,6,7,9};
+static uint8_t plot_colors[] = {2,8,9,11,5,6,7,12};
 
 static void plot_time_axes(float x1, float x2, float y1, float y2,
                            datafile *data, struct photometry_data *pd)

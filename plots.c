@@ -368,10 +368,10 @@ int online_focus_plot(char *data_path, const char *device, double size)
     if (plot_raw_panel(0.065, 0.98, 0.075, 0.55, data, pd))
         error_jump(plot_error, ret, "Error plotting raw panel");
 
-    if (plot_fwhm_panel(0.065, 0.98, 0.55, 0.91, data, pd))
+    if (plot_fwhm_panel(0.065, 0.98, 0.55, 0.93, data, pd))
         error_jump(plot_error, ret, "Error plotting fwhm panel");
 
-    plot_time_axes(0.065, 0.98, 0.075, 0.91, data, pd);
+    plot_time_axes(0.065, 0.98, 0.075, 0.93, data, pd);
 
 plot_error:
     cpgend();
@@ -445,10 +445,10 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     if (plot_ratio_panel(0.065, 0.98, 0.67, 0.79, data, pd))
         error_jump(plot_error, ret, "Error plotting ratio panel");
 
-    if (plot_mma_panel(0.065, 0.98, 0.79, 0.91, data, pd))
+    if (plot_mma_panel(0.065, 0.98, 0.79, 0.93, data, pd))
         error_jump(plot_error, ret, "Error plotting fwhm panel");
 
-    plot_time_axes(0.065, 0.98, 0.075, 0.91, data, pd);
+    plot_time_axes(0.065, 0.98, 0.075, 0.93, data, pd);
 
     cpgend();
 

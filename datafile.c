@@ -590,11 +590,18 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         if (skip)
             continue;
 
-        p->time[p->filtered_count] = obs->time;
-        p->ratio[p->filtered_count] = obs->star[0] / comparison_intensity;
+        if (data->target_count > 1)
+        {
+            p->ratio[p->filtered_count] = obs->star[0] / comparison_intensity;
+            p->ratio_noise[p->filtered_count] = (obs->noise[0]/obs->star[0] + comparison_noise/comparison_intensity)*p->ratio[p->filtered_count];
+        }
+        else
+        {
+            p->ratio[p->filtered_count] = obs->star[0];
+            p->ratio_noise[p->filtered_count] = obs->noise[0];
+        }
         p->ratio_mean += p->ratio[p->filtered_count];
-
-        p->ratio_noise[p->filtered_count] = (obs->noise[0]/obs->star[0] + comparison_noise/comparison_intensity)*p->ratio[p->filtered_count];
+        p->time[p->filtered_count] = obs->time;
 
         p->filtered_count++;
     }

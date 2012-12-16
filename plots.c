@@ -193,40 +193,19 @@ static int plot_fwhm_panel(float x1, float x2, float y1, float y2,
     // Calculate running mean
     for (size_t i = 0; i < pd->raw_count; i++)
     {
-        int8_t lower = -data->plot_fwhm_smooth/2;
-        int8_t upper = data->plot_fwhm_smooth + lower - 1;
-
-        if (i < -lower)
-            lower = -i;
-
-        if (i + upper >= pd->raw_count)
-            upper = pd->raw_count - i - 1;
-
-        // Estimate mean
-        double mean = 0;
-        size_t count = 0;
-        for (int8_t j = lower; j <= upper; j++)
+        // Handle start and end of data
+        size_t run = data->plot_fwhm_smooth;
+        size_t start = i - run/2;
+        if (run/2 > i)
         {
-            mean += fwhm[i + j];
-            count++;
+            start = 0;
+            run -= run/2 - i;
         }
 
-        // Estimate standard deviation
-        double std = 0;
-        for (int8_t j = lower; j <= upper; j++)
-            std += (fwhm[i + j] - mean)*(fwhm[i + j] - mean);
+        if (start + run >= pd->raw_count)
+            run = pd->raw_count - start - 1;
 
-        count = 0;
-        mean = 0;
-        for (int8_t j = lower; j <= upper; j++)
-            if (fabs(fwhm[i + j] - mean) < 3*std)
-            {
-                mean += fwhm[i + j];
-                count++;
-            }
-
-        // Estimate improved mean
-        fwhm[i] = mean / count;
+        fwhm[i] = mean_exclude_sigma(&pd->fwhm[start], run, 3);
     }
 
     cpgsci(2);

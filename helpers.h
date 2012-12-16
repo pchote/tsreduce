@@ -67,4 +67,7 @@ char *prompt_user_input(char *message, char *fallback);
 
 bool region_contains(uint16_t r[4], size_t x, size_t y);
 double region_mean(uint16_t r[4], double *data, size_t stride);
+
+double mean_exclude_sigma(double *data, size_t n, double sigma);
+
 #endif

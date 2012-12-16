@@ -647,3 +647,27 @@ double region_mean(uint16_t r[4], double *data, size_t stride)
             mean += data[j*stride + i]/num_px;
     return mean;
 }
+
+double mean_exclude_sigma(double *data, size_t n, double sigma)
+{
+    double mean = 0;
+    for (size_t i = 0; i < n; i++)
+        mean += data[i];
+    mean /= n;
+
+    double std = 0;
+    for (size_t i = 0; i < n; i++)
+        std += (data[i] - mean)*(data[i] - mean);
+    std = sqrt(std/n);
+
+    double total = 0;
+    size_t count = 0;
+    for (size_t i = 0; i < n; i++)
+        if (fabs(data[i] - mean) < sigma*std)
+        {
+            total += data[i];
+            count++;
+        }
+
+    return total / count;
+}

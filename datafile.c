@@ -320,6 +320,7 @@ void datafile_discard_observations(datafile *data)
     }
     data->obs_start = NULL;
     data->obs_end = NULL;
+    data->obs_count = 0;
 }
 
 int datafile_save(datafile *data, char *filename)

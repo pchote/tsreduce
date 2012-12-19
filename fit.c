@@ -196,3 +196,27 @@ int fit_sinusoids(double *x, double *y, double *e, size_t n, double *freqs, size
 {
     return fit(x, y, e, n, amplitudes, 2*numFreqs, sinusoidal_fit, freqs);
 }
+
+/*
+ * Fit a single gaussian to data.
+ * Returns a,b,c where y = a*exp(((x - b)/c)^2)
+ */
+int fit_gaussian(double *x, double *y, size_t n, double *params)
+{
+    // Can easily fit a gausian by taking logs and fitting a parabola
+    double *ly = malloc(n*sizeof(double));
+    if (!ly)
+        return error("Allocation failed");
+
+    for (size_t i = 0; i < n; i++)
+        ly[i] = log(y[i]);
+
+    double c[3];
+    int ret = fit(x, ly, NULL, n, c, 3, polynomial_fit, NULL);
+    params[0] = exp(c[0] - 0.25*c[1]*c[1]/c[2]);
+    params[1] = -0.5*c[1]/c[2];
+    params[2] = sqrt(-0.5/c[2]);
+    free(ly);
+
+    return ret;
+}

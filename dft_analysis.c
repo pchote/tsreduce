@@ -651,3 +651,63 @@ dftfreq_alloc_error:
 load_failed_error:
     return ret;
 }
+
+int noise_histogram(const char *ts_path, const char *freq_path, double min_mma, double max_mma, size_t bin_count, double fit_min_mma, double fit_max_mma)
+{
+    int ret = 0;
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+
+    ts_data_prewhiten(data);
+
+    // Calculate histogram
+    double dy = (max_mma - min_mma)/bin_count;
+    size_t *histogram = calloc(bin_count, sizeof(double));
+    double *fit_ampl = calloc(bin_count, sizeof(double));
+    double *fit_histogram = calloc(bin_count, sizeof(double));
+    if (!histogram || !fit_ampl || !fit_histogram)
+        error_jump(alloc_failed, ret, "Allocation failed");
+
+    for (size_t i = 0; i < data->obs_count; i++)
+    {
+        double bin = (data->mma[i] - min_mma)/dy;
+        if (bin < 0 || bin >= bin_count + 1)
+            continue;
+
+        histogram[(size_t)bin]++;
+    }
+
+    size_t fit_count = 0;
+    for (size_t i = 0; i < bin_count; i++)
+    {
+        fit_ampl[fit_count] = min_mma + (i+0.5)*dy;
+        fit_histogram[fit_count] = histogram[i];
+
+        if (fit_histogram[fit_count] && fit_ampl[fit_count] > fit_min_mma && fit_ampl[fit_count] < fit_max_mma)
+            fit_count++;
+    }
+
+    double g[3];
+    if (fit_analytical_gaussian(fit_ampl, fit_histogram, fit_count, g))
+        error_jump(fit_failed, ret, "Fit failed");
+
+    printf("# Fit parameters: a: %g mu: %g sigma: %g\n", g[0], g[1], g[2]);
+    for (size_t i = 0; i < bin_count; i++)
+    {
+        double center = min_mma + (i + 0.5)*dy;
+        double arg = (center - g[1])/g[2];
+        double fit = g[0]*exp(-0.5*arg*arg);
+        printf("%g %g %zu %g %g\n", min_mma + i*dy, min_mma + (i + 1)*dy, histogram[i], center, fit);
+    }
+
+fit_failed:
+    free(histogram);
+    free(fit_ampl);
+    free(fit_histogram);
+alloc_failed:
+    ts_data_free(data);
+load_failed_error:
+    return ret;
+
+}

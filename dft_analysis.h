@@ -14,4 +14,5 @@ int dft_window(char *tsFile, double freq, double minUHz, double maxUHz, double d
 int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz);
 int nonlinear_fit(char *tsFile, char *freqFile);
 int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats);
+int noise_histogram(const char *ts_path, const char *freq_path, double min_mma, double max_mma, size_t bin_count, double fit_min_mma, double fit_max_mma);
 #endif

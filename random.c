@@ -71,15 +71,16 @@ uint32_t random_uint32_max(random_generator *g, uint32_t n)
 {
     // Avoid modulo bias by taking only the range that maps equally into [0,n)
     uint32_t max = UINT32_MAX - UINT32_MAX % n;
-    uint32_t r;
-    do
+    for (;;)
     {
-        r = random_uint32(g);
-    } while (r >= max);
+        uint32_t r = random_uint32(g);
+        if (r < max)
+            return r % n;
+    }
 
-    return (uint32_t)(r % n);
+    // Never reached
+    return 0;
 }
-
 
 // Get a random number between [0,1)
 double random_double(random_generator *g)

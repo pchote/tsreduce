@@ -740,7 +740,7 @@ int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, doub
     for (size_t i = 0; i < repeats; i++)
     {
         printf("%zu of %zu\n", i + 1, repeats);
-        shuffle_double_array(time, num_obs, rand);
+        random_shuffle_double_array(rand, time, num_obs);
         calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
 
         // Find mean and max intensity

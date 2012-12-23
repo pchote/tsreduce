@@ -16,9 +16,16 @@
 #define MIXBITS(u,v) ( ((u) & UMASK) | ((v) & LMASK) )
 #define TWIST(u,v) ((MIXBITS(u,v) >> 1) ^ ((v)&1UL ? MATRIX_A : 0UL))
 
+struct random_generator
+{
+    uint32_t state[624];
+    int left;
+    uint32_t *next;
+};
+
 random_generator *random_create(uint32_t seed)
 {
-    random_generator *ret = (random_generator *)malloc(sizeof(random_generator));
+    random_generator *ret = calloc(1, sizeof(random_generator));
 
     ret->state[0] = seed;
     for (int j = 1; j < N; j++)
@@ -112,7 +119,7 @@ double random_normal(random_generator *g, double mu, double sigma)
 }
 
 // Shuffle an array of doubles in place using the Fisher–Yates algorithm
-void shuffle_double_array(double *a, size_t n, random_generator *g)
+void random_shuffle_double_array(random_generator *g, double *a, size_t n)
 {
     for (size_t i = n - 1; i > 0; i--)
     {

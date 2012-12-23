@@ -10,20 +10,14 @@
 
 #include <stdint.h>
 
-typedef struct
-{
-    uint32_t state[624];
-    int left;
-    uint32_t *next;
-} random_generator;
+typedef struct random_generator random_generator;
 
 random_generator *random_create(uint32_t seed);
 void random_free(random_generator *g);
 uint32_t random_uint32(random_generator *g);
 uint32_t random_uint32_max(random_generator *g, uint32_t n);
-void shuffle_double_array(double *a, size_t n, random_generator *g);
-
 double random_double(random_generator *g);
 double random_normal(random_generator *g, double mu, double sigma);
+void random_shuffle_double_array(random_generator *g, double *a, size_t n);
 
 #endif

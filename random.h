@@ -23,4 +23,7 @@ uint32_t random_uint32(random_generator *g);
 uint32_t random_uint32_max(random_generator *g, uint32_t n);
 void shuffle_double_array(double *a, size_t n, random_generator *g);
 
+double random_double(random_generator *g);
+double random_normal(random_generator *g, double mu, double sigma);
+
 #endif

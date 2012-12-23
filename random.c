@@ -4,6 +4,7 @@
  */
 
 #include <stdlib.h>
+#include <math.h>
 #include "random.h"
 
 // Period parameters 
@@ -77,6 +78,36 @@ uint32_t random_uint32_max(random_generator *g, uint32_t n)
     } while (r >= max);
 
     return (uint32_t)(r % n);
+}
+
+
+// Get a random number between [0,1)
+double random_double(random_generator *g)
+{
+    return random_uint32(g) * 1.0 / UINT32_MAX;
+}
+
+// Get a random number from a normal distribution
+// See http://dl.acm.org/citation.cfm?id=138364
+double random_normal(random_generator *g, double mu, double sigma)
+{
+    for (;;)
+    {
+        double u = random_double(g);
+        double v = 1.7156*(random_double(g) - 0.5);
+        double x = u - 0.449871;
+        double y = fabs(v) + 0.386595;
+        double q = x*x + y*(0.19600*y - 0.25472*x);
+
+        if (q < 0.27597)
+            return mu + sigma*v/u;
+
+        if (q > 0.27846 || v*v > -4*u*u*log(u))
+            continue;
+    }
+
+    // Never reached
+    return 0;
 }
 
 // Shuffle an array of doubles in place using the Fisher–Yates algorithm

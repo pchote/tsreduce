@@ -12,8 +12,8 @@
 #include <string.h>
 
 #include "aperture.h"
+#include "fit.h"
 #include "helpers.h"
-#include "framedata.h"
 
 extern int verbosity;
 
@@ -425,26 +425,38 @@ void integrate_aperture_and_noise(double2 xy, double r, framedata *frame, framed
 
 double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
 {
-    double center_profile = frame->data[frame->cols*((uint16_t)xy.y) + (uint16_t)xy.x] - bg;
+    int ret = 0;
+    size_t max = (size_t)max_radius;
+
+    double *profile = calloc(2*max, sizeof(double));
+    double *radius = calloc(2*max, sizeof(double));
+    if (!profile || !radius)
+        error_jump(error, ret, "Allocation error");
+
     double last_intensity = 0;
-    double last_profile = center_profile;
-
-    double fwhm = 0;
-    for (uint16_t radius = 1; radius <= (uint16_t)max_radius; radius++)
+    size_t n = 0;
+    for (size_t i = 0; i < max; i++)
     {
-        double intensity = integrate_aperture(xy, radius, frame) - bg*M_PI*radius*radius;
-        double profile = (intensity - last_intensity) / (M_PI*(2*radius - 1));
-
-        if (profile < center_profile/2)
-        {
-            double last_radius = radius - 1;
-            fwhm = 2*(last_radius + (radius - last_radius)*(center_profile/2 - last_profile)/(profile - last_profile));
-            break;
-        }
-
+        double r = i + 1;
+        double intensity = integrate_aperture(xy, r, frame) - bg*M_PI*r*r;
+        double p = (intensity - last_intensity) / (M_PI*(2*r - 1));
         last_intensity = intensity;
-        last_profile = profile;
+
+        if (p > 1)
+        {
+            profile[2*n + 1] = profile[2*n] = p;
+            radius[2*n] = r;
+            radius[2*n + 1] = -r;
+            n++;
+        }
     }
 
-    return fwhm;
+    double g[3];
+    if (fit_gaussian(radius, profile, n, g))
+        error_jump(error, ret, "Gaussian fit failed");
+
+error:
+    free(profile);
+    free(radius);
+    return ret ? -1 : 2*g[2];
 }

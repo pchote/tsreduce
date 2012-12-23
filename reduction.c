@@ -554,7 +554,7 @@ int update_reduction(char *dataPath)
                 obs->noise[i] /= exptime;
 
                 obs->fwhm[i] = estimate_fwhm(frame, obs->pos[i], bg, a.s1);
-                if (obs->fwhm[i] < 1)
+                if (obs->fwhm[i] < 0)
                     failed = true;
             }
             else
@@ -967,6 +967,12 @@ int create_reduction_file(char *outname)
                 case 2: // 3*FWHM
                 {
                     double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
+                    if (fwhm < 0)
+                    {
+                        printf("Invalid fwhm. Removing target\n");
+                        continue;
+                    }
+
                     a.r = 3*fwhm/2;
                     largest_aperture = fmax(largest_aperture, a.r);
 
@@ -1127,7 +1133,7 @@ int update_preview(char *preview_filename, char *ds9_title)
         }
 
         double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
-        if (fwhm < 1)
+        if (fwhm < 0)
         {
             printf("Invalid fwhm. Removing target\n");
             continue;

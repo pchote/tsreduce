@@ -15,236 +15,222 @@
 #include "fit.h"
 #include "random.h"
 
-/*
- * Allocates memory and loads timeseries data, returning pointers via the passed args
- * Returns the number of data points loaded, or -1 on error
- */
-static int load_tsfile(char *tsFile, double **time, double **mma, double **err, size_t *loaded)
+struct ts_data
+{
+    // Timeseries data
+    double *time;
+    double *mma;
+    double *err;
+    size_t obs_count;
+
+    // Frequency data
+    double *freq;
+    char **freq_label;
+    int *freq_mode;
+    size_t freq_count;
+
+    // Fit amplitudes (2*freq_count elements)
+    double *freq_amplitude;
+};
+
+static void ts_data_free(struct ts_data *data)
+{
+    free(data->time);
+    free(data->mma);
+    free(data->err);
+
+    free(data->freq);
+    free_2d_array(data->freq_label, data->freq_count);
+    free(data->freq_mode);
+    free(data->freq_amplitude);
+    free(data);
+}
+
+static int ts_data_fit_sinusoids(struct ts_data *data)
+{
+    return fit_sinusoids(data->time, data->mma, data->err, data->obs_count, data->freq, data->freq_count, data->freq_amplitude);
+}
+
+static int load_tsfile(const char *ts_path, struct ts_data *data)
 {
     int ret = 0;
-    if (!time || !mma || !err)
-        return error("Invalid input array");
-
     char linebuf[1024];
-    FILE *file = fopen(tsFile, "r+");
-    if (!file)
-        return error("Unable to open file: %s", tsFile);
 
-    // Count the number of entries to allocate
-    int total_obs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+    FILE *file = fopen(ts_path, "r+");
+    if (!file)
+        error_jump(file_error, ret, "Unable to load %s", ts_path);
+
+    size_t total = 0;
+    while (fgets(linebuf, sizeof(linebuf) - 1, file))
         if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_obs++;
+            total++;
     rewind(file);
 
-    *time = (double *)malloc(total_obs*sizeof(double));
-    if (!*time)
-        error_jump(time_alloc_error, ret, "Error allocating time array");
+    data->time = calloc(total, sizeof(double));
+    data->mma = calloc(total, sizeof(double));
+    data->err = calloc(total, sizeof(double));
+    if (!data->time || !data->mma || !data->err)
+        error_jump(allocation_error, ret, "Allocation error");
 
-    *mma = (double *)malloc(total_obs*sizeof(double));
-    if (!*mma)
-        error_jump(mma_alloc_error, ret, "Error allocating mma array");
-
-    *err = (double *)malloc(total_obs*sizeof(double));
-    if (!*err)
-        error_jump(err_alloc_error, ret, "Error allocating err array");
-
-    int num_obs = 0;
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_obs < total_obs)
+    size_t count = 0;
+    while (fgets(linebuf, sizeof(linebuf) - 1, file) && count < total)
     {
         // Skip comment / empty lines
         if (linebuf[0] == '#' || linebuf[0] == '\n')
             continue;
 
-        int read = sscanf(linebuf, "%lf %lf %lf\n", &(*time)[num_obs], &(*mma)[num_obs], &(*err)[num_obs]);
+        int read = sscanf(linebuf, "%lf %lf %lf\n", &data->time[count], &data->mma[count], &data->err[count]);
 
         // No error defined; set to unity
         if (read == 2)
-            (*err)[num_obs] = 1;
+            data->err[count] = 1;
 
         // Convert to seconds
-        (*time)[num_obs] *= 86400;
-        num_obs++;
+        data->time[count] *= 86400;
+        count++;
     }
-    *loaded = num_obs;
+    data->obs_count = count;
     fclose(file);
-    return 0;
 
-err_alloc_error:
-    free(*mma);
-mma_alloc_error:
-    free(*time);
-time_alloc_error:
-    fclose(file);
+    return ret;
+
+allocation_error:
+    free(data->time); data->time = NULL;
+    free(data->mma); data->mma = NULL;
+    free(data->err); data->err = NULL;
+
+file_error:
+    data->obs_count = 0;
     return ret;
 }
 
-/*
- * Allocates memory and loads frequency data, returning a pointers via the passed args
- */
-static int load_freqfile(char *freqFile, char ***labels, double **freqs, int **mode, size_t *loaded)
+static int load_freqfile(const char *freq_path, struct ts_data *data)
 {
     int ret = 0;
-    if (!labels || !freqs || !mode)
-        return error("Invalid input array");
-
-    FILE *file = fopen(freqFile, "r+");
-    if (file == NULL)
-        return error("Unable to open file: %s", freqFile);
-
-    int total_freqs = 0;
     char linebuf[1024];
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+
+    // Load freqs
+    FILE *file = fopen(freq_path, "r+");
+    if (!file)
+        error_jump(file_error, ret, "Unable to load %s", freq_path);
+
+    size_t total = 0;
+    while (fgets(linebuf, sizeof(linebuf) - 1, file))
         if (linebuf[0] != '#' && linebuf[0] != '\n')
-            total_freqs++;
+            total++;
     rewind(file);
 
-    int num_freqs = 0;
-    *labels = (char **)malloc(total_freqs*sizeof(char **));
-    if (!labels)
-        error_jump(labels_alloc_error, ret, "Error allocating labels array");
+    size_t count = 0;
+    data->freq = calloc(total, sizeof(double));
+    data->freq_amplitude = calloc(2*total, sizeof(double));
+    data->freq_label = calloc(total, sizeof(char **));
+    data->freq_mode = calloc(total, sizeof(int));
+    if (!data->freq || !data->freq_amplitude || !data->freq_label || !data->freq_mode)
+        error_jump(allocation_error, ret, "Allocation error");
 
-    *freqs = (double *)malloc(total_freqs*sizeof(double));
-    if (!freqs)
-        error_jump(freqs_alloc_error, ret, "Error allocating freqs array");
-
-    *mode = (int *)malloc(total_freqs*sizeof(int));
-    if (!mode)
-        error_jump(mode_alloc_error, ret, "Error allocating mode array");
-
-    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num_freqs < total_freqs)
+    while (fgets(linebuf, sizeof(linebuf) - 1, file) && count < total)
     {
         // Skip comment / empty lines
         if (linebuf[0] == '#' || linebuf[0] == '\n')
             continue;
 
-        int m;
         char label[1024];
-        sscanf(linebuf, "%1024s %lf %d %*s\n", label, &(*freqs)[num_freqs], &m);
+        sscanf(linebuf, "%1024s %lf %d %*s\n", label, &data->freq[count], &data->freq_mode[count]);
 
-        (*freqs)[num_freqs] *= 1e-6;
-        (*mode)[num_freqs] = m;
-        if (m)
+        data->freq[count] *= 1e-6;
+        if (data->freq_mode[count] != 0)
         {
-            (*labels)[num_freqs] = strdup(label);
-            num_freqs++;
+            data->freq_label[count] = strdup(label);
+            count++;
         }
     }
 
-    fclose(file);
-    *loaded = num_freqs;
-    return 0;
+    data->freq_count = count;
 
-mode_alloc_error:
-    free(*freqs);
-freqs_alloc_error:
-    free(*labels);
-labels_alloc_error:
-    fclose(file);
+    if (ts_data_fit_sinusoids(data))
+        error_jump(fit_error, ret, "Amplitude fit failed");
+
+    return ret;
+fit_error:
+allocation_error:
+    free(data->freq); data->freq = NULL;
+    free(data->freq_amplitude); data->freq_amplitude = NULL;
+    free_2d_array(data->freq_label, total); data->freq_label = NULL;
+    free(data->freq_mode); data->freq_mode = NULL;
+file_error:
+    data->freq_count = 1;
     return ret;
 }
 
-static void print_freq_table(char **labels, double *freqs, double *amplitudes, size_t numFreqs)
-{
-    printf("ID     Freq    Period    Amp    Phase \n");
-    printf("       (uHz)     (s)    (mma)   (deg)\n");
-    for (size_t i = 0; i < numFreqs; i++)
-    {
-        double a = amplitudes[2*i+1];
-        double b = amplitudes[2*i];
-        double amp = sqrt(a*a + b*b);
-        double phase = atan2(b, a)*180/M_PI;
-        while (phase > 360) phase -= 360;
-        while (phase < 0) phase += 360;
-        printf("%-5s %7.2f %7.2f %7.2f %7.2f %7.2f %7.2f\n", labels[i], 1e6*freqs[i], 1/freqs[i], amp, phase, 1/freqs[i]/60, 1/freqs[i]/3600);
-    }
-}
-
-static double calculate_chi2(double *freqs, double *amplitudes, size_t numFreqs,
-                             double *time, double *mma, double *err, size_t numObs)
+static double ts_data_chi2(struct ts_data *data)
 {
     double chi2 = 0;
-    for (size_t i = 0; i < numObs; i++)
+    for (size_t i = 0; i < data->obs_count; i++)
     {
         double model = 0;
-        for (size_t j = 0; j < numFreqs; j++)
+        for (size_t j = 0; j < data->freq_count; j++)
         {
-            double phase = 2*M_PI*freqs[j]*time[i];
-            model += amplitudes[2*j]*cos(phase);
-            model += amplitudes[2*j+1]*sin(phase);
+            double phase = 2*M_PI*data->freq[j]*data->time[i];
+            model += data->freq_amplitude[2*j]*cos(phase);
+            model += data->freq_amplitude[2*j+1]*sin(phase);
         }
-        double t = (mma[i] - model)/err[i];
+        double t = (data->mma[i] - model)/data->err[i];
         chi2 += t*t;
     }
     return chi2;
 }
 
-/*
- * Load a tsfile and prewhiten by the frequencies in freqFile.
- * If freqFile is null, the file will be loaded without prewhitening
- * and the freq arrays will be set to NULL
- */
-static int load_and_fit_freqs(char *tsFile, char *freqFile,
-                              double **time, double **mma, double **err, size_t *num_obs,
-                              char ***freq_labels, double **freqs, double **freq_amplitudes, int **freq_modes, size_t *num_freqs)
+static void ts_data_prewhiten(struct ts_data *data)
+{
+    for (size_t i = 0; i < data->obs_count; i++)
+        for (size_t j = 0; j < data->freq_count; j++)
+        {
+            double phase = 2*M_PI*data->freq[j]*data->time[i];
+            data->mma[i] -= data->freq_amplitude[2*j]*cos(phase);
+            data->mma[i] -= data->freq_amplitude[2*j+1]*sin(phase);
+        }
+}
+
+static void ts_data_print_table(struct ts_data *data)
+{
+    printf("# ID     Freq    Period    Amp    Phase \n");
+    printf("#        (uHz)     (s)    (mma)   (deg)\n");
+    for (size_t i = 0; i < data->freq_count; i++)
+    {
+        double a = data->freq_amplitude[2*i+1];
+        double b = data->freq_amplitude[2*i];
+        double amp = sqrt(a*a + b*b);
+        double phase = atan2(b, a)*180/M_PI;
+        while (phase > 360) phase -= 360;
+        while (phase < 0) phase += 360;
+        printf("# %-5s %7.2f %7.2f %7.2f %7.2f\n",
+               data->freq_label[i], 1e6*data->freq[i], 1/data->freq[i], amp, phase);
+    }
+
+    double chi2 = ts_data_chi2(data);
+    int dof = data->obs_count - 3*data->freq_count;
+    printf("# Chi^2: %f / DOF: %d = %f\n", chi2, dof, chi2/dof);
+}
+
+struct ts_data *ts_data_load(const char *ts_path, const char *freq_path)
 {
     int ret = 0;
+    struct ts_data *data = calloc(1, sizeof(struct ts_data));
+    if (!data)
+        return NULL;
 
-    if (load_tsfile(tsFile, time, mma, err, num_obs))
-        return error("ts load failed");
+    if (load_tsfile(ts_path, data))
+        error_jump(load_error, ret, "Error loading timeseries data", freq_path);
 
-    if (*num_obs == 0)
-        error_jump(no_obs_error, ret, "No observations in ts file");
+    if (freq_path && load_freqfile(freq_path, data))
+        error_jump(load_error, ret, "Error loading frequency data", freq_path);
 
-    printf("Read %zu observations\n", *num_obs);
+    ts_data_print_table(data);
 
-    if (freqFile)
-    {
-        if (load_freqfile(freqFile, freq_labels, freqs, freq_modes, num_freqs))
-            error_jump(freq_load_error, ret, "Freq load failed");
-
-        if (num_freqs == 0)
-            error_jump(no_freqs_error, ret, "No frequencies specified");
-
-        printf("Read %zu freqs\n", *num_freqs);
-
-        // Fit amplitudes for each freq
-        *freq_amplitudes = (double *)malloc(2*(*num_freqs)*sizeof(double));
-        if (!(*freq_amplitudes))
-            error_jump(freq_amplitude_alloc_failed, ret, "Error allocating freq_amplitude array");
-
-        if (fit_sinusoids(*time, *mma, *err, *num_obs, *freqs, *num_freqs, *freq_amplitudes))
-            error_jump(fit_failed_error, ret, "Sinusoid fit failed");
-
-        print_freq_table(*freq_labels, *freqs, *freq_amplitudes, *num_freqs);
-        double chi2 = calculate_chi2(*freqs, *freq_amplitudes, *num_freqs, *time, *mma, *err, *num_obs);
-        int dof = *num_obs - 3*(*num_freqs);
-        printf("Chi^2: %f / DOF: %d = %f\n", chi2, dof, chi2/dof);
-    }
-    else
-    {
-        *freq_labels = NULL;
-        *freqs = NULL;
-        *freq_amplitudes = NULL;
-        *freq_modes = 0;
-        *num_freqs = 0;
-    }
-
-    return ret;
-
-fit_failed_error:
-    free(*freq_amplitudes);
-freq_amplitude_alloc_failed:
-no_freqs_error:
-    free(*freq_labels);
-    free(*freqs);
-    free(*freq_modes);
-freq_load_error:
-no_obs_error:
-    free(*time);
-    free(*mma);
-    free(*err);
-    return ret;
+    return data;
+load_error:
+    ts_data_free(data);
+    return NULL;
 }
 
 /*
@@ -252,74 +238,56 @@ no_obs_error:
  * and output a model lightcurve between startTime and endTime with increments of dt to modelFile
  * Residuals are saved to residualsFile if it is non-NULL
  */
-int model_fit(char *tsFile, char *freqFile, double startTime, double endTime, double dt, char *modelFile, char *residualsFile)
+int model_fit(char *ts_path, char *freq_path, double start_time, double end_time, double dt, char *model_path, char *residuals_path)
 {
     int ret = 0;
 
-    double *time, *mma, *err, *freqs, *freq_amplitudes;
-    char **freq_labels;
-    int *freq_modes;
-    size_t num_obs, num_freqs;
-
-    if (load_and_fit_freqs(tsFile, freqFile,
-        &time, &mma, &err, &num_obs,
-        &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
-    {
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
-    }
-
-    if (!freqs)
-        error_jump(no_freqs_error, ret, "freqfile is required");
 
     // Output model curve
-    FILE *file = fopen(modelFile, "w");
+    FILE *file = fopen(model_path, "w");
     if (!file)
-        error_jump(outfile_open_error, ret, "Error opening output file %s", modelFile);
+        error_jump(outfile_open_error, ret, "Error opening output file %s", model_path);
 
-    for (double t = startTime; t <= endTime; t += dt)
+    for (double t = start_time; t <= end_time; t += dt)
     {
         double fit = 0;
-        for (size_t j = 0; j < num_freqs; j++)
+        for (size_t j = 0; j < data->freq_count; j++)
         {
             // convert time from BJD to seconds
-            double phase = 2*M_PI*freqs[j]*t*86400;
-            fit += freq_amplitudes[2*j]*cos(phase);
-            fit += freq_amplitudes[2*j+1]*sin(phase);
+            double phase = 2*M_PI*data->freq[j]*t*86400;
+            fit += data->freq_amplitude[2*j]*cos(phase);
+            fit += data->freq_amplitude[2*j+1]*sin(phase);
         }
         fprintf(file, "%f %f\n", t, fit);
     }
     fclose(file);
 
     // Output residuals
-    if (residualsFile != NULL)
+    if (residuals_path)
     {
-        file = fopen(residualsFile, "w");
+        file = fopen(residuals_path, "w");
         if (!file)
-            error_jump(outfile_open_error, ret, "Error opening output file %s", modelFile);
+            error_jump(outfile_open_error, ret, "Error opening output file %s", residuals_path);
 
-        for (size_t i = 0; i < num_obs; i++)
+        for (size_t i = 0; i < data->obs_count; i++)
         {
             double model = 0;
-            for (size_t j = 0; j < num_freqs; j++)
+            for (size_t j = 0; j < data->freq_count; j++)
             {
-                double phase = 2*M_PI*freqs[j]*time[i];
-                model += freq_amplitudes[2*j]*cos(phase);
-                model += freq_amplitudes[2*j+1]*sin(phase);
+                double phase = 2*M_PI*data->freq[j]*data->time[i];
+                model += data->freq_amplitude[2*j]*cos(phase);
+                model += data->freq_amplitude[2*j+1]*sin(phase);
             }
-            fprintf(file, "%f %f\n", time[i]/86400, mma[i] - model);
+            fprintf(file, "%f %f\n", data->time[i]/86400, data->mma[i] - model);
         }
         fclose(file);
     }
 
 outfile_open_error:
-    free(freq_labels);
-    free(freqs);
-    free(freq_amplitudes);
-    free(freq_modes);
-no_freqs_error:
-    free(time);
-    free(mma);
-    free(err);
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }
@@ -329,72 +297,44 @@ load_failed_error:
  * Output is saved to outFile with frequencies in uHz.
  * If freqFile is non-NULL, the data is first prewhitened with the contained frequencies
  */
-int dft_bjd(char *tsFile, double minUHz, double maxUHz, double dUHz, char *outFile, char *freqFile)
+int dft_bjd(char *ts_path, double min_uhz, double max_uhz, double d_uhz, char *out_path, char *freq_path)
 {
     int ret = 0;
-
-    double *time, *mma, *err;
-    size_t num_obs;
-
-    // Prewhiten if a frequency file is given
-    if (freqFile)
-    {
-        double *freqs, *freq_amplitudes;
-        char **freq_labels;
-        int *freq_modes;
-        size_t num_freqs;
-        if (load_and_fit_freqs(tsFile, freqFile,
-                           &time, &mma, &err, &num_obs,
-                           &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
-        {
-            error_jump(load_failed_error, ret, "Error processing data");
-        }
-
-        for (size_t i = 0; i < num_obs; i++)
-            for (size_t j = 0; j < num_freqs; j++)
-            {
-                double phase = 2*M_PI*freqs[j]*time[i];
-                mma[i] -= freq_amplitudes[2*j]*cos(phase);
-                mma[i] -= freq_amplitudes[2*j+1]*sin(phase);
-            }
-
-        free(freq_labels);
-        free(freqs);
-        free(freq_amplitudes);
-        free(freq_modes);
-    }
-    else if (load_tsfile(tsFile, &time, &mma, &err, &num_obs))
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
 
+    // Prewhiten if a frequency file is given
+    if (data->freq_count)
+        ts_data_prewhiten(data);
+
     // Calculate DFT
-    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
-    double *dftfreq = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftfreq)
-        error_jump(dftfreq_alloc_error, ret, "Error allocating dftfreq");
+    size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+    double *dft_freq = calloc(dft_count, sizeof(double));
+    if (!dft_freq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
 
-    double *dftampl = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftampl)
-        error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
+    double *dft_ampl = calloc(dft_count, sizeof(double));
+    if (!dft_ampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dft_ampl");
 
-    calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
 
     // Save output
-    FILE *file = fopen(outFile, "w");
+    FILE *file = fopen(out_path, "w");
     if (!file)
-        error_jump(outfile_open_error, ret, "Error opening output file %s", outFile);
+        error_jump(outfile_open_error, ret, "Error opening output file %s", out_path);
 
-    for (size_t i = 0; i < num_uhz; i++)
-        fprintf(file, "%f %f\n", 1e6*dftfreq[i], dftampl[i]);
+    for (size_t i = 0; i < dft_count; i++)
+        fprintf(file, "%f %f\n", 1e6*dft_freq[i], dft_ampl[i]);
 
     fclose(file);
 outfile_open_error:
-    free(dftampl);
+    free(dft_ampl);
 dftampl_alloc_error:
-    free(dftfreq);
+    free(dft_freq);
 dftfreq_alloc_error:
-    free(time);
-    free(mma);
-    free(err);
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }
@@ -403,49 +343,44 @@ load_failed_error:
  * Calculate the DFT window at freq (in uHz) for the BJD/mma data in tsFile between minUHz and maxUHz in increments dUHz
  * Output is saved to outFile with frequencies in uHz.
  */
-int dft_window(char *tsFile, double windowFreq, double minUHz, double maxUHz, double dUHz, char *outFile)
+int dft_window(char *ts_path, double window_freq, double min_uhz, double max_uhz, double d_uhz, char *out_path)
 {
     int ret = 0;
-
-    double *time, *mma, *err;
-    size_t num_obs;
-
-    if (load_tsfile(tsFile, &time, &mma, &err, &num_obs))
-        error_jump(load_failed_error, ret, "Error loading data");
+    struct ts_data *data = ts_data_load(ts_path, NULL);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
 
     // Generate sinusoid
-    for (size_t i = 0; i < num_obs; i++)
-        mma[i] = sin(2*M_PI*windowFreq*1e-6*time[i]);
+    for (size_t i = 0; i < data->obs_count; i++)
+        data->mma[i] = sin(2*M_PI*window_freq*1e-6*data->time[i]);
 
     // Calculate DFT
-    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
-    double *dftfreq = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftfreq)
-        error_jump(dftfreq_alloc_error, ret, "Error allocating dftfreq");
+    size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+    double *dft_freq = calloc(dft_count, sizeof(double));
+    if (!dft_freq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
 
-    double *dftampl = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftampl)
-        error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
+    double *dft_ampl = calloc(dft_count, sizeof(double));
+    if (!dft_ampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dft_ampl");
 
-    calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
 
-    FILE *file = fopen(outFile, "w");
+    FILE *file = fopen(out_path, "w");
     if (!file)
-        error_jump(outfile_open_error, ret, "Error opening output file %s", outFile);
+        error_jump(outfile_open_error, ret, "Error opening output file %s", out_path);
 
-    for (size_t i = 0; i < num_uhz; i++)
-        fprintf(file, "%f %f\n", 1e6*dftfreq[i], dftampl[i]);
+    for (size_t i = 0; i < dft_count; i++)
+        fprintf(file, "%f %f\n", 1e6*dft_freq[i], dft_ampl[i]);
 
     fclose(file);
 
 outfile_open_error:
-    free(dftampl);
+    free(dft_ampl);
 dftampl_alloc_error:
-    free(dftfreq);
+    free(dft_freq);
 dftfreq_alloc_error:
-    free(time);
-    free(mma);
-    free(err);
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }
@@ -456,56 +391,41 @@ load_failed_error:
  * Results are plotted in a pgplot window
  * If freqFile is non-NULL, the data is first prewhitened with the contained frequencies
  */
-int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz)
+int find_max_freq(char *ts_path, char *freq_path, double min_uhz, double max_uhz, double d_uhz)
 {
     int ret = 0;
-
-    double *time, *mma, *err, *freqs, *freq_amplitudes;
-    char **freq_labels;
-    int *freq_modes;
-    size_t num_obs, num_freqs;
-
-    if (load_and_fit_freqs(tsFile, freqFile,
-                           &time, &mma, &err, &num_obs,
-                           &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
-    {
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
-    }
 
     // Prewhiten
-    for (size_t i = 0; i < num_obs; i++)
-        for (size_t j = 0; j < num_freqs; j++)
-        {
-            double phase = 2*M_PI*freqs[j]*time[i];
-            mma[i] -= freq_amplitudes[2*j]*cos(phase);
-            mma[i] -= freq_amplitudes[2*j+1]*sin(phase);
-        }
+    ts_data_prewhiten(data);
 
     // Calculate DFT
-    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
-    double *dftfreq = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftfreq)
-        error_jump(dftfreq_alloc_error, ret, "Error allocating dftfreq");
+    size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+    double *dft_freq = calloc(dft_count, sizeof(double));
+    if (!dft_freq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
 
-    double *dftampl = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftampl)
-        error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
+    double *dft_ampl = calloc(dft_count, sizeof(double));
+    if (!dft_ampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dft_ampl");
 
-    calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
+    calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
 
-    double max_ampl = 0;
-    double max_ampl_freq = 0;
-    for (size_t i = 0; i < num_uhz; i++)
-        if (dftampl[i] > max_ampl)
+    double ampl_max = 0;
+    double freq = 0;
+    for (size_t i = 0; i < dft_count; i++)
+        if (dft_ampl[i] > ampl_max)
         {
-            max_ampl = dftampl[i];
-            max_ampl_freq = dftfreq[i];
+            ampl_max = dft_ampl[i];
+            freq = dft_freq[i];
         }
 
-    printf("Max amplitude of %f at %f uHz\n", max_ampl, max_ampl_freq*1e6);
+    printf("Max amplitude of %f at %f uHz\n", ampl_max, freq*1e6);
 
-    float *pgfreq = cast_double_array_to_float(dftfreq, num_uhz);
-    float *pgampl = cast_double_array_to_float(dftampl, num_uhz);
+    float *pgfreq = cast_double_array_to_float(dft_freq, dft_count);
+    float *pgampl = cast_double_array_to_float(dft_ampl, dft_count);
 
     // Display
     if (cpgopen("6/xs") <= 0)
@@ -520,17 +440,17 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
 
     // DFT
     cpgsvp(0.1, 0.9, 0.075, 0.9);
-    cpgswin(minUHz, maxUHz, 0, max_ampl*1.1);
+    cpgswin(min_uhz, max_uhz, 0, ampl_max*1.1);
     cpgbox("bcstn", 0, 0, "bcnst", 0, 0);
 
-    cpgswin(minUHz*1e-6, maxUHz*1e-6, 0, max_ampl*1.1);
+    cpgswin(min_uhz*1e-6, max_uhz*1e-6, 0, ampl_max*1.1);
 
     cpgsci(12);
-    cpgline(num_uhz, pgfreq, pgampl);
+    cpgline(dft_count, pgfreq, pgampl);
 
     cpgsci(2);
-    cpgmove(max_ampl_freq, max_ampl);
-    cpgdraw(max_ampl_freq, 0);
+    cpgmove(freq, ampl_max);
+    cpgdraw(freq, 0);
     cpgsci(1);
 
     cpgmtxt("b", 2.5, 0.5, 0.5, "Frequency (\\gmHz)");
@@ -542,106 +462,73 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
     cpgend();
 
 pgplot_open_error:
-    free(dftampl);
+    free(dft_ampl);
 dftampl_alloc_error:
-    free(dftfreq);
+    free(dft_freq);
 dftfreq_alloc_error:
-    if (freqs)
-    {
-        free(freq_labels);
-        free(freqs);
-        free(freq_amplitudes);
-        free(freq_modes);
-    }
-    free(time);
-    free(mma);
-    free(err);
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }
 
-static int step_freq(double *fit_freqs, double *fit_amplitudes, int num_freqs,
-                     double *time, double *mma, double *err, int num_obs,
-                     int vary_freq, double centerFreq, double stepSize, int numSteps,
-                     double *best_freq, double *best_chi2)
-{
-    for (int j = -numSteps; j <= numSteps; j++)
-    {
-        fit_freqs[vary_freq] = centerFreq + j*stepSize;
-
-        if (fit_sinusoids(time, mma, err, num_obs, fit_freqs, num_freqs, fit_amplitudes))
-            continue;
-
-        double chi2 = calculate_chi2(fit_freqs, fit_amplitudes, num_freqs, time, mma, err, num_obs);
-        if (chi2 < *best_chi2)
-        {
-            *best_chi2 = chi2;
-            *best_freq = fit_freqs[vary_freq];
-        }
-    }
-    return 0;
-}
-
-int nonlinear_fit(char *tsFile, char *freqFile)
+int nonlinear_fit(char *ts_path, char *freq_path)
 {
     int ret = 0;
-
-    double *time, *mma, *err, *init_freqs, *fit_amplitudes;
-    char **freq_labels;
-    int *freq_modes;
-    size_t num_obs, num_freqs;
-
-    if (load_and_fit_freqs(tsFile, freqFile,
-                           &time, &mma, &err, &num_obs,
-                           &freq_labels, &init_freqs, &fit_amplitudes, &freq_modes, &num_freqs))
-    {
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
-    }
 
-    double *fit_freqs = (double *)malloc(num_freqs*sizeof(double));
-    if (!fit_freqs)
-        error_jump(fit_freqs_alloc_error, ret, "Error allocating fit_freqs");
+    double *initial_freq = calloc(data->freq_count, sizeof(double));
+    if (!initial_freq)
+        error_jump(allocation_error, ret, "Error allocating fit_freqs");
 
-    for (size_t j = 0; j < num_freqs; j++)
-        fit_freqs[j] = init_freqs[j];
+    for (size_t j = 0; j < data->freq_count; j++)
+        initial_freq[j] = data->freq[j];
 
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
     double coarse_step = 1.0/(24*3600);
-    int coarse_step_count = 5;
+    int32_t coarse_step_count = 5;
     double fine_step = 0.01e-6;
-    int fine_step_count = 10;
+    int32_t fine_step_count = 10;
 
-    double chi2 = calculate_chi2(init_freqs, fit_amplitudes, num_freqs, time, mma, err, num_obs);
+    double chi2 = ts_data_chi2(data);
     double initialchi2 = chi2;
     double lastouterchi2 = chi2;
     double lastchi2 = chi2;
     do
     {
         lastouterchi2 = chi2;
-        for (size_t i = 0; i < num_freqs; i++)
+        for (size_t i = 0; i < data->freq_count; i++)
         {
+            printf("Varying freq %zu %g\n", i, data->freq[i]);
             // Only fit freqs with 3rd column >= 2
-            if (freq_modes[i] < 2)
+            if (data->freq_mode[i] < 2)
                 continue;
 
             double best_chi2 = chi2;
-            double best_freq = fit_freqs[i];
+            double best_freq = data->freq[i];
 
             // Start with a rough step
-            printf("Freq %10.2f\n", 1e6*init_freqs[i]);
-            int iterate_mode = 2;
+            printf("Freq %10.2f\n", 1e6*data->freq[i]);
+            uint8_t iterate_mode = 2;
             double step = coarse_step;
-            int num_steps = coarse_step_count;
-            printf("\tUsing %d coarse steps\n", num_steps);
+            int32_t step_count = coarse_step_count;
+            printf("\tUsing %d coarse steps\n", step_count);
             do
             {
                 double last_best_freq = best_freq;
-                if (step_freq(fit_freqs, fit_amplitudes, num_freqs,
-                              time, mma, err, num_obs,
-                              i, best_freq, step, num_steps,
-                              &best_freq, &best_chi2))
+                for (int32_t j = -step_count; j <= step_count; j++)
                 {
-                    error_jump(variation_failed_error , ret, "Variation failed");
+                    data->freq[i] = best_freq + j*step;
+                    if (ts_data_fit_sinusoids(data))
+                        continue;
+
+                    double chi2 = ts_data_chi2(data);
+                    if (chi2 < best_chi2)
+                    {
+                        best_chi2 = chi2;
+                        best_freq = data->freq[i];
+                    }
                 }
 
                 if (best_chi2 < lastchi2)
@@ -656,68 +543,46 @@ int nonlinear_fit(char *tsFile, char *freqFile)
                     {
                         printf("\tUsing fine steps\n");
                         step = fine_step;
-                        num_steps = fine_step_count;
+                        step_count = fine_step_count;
                     }
                 }
             }
             while (iterate_mode);
 
-            fit_freqs[i] = best_freq;
+            data->freq[i] = best_freq;
             chi2 = lastchi2;
         }
     } while (chi2 < lastouterchi2);
 
     printf("%f -> %f (%f)\n", initialchi2, chi2, initialchi2 - chi2);
-    for (size_t i = 0; i < num_freqs; i++)
-        printf("%-4s %7.2f %d\n", freq_labels[i], 1e6*fit_freqs[i], freq_modes[i]);
+    for (size_t i = 0; i < data->freq_count; i++)
+        printf("%-4s %7.2f %d\n", data->freq_label[i], 1e6*data->freq[i], data->freq_mode[i]);
 
-variation_failed_error:
-    free(fit_freqs);
-fit_freqs_alloc_error:
-    free(freq_labels);
-    free(init_freqs);
-    free(fit_amplitudes);
-    free(freq_modes);
-    free(time);
-    free(mma);
-    free(err);
+    free(initial_freq);
+allocation_error:
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }
 
-int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats)
+int shuffle_dft(char *ts_path, char *freq_path, double min_uhz, double max_uhz, double d_uhz, char *out_path, size_t repeats)
 {
     int ret = 0;
-
-    double *time, *mma, *err, *freqs, *freq_amplitudes;
-    size_t num_obs, num_freqs;
-    char **freq_labels;
-    int *freq_modes;
-
-    if (load_and_fit_freqs(tsFile, freqFile,
-                           &time, &mma, &err, &num_obs,
-                           &freq_labels, &freqs, &freq_amplitudes, &freq_modes, &num_freqs))
-    {
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
-    }
 
     // Prewhiten
-    for (size_t i = 0; i < num_obs; i++)
-        for (size_t j = 0; j < num_freqs; j++)
-        {
-            double phase = 2*M_PI*freqs[j]*time[i];
-            mma[i] -= freq_amplitudes[2*j]*cos(phase);
-            mma[i] -= freq_amplitudes[2*j+1]*sin(phase);
-        }
+    ts_data_prewhiten(data);
 
-    int num_uhz = (int)((maxUHz - minUHz)/dUHz);
-    double *dftfreq = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftfreq)
-        error_jump(dftfreq_alloc_error, ret, "Error allocating dftfreq");
+    size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+    double *dft_freq = calloc(dft_count, sizeof(double));
+    if (!dft_freq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
 
-    double *dftampl = (double *)malloc(num_uhz*sizeof(double));
-    if (!dftampl)
-        error_jump(dftampl_alloc_error, ret, "Error allocating dftfreq");
+    double *dft_ampl = calloc(dft_count, sizeof(double));
+    if (!dft_ampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dft_freq");
 
     // TODO: Seed correctly
     uint32_t seed = 19937;
@@ -725,14 +590,14 @@ int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, doub
     if (!rand)
         error_jump(rand_alloc_error, ret, "Error allocating random generator");
 
-    FILE *file = fopen(outFile, "w");
+    FILE *file = fopen(out_path, "w");
     if (!file)
-        error_jump(outfile_open_error, ret, "Error opening output file %s", outFile);
+        error_jump(outfile_open_error, ret, "Error opening output file %s", out_path);
 
     // File header
     fprintf(file, "# Prewhitened and shuffled max DFT amplitudes\n");
-    fprintf(file, "# Data: %s\n", tsFile);
-    fprintf(file, "# Freqs: %s\n", freqFile);
+    fprintf(file, "# Data: %s\n", ts_path);
+    fprintf(file, "# Freqs: %s\n", freq_path);
     fprintf(file, "# Seed: %u\n", seed);
     fprintf(file, "# Freq, Max Ampl, Mean Ampl\n");
 
@@ -740,41 +605,35 @@ int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, doub
     for (size_t i = 0; i < repeats; i++)
     {
         printf("%zu of %zu\n", i + 1, repeats);
-        random_shuffle_double_array(rand, time, num_obs);
-        calculate_amplitude_spectrum(time, mma, num_obs, minUHz*1e-6, maxUHz*1e-6, dftfreq, dftampl, num_uhz);
+        random_shuffle_double_array(rand, data->time, data->obs_count);
+        calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
 
         // Find mean and max intensity
-        double maxfreq = 0;
-        double meanampl  = 0;
-        double maxampl = 0;
-        for (size_t j = 0; j < num_uhz; j++)
+        double freq = 0;
+        double ampl_mean = 0;
+        double ampl_max = 0;
+        for (size_t j = 0; j < dft_count; j++)
         {
-            meanampl += dftampl[j];
-            if (dftampl[j] > maxampl)
+            ampl_mean += dft_ampl[j];
+            if (dft_ampl[j] > ampl_max)
             {
-                maxampl = dftampl[j];
-                maxfreq = dftfreq[j];
+                ampl_max = dft_ampl[j];
+                freq = dft_freq[j];
             }
         }
-        meanampl /= num_uhz;
-        fprintf(file, "%f %f %f\n", maxfreq, maxampl, meanampl);
+        ampl_mean /= dft_count;
+        fprintf(file, "%f %f %f\n", freq, ampl_max, ampl_mean);
     }
     fclose(file);
 
 outfile_open_error:
     random_free(rand);
 rand_alloc_error:
-    free(dftampl);
+    free(dft_ampl);
 dftampl_alloc_error:
-    free(dftfreq);
+    free(dft_freq);
 dftfreq_alloc_error:
-    free(time);
-    free(mma);
-    free(err);
-    free(freq_labels);
-    free(freqs);
-    free(freq_amplitudes);
-    free(freq_modes);
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }

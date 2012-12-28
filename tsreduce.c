@@ -172,6 +172,9 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strcmp(argv[1], "baseline") == 0)
         return fit_baseline_polynomial(argv[2], atoi(argv[3]));
 
+    else if (argc == 6 && strcmp(argv[1], "shift") == 0)
+        return fit_gwlib_freqshift(argv[2], atof(argv[3]), atof(argv[4]), atoi(argv[5]));
+
     else
         error("Invalid args");
     return 0;

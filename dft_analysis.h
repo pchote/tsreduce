@@ -22,4 +22,6 @@ int o_minus_c(const char *data, const char *ref_bjd, long double period, long do
 int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width);
 int fit_baseline_polynomial(char *tsfile, size_t poly_degree);
 
+int fit_gwlib_freqshift(char *ts_file, double first_uhz, double second_uhz, size_t harmonic_count);
+
 #endif

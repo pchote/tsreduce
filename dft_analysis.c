@@ -809,3 +809,67 @@ coeffs_alloc_error:
 load_failed_error:
     return ret;
 }
+
+int fit_gwlib_freqshift(char *ts_path, double first_uhz, double second_uhz, size_t harmonic_count)
+{
+    int ret = 0;
+    struct ts_data *data = ts_data_load_harmonics(ts_path, first_uhz*1e-6, harmonic_count);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+
+    if (data->obs_count == 0)
+        error_jump(no_obs_error, ret, "No observations in ts file");
+
+    size_t orig_obs_count = data->obs_count;
+    double *orig_time = data->time;
+    double *orig_mma = data->mma;
+    double *orig_err = data->err;
+    for (size_t i = 2*data->freq_count; i < orig_obs_count - 2*data->freq_count; i++)
+    {
+        // Fit first half
+        for (size_t j = 0; j <= harmonic_count; j++)
+            data->freq[j] = (j+1)*first_uhz*1e-6;
+
+        data->time = orig_time;
+        data->mma = orig_mma;
+        data->err = orig_err;
+        data->obs_count = i;
+
+        if (ts_data_fit_sinusoids(data))
+        {
+            fprintf(stderr, "%zu: first fit failed\n", i);
+            continue;
+        }
+
+        data->obs_count = i;
+        double first = ts_data_chi2(data);
+
+        // Fit second half
+        for (size_t j = 0; j <= harmonic_count; j++)
+            data->freq[j] = (j+1)*second_uhz;
+
+        data->time = orig_time + i;
+        data->mma = orig_mma + i;
+        data->err = orig_err + i;
+        data->obs_count = orig_obs_count - i;
+
+        if (ts_data_fit_sinusoids(data))
+        {
+            fprintf(stderr, "%zu: second fit failed\n", i);
+            continue;
+        }
+
+        double second = ts_data_chi2(data);
+        printf("%f %f %f %f\n", orig_time[i]/86400, first, second, first+second);
+    }
+
+    data->time = orig_time;
+    data->mma = orig_mma;
+    data->err = orig_err;
+    data->obs_count = orig_obs_count;
+
+no_obs_error:
+    ts_data_free(data);
+load_failed_error:
+    return ret;
+}

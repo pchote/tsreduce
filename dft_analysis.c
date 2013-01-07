@@ -10,6 +10,7 @@
 #include <math.h>
 #include <string.h>
 #include <cpgplot.h>
+#include <float.h>
 
 #include "helpers.h"
 #include "fit.h"
@@ -245,6 +246,119 @@ struct ts_data *ts_data_load(const char *ts_path, const char *freq_path)
 load_error:
     ts_data_free(data);
     return NULL;
+}
+
+struct histogram_data
+{
+    double *center;
+    size_t *count;
+    size_t bin_count;
+
+    double minimum;
+    double maximum;
+    double bin_width;
+    size_t excluded_count;
+};
+
+void histogram_free(struct histogram_data *hd)
+{
+    free(hd->center);
+    free(hd->count);
+    free(hd);
+}
+
+struct histogram_data *histogram_create(double *data, size_t count, double minimum, double maximum, size_t bin_count)
+{
+    struct histogram_data *hd = calloc(1, sizeof(struct histogram_data));
+    if (!hd)
+        return NULL;
+
+    hd->minimum = minimum;
+    hd->maximum = maximum;
+    hd->bin_count = bin_count;
+    hd->bin_width = (maximum - minimum)/bin_count;
+
+    hd->center = calloc(bin_count, sizeof(double));
+    hd->count = calloc(bin_count, sizeof(size_t));
+    if (!hd->center || !hd->count)
+    {
+        histogram_free(hd);
+        return NULL;
+    }
+
+    for (size_t i = 0; i < bin_count; i++)
+        hd->center[i] = minimum + (i + 0.5)*hd->bin_width;
+
+    for (size_t i = 0; i < count; i++)
+    {
+        double bin = (data[i] - minimum)/hd->bin_width;
+        if (bin < 0 || bin >= bin_count)
+            hd->excluded_count++;
+        else
+            hd->count[(size_t)bin]++;
+    }
+
+    return hd;
+}
+
+int histogram_fit_gaussian(struct histogram_data *hd, double fit_min, double fit_max, double params[3])
+{
+    int ret = 0;
+
+    double *center = calloc(hd->bin_count, sizeof(double));
+    double *count = calloc(hd->bin_count, sizeof(double));
+    if (!center || !count)
+        error_jump(error, ret, "Histogram fit allocation failed");
+
+    printf("Source histogram:\n");
+    size_t n = 0;
+    for (size_t i = 0; i < hd->bin_count; i++)
+    {
+        printf("%g %zu\n", hd->center[i], hd->count[i]);
+        // Discard zero values (which break the fit) and bins outside the requested fit range
+        if (hd->count[i] == 0 || hd->center[i] - hd->bin_width/2 < fit_min || hd->center[i] + hd->bin_width/2 > fit_max)
+            continue;
+
+        // Transform center of range to 0
+        center[n] = hd->center[i] - (fit_min + fit_max) / 2;
+        count[n] = hd->count[i];
+        n++;
+    }
+
+    printf("Fit histogram:\n");
+    for (size_t i = 0; i < n; i++)
+        printf("%g %g\n", center[i], count[i]);
+
+    if (fit_analytical_gaussian(center, count, n, params))
+        error_jump(error, ret, "Fit failed");
+
+    // Correct offset
+    params[1] += (fit_min + fit_max) / 2;
+error:
+    free(count);
+    free(center);
+    return ret;
+}
+
+int histogram_export(struct histogram_data *hd, double gaussian_params[3], const char *path)
+{
+    int ret = 0;
+
+    FILE *output = fopen(path, "w");
+    if (!output)
+        error_jump(file_error, ret, "Unable to open histogram for writing: %s", path);
+
+    fprintf(output, "# Fit parameters: ampl: %g mu: %g sigma: %g\n", gaussian_params[0], gaussian_params[1], gaussian_params[2]);
+    for (size_t i = 0; i < hd->bin_count; i++)
+    {
+        double arg = (hd->center[i] - gaussian_params[1])/gaussian_params[2];
+        double fit = gaussian_params[0]*exp(-0.5*arg*arg);
+        fprintf(output, "%g %g %zu %g %g\n", hd->center[i] - hd->bin_width/2, hd->center[i] + hd->bin_width/2, hd->count[i], hd->center[i], fit);
+    }
+
+    fclose(output);
+file_error:
+    return ret;
 }
 
 /*
@@ -652,60 +766,184 @@ load_failed_error:
     return ret;
 }
 
-int noise_histogram(const char *ts_path, const char *freq_path, double min_mma, double max_mma, size_t bin_count, double fit_min_mma, double fit_max_mma)
+static void step_freq_fit(struct ts_data *data, double freq_min, double freq_max, double freq_step,
+            double *best_freq, double *best_chi2)
+{
+
+    // Step through fit frequencies
+    double fit_freq = freq_min;
+
+    *best_freq = 0;
+    *best_chi2 = DBL_MAX;
+    while (fit_freq <= freq_max)
+    {
+        for (size_t j = 0; j < data->freq_count; j++)
+            data->freq[j] = 1e-6*(j+1)*fit_freq;
+
+        if (ts_data_fit_sinusoids(data))
+        {
+            fprintf(stderr, "fit failed\n");
+            continue;
+        }
+        double chi2 = ts_data_chi2(data);
+        if (chi2 < *best_chi2)
+        {
+            *best_freq = fit_freq;
+            *best_chi2 = chi2;
+        }
+        fit_freq += freq_step;
+    }
+}
+
+int noise_histogram(const char *ts_path, const char *freq_path,
+                    double min_mma, double max_mma, size_t bin_count,
+					double freq_search_min, double freq_search_max, size_t freq_search_step,
+                    double fit_min_mma, double fit_max_mma, size_t randomize_count,
+                    const char *output_prefix)
 {
     int ret = 0;
+    size_t output_path_len = strlen(output_prefix) + 10;
+    char *output_path_buffer = malloc(output_path_len);
+    if (!output_path_buffer)
+        error_jump(load_failed_error, ret, "Allocation error");
+
     struct ts_data *data = ts_data_load(ts_path, freq_path);
     if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
 
     ts_data_prewhiten(data);
 
-    // Calculate histogram
-    double dy = (max_mma - min_mma)/bin_count;
-    size_t *histogram = calloc(bin_count, sizeof(double));
-    double *fit_ampl = calloc(bin_count, sizeof(double));
-    double *fit_histogram = calloc(bin_count, sizeof(double));
-    if (!histogram || !fit_ampl || !fit_histogram)
-        error_jump(alloc_failed, ret, "Allocation failed");
 
+    // DFT Residuals
+    {
+        double max_uhz = 5000;
+        double min_uhz = 0;
+        double d_uhz = 1;
+
+        size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+        double *dft_freq = calloc(dft_count, sizeof(double));
+        //if (!dft_freq)
+        //    error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
+
+        double *dft_ampl = calloc(dft_count, sizeof(double));
+        //if (!dft_ampl)
+        //    error_jump(dftampl_alloc_error, ret, "Error allocating dft_ampl");
+
+        calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
+
+        // Save output
+        snprintf(output_path_buffer, output_path_len, "%s.dft", output_prefix);
+        FILE *file = fopen(output_path_buffer, "w");
+        //if (!file)
+        //    error_jump(outfile_open_error, ret, "Error opening output file %s", dft_path);
+
+        for (size_t i = 0; i < dft_count; i++)
+            fprintf(file, "%f %f\n", 1e6*dft_freq[i], dft_ampl[i]);
+
+        fclose(file);
+    }
+
+    // Calculate gaussian noise spectrum
+    struct histogram_data *noise_histogram = histogram_create(data->mma, data->obs_count, min_mma, max_mma, bin_count);
+    if (!noise_histogram)
+        error_jump(noise_histogram_failed, ret, "Noise histogram failed");
+
+    double noise_gaussian[3];
+    if (histogram_fit_gaussian(noise_histogram, fit_min_mma, fit_max_mma, noise_gaussian))
+        error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
+
+    snprintf(output_path_buffer, output_path_len, "%s.hist", output_prefix);
+    if (histogram_export(noise_histogram, noise_gaussian, output_path_buffer))
+        error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
+
+    snprintf(output_path_buffer, output_path_len, "%s.rand", output_prefix);
+    FILE *randomized = fopen(output_path_buffer, "w");
+    if (!randomized)
+        error_jump(randomized_failed, ret, "Unable to open randomized data for writing: %s", output_path_buffer);
+
+    uint32_t seed = time(NULL);
+    random_generator *rand = random_create(seed);
+    if (!rand)
+        error_jump(rand_error, ret, "Error creating random generator");
+
+    // Set timeseries noise column to its mean value
+    double err_mean = 0;
     for (size_t i = 0; i < data->obs_count; i++)
-    {
-        double bin = (data->mma[i] - min_mma)/dy;
-        if (bin < 0 || bin >= bin_count + 1)
-            continue;
+        err_mean += data->err[i];
+    err_mean /= data->obs_count;
+    for (size_t i = 0; i < data->obs_count; i++)
+        data->err[i] = err_mean;
 
-        histogram[(size_t)bin]++;
+    // Copy original freqs for generating synthesized data
+    double *orig_freq = calloc(data->freq_count, sizeof(double));
+    double *orig_ampl = calloc(2*data->freq_count, sizeof(double));
+    if (!orig_freq || !orig_ampl)
+        error_jump(freq_alloc_error, ret, "Error copying freqs");
+
+    for (size_t j = 0; j < data->freq_count; j++)
+    {
+        orig_freq[j] = data->freq[j];
+        orig_ampl[2*j] = data->freq_amplitude[2*j];
+        orig_ampl[2*j+1] = data->freq_amplitude[2*j+1];
     }
 
-    size_t fit_count = 0;
-    for (size_t i = 0; i < bin_count; i++)
-    {
-        fit_ampl[fit_count] = min_mma + (i+0.5)*dy;
-        fit_histogram[fit_count] = histogram[i];
+    // Synthesize artificial data with random noise and find best-fit frequency
+    double *fitted_freq = calloc(randomize_count, sizeof(double));
+    if (!fitted_freq)
+        error_jump(fitted_alloc_failed, ret, "Allocation failed");
 
-        if (fit_histogram[fit_count] && fit_ampl[fit_count] > fit_min_mma && fit_ampl[fit_count] < fit_max_mma)
-            fit_count++;
+    fprintf(randomized, "# Seed: %u\n", seed);
+    for (size_t k = 0; k < randomize_count; k++)
+    {
+        if (k > 0 && !(k % 10))
+            printf("%zu...\n", k);
+
+        for (size_t i = 0; i < data->obs_count; i++)
+        {
+            data->mma[i] = random_normal(rand, noise_gaussian[1], noise_gaussian[2]);
+            for (size_t j = 0; j < data->freq_count; j++)
+            {
+                double phase = 2*M_PI*orig_freq[j]*data->time[i];
+                data->mma[i] += orig_ampl[2*j]*cos(phase);
+                data->mma[i] += orig_ampl[2*j+1]*sin(phase);
+            }
+        }
+
+        // Step through fit frequencies
+        double best_freq, best_chi2;
+        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_chi2);
+        fprintf(randomized, "%zu %.2f %g\n", k, best_freq, best_chi2);
+        fflush(randomized);
+
+        fitted_freq[k] = best_freq;
     }
 
-    double g[3];
-    if (fit_analytical_gaussian(fit_ampl, fit_histogram, fit_count, g))
-        error_jump(fit_failed, ret, "Fit failed");
+    struct histogram_data *freq_histogram = histogram_create(fitted_freq, randomize_count, freq_search_min, freq_search_max, (freq_search_max - freq_search_min) / freq_search_step);
+    if (!freq_histogram)
+        error_jump(freq_histogram_failed, ret, "Freq histogram failed");
 
-    printf("# Fit parameters: a: %g mu: %g sigma: %g\n", g[0], g[1], g[2]);
-    for (size_t i = 0; i < bin_count; i++)
-    {
-        double center = min_mma + (i + 0.5)*dy;
-        double arg = (center - g[1])/g[2];
-        double fit = g[0]*exp(-0.5*arg*arg);
-        printf("%g %g %zu %g %g\n", min_mma + i*dy, min_mma + (i + 1)*dy, histogram[i], center, fit);
-    }
+    double freq_gaussian[3];
+    if (histogram_fit_gaussian(freq_histogram, freq_search_min, freq_search_max, freq_gaussian))
+        error_jump(freq_histogram_processing_failed, ret, "Freq histogram fit failed");
 
-fit_failed:
-    free(histogram);
-    free(fit_ampl);
-    free(fit_histogram);
-alloc_failed:
+    snprintf(output_path_buffer, output_path_len, "%s.freqhist", output_prefix);
+    if (histogram_export(freq_histogram, freq_gaussian, output_path_buffer))
+        error_jump(freq_histogram_processing_failed, ret, "Freq histogram fit failed");
+
+freq_histogram_processing_failed:
+    histogram_free(freq_histogram);
+freq_histogram_failed:
+fitted_alloc_failed:
+    free(orig_freq);
+    free(orig_ampl);
+freq_alloc_error:
+    random_free(rand);
+rand_error:
+    fclose(randomized);
+randomized_failed:
+noise_histogram_processing_failed:
+    histogram_free(noise_histogram);
+noise_histogram_failed:
     ts_data_free(data);
 load_failed_error:
     return ret;

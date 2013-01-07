@@ -166,6 +166,9 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strcmp(argv[1], "run-data") == 0)
         return print_run_data(argv[2], atof(argv[3]));
 
+    else if (argc == 12 && strcmp(argv[1], "noise-histogram") == 0)
+        return gwlib_noise_histogram(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]), atof(argv[6]), atoi(argv[7]), atof(argv[8]), atof(argv[9]), atoi(argv[10]), argv[11]);
+
     else if (argc == 6 && strcmp(argv[1], "phase") == 0)
         return monitor_phase_amplitude(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]));
 

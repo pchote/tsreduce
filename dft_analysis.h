@@ -20,6 +20,9 @@ int fit_baseline_polynomial(char *tsfile, size_t poly_degree);
 
 int fit_gwlib_freqshift(char *ts_file, double first_uhz, double second_uhz, size_t harmonic_count);
 
-int noise_histogram(const char *ts_path, const char *freq_path, double min_mma, double max_mma, size_t bin_count, double fit_min_mma, double fit_max_mma);
+int noise_histogram(const char *ts_path, double base_uhz, size_t freq_count,
+                    double min_mma, double max_mma, size_t bin_count,
+                    double fit_min_mma, double fit_max_mma, size_t randomize_count,
+                    const char *output_prefix);
 
 #endif

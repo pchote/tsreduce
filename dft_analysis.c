@@ -9,7 +9,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include <cpgplot.h>
 
 #include "helpers.h"
 #include "fit.h"
@@ -459,7 +458,7 @@ load_failed_error:
 int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz)
 {
     int ret = 0;
-
+/*
     double *time, *mma, *err, *freqs, *freq_amplitudes;
     char **freq_labels;
     int *freq_modes;
@@ -557,6 +556,7 @@ dftfreq_alloc_error:
     free(mma);
     free(err);
 load_failed_error:
+*/
     return ret;
 }
 

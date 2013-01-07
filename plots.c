@@ -11,28 +11,62 @@
 #include <math.h>
 #include <string.h>
 #include <float.h>
-#include <cpgplot.h>
+
+#define PL_DOUBLE
+#include <plplot/plplot.h>
 
 #include "plots.h"
 #include "datafile.h"
 #include "helpers.h"
 #include "fit.h"
 
+// Set the color table to match PGPLOT
+static void set_color_table()
+{
+    PLINT r[] = {0,248,248,  0, 20,  0,249,247,248,125,  0, 15,130,249, 80,168};
+    PLINT g[] = {0,248,  0,248, 19,248,  8,247,127,248,248,130, 17,  0, 80,168};
+    PLINT b[] = {0,248, 25, 79,237,247,239, 84, 46, 80,143,240,238,125, 80,168};
+    plscmap0(r,g,b, 16);
+}
+
 static size_t plot_colors_max = 8;
 static uint8_t plot_colors[] = {2,8,9,11,5,6,7,12};
+
+static int plot_error_bars(double *x, double *y, double *dy, size_t n)
+{
+    int ret = 0;
+    double *y_min = malloc(n*sizeof(double));
+    double *y_max = malloc(n*sizeof(double));
+    if (!y_min || !y_max)
+        error_jump(allocation_error, ret, "Allocation error");
+
+    for (size_t i = 0; i < n; i++)
+    {
+        y_min[i] = y[i] - dy[i];
+        y_max[i] = y[i] + dy[i];
+    }
+
+    plsmin(0, 0);
+    plerry(n, x, y_min, y_max);
+    plsmin(0, 1);
+allocation_error:
+    free(y_min);
+    free(y_max);
+    return ret;
+}
 
 static void plot_time_axes(float x1, float x2, float y1, float y2,
                            datafile *data, struct photometry_data *pd)
 {
-    cpgsvp(x1, x2, y1, y2);
-    cpgsch(0.9);
-    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, 0, 1);
-    cpgtbox("cstmXYZH", 0, 0, "0", 0, 0);
-    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, 0, 1);
-    cpgbox("bstn", 0, 0, "0", 0, 0);
-    cpgsch(1.0);
+    plvpor(x1, x2, y1, y2);
+    plschr(0, 0.9);
+    plwind(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, 0, 1);
+    plbox("cstmd", 0, 0, "0", 0, 0);
+    plwind(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, 0, 1);
+    plbox("bstn", 0, 0, "0", 0, 0);
+    plschr(0, 1.0);
 
-    cpgmtxt("t", 2.0, 0.5, 0.5, "UTC Time");
+    plmtex("t", 2.0, 0.5, 0.5, "UTC Time");
 
     char label[64];
     if (pd->time_exponent == 0)
@@ -40,7 +74,8 @@ static void plot_time_axes(float x1, float x2, float y1, float y2,
     else
         snprintf(label, 64, "Run Time (10\\u%d\\d s)", pd->time_exponent);
 
-    cpgmtxt("b", 2.5, 0.5, 0.5, label);
+    plmtex("b", 2.5, 0.5, 0.5, label);
+
 }
 
 static int plot_raw_panel(float x1, float x2, float y1, float y2,
@@ -50,77 +85,53 @@ static int plot_raw_panel(float x1, float x2, float y1, float y2,
     char label[64];
     const size_t label_len = 64;
 
-    // PGPLOT requires float arrays
-    float *time = malloc(data->obs_count*data->target_count*sizeof(float));
-    float *intensity = malloc(data->obs_count*data->target_count*sizeof(float));
-    float *noise = malloc(data->obs_count*data->target_count*sizeof(float));
-    if (!time || !intensity || !noise)
-        error_jump(target_allocation_error, ret, "Allocation error");
-
-    for (size_t i = 0; i < data->obs_count*data->target_count; i++)
-    {
-        time[i] = pd->target_time[i];
-        intensity[i] = pd->target_intensity[i];
-        noise[i] = pd->target_noise[i];
-    }
-
-    float *sky_time = malloc(pd->raw_count*sizeof(float));
-    float *sky = malloc(pd->raw_count*sizeof(float));
-    if (!sky_time || !sky)
-        error_jump(sky_allocation_error, ret, "Allocation error");
-
-    for (size_t i = 0; i < pd->raw_count; i++)
-    {
-        sky_time[i] = pd->raw_time[i];
-        sky[i] = pd->sky[i];
-    }
-
     double min_raw = 0;
     double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.25*pd->scaled_target_max;
     int raw_exp = (int)log10(max_raw);
     double raw_scale = 1.0/pow(10, raw_exp);
 
-    cpgsvp(x1, x2, y1, y2);
+    plvpor(x1, x2, y1, y2);
 
     // Plot top axis markers in UTC hour, bottom axis markers in seconds
-    cpgsch(0.9);
-    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, raw_scale*min_raw, raw_scale*max_raw);
-    cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
-    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_raw, max_raw);
-    cpgbox("bst", 0, 0, "0", 0, 0);
-    cpgsch(1.0);
+    plschr(0, 0.9);
+    plwind(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, raw_scale*min_raw, raw_scale*max_raw);
+    plbox("cstd", 0, 0, "bcstnv", 0, 0);
+
+    plwind(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_raw, max_raw);
+    plbox("bst", 0, 0, "0", 0, 0);
+    plschr(0, 1.0);
 
     snprintf(label, label_len, "Count Rate (10\\u%d\\d ADU/s)", raw_exp);
-    cpgmtxt("l", 2.75, 0.5, 0.5, label);
+    plmtex("l", 2.75, 0.5, 0.5, label);
 
     // Raw intensities
     for (size_t j = 0; j < data->target_count; j++)
     {
-        cpgswin(pd->time_min, pd->time_max, min_raw, max_raw/data->targets[j].scale);
-        cpgsci(plot_colors[j%plot_colors_max]);
+        plwind(pd->time_min, pd->time_max, min_raw, max_raw/data->targets[j].scale);
+        plcol0(plot_colors[j%plot_colors_max]);
 
         size_t k = j*data->obs_count;
         if (data->plot_error_bars)
-            cpgerrb(6, pd->target_count[j], &time[k], &intensity[k], &noise[k], 0.0);
+            plot_error_bars(&pd->target_time[k], &pd->target_intensity[k], &pd->target_noise[k], data->obs_count);
         else
-            cpgpt(pd->target_count[j], &time[k], &intensity[k], 229);
+            plpoin(pd->target_count[j], &pd->target_time[k], &pd->target_intensity[k], 20);
     }
 
     // Mean sky intensity
-    cpgswin(pd->time_min, pd->time_max, min_raw, max_raw);
-    cpgsci(15);
-    cpgpt(pd->raw_count, sky_time, sky, 229);
+    plwind(pd->time_min, pd->time_max, min_raw, max_raw);
+    plcol0(15);
+    plpoin(pd->raw_count, pd->raw_time, pd->sky, 20);
 
     // Labels
-    cpgsvp(x1, x2, 0.82*y2, y2);
-    cpgswin(0, data->target_count + 1, 0, 1);
+    plvpor(x1, x2, 0.82*y2, y2);
+    plwind(0, data->target_count + 1, 0, 1);
     for (size_t j = 0; j <= data->target_count; j++)
     {
-        cpgsci(plot_colors[j%plot_colors_max]);
+        plcol0(plot_colors[j%plot_colors_max]);
 
         if (j == data->target_count)
         {
-            cpgsci(15);
+            plcol0(15);
             strncpy(label, "Mean Sky", label_len);
         }
         else
@@ -131,26 +142,17 @@ static int plot_raw_panel(float x1, float x2, float y1, float y2,
                 snprintf(label, label_len, "%g \\x %s", data->targets[j].scale, data->targets[j].label);
         }
 
-        cpgptxt(j+0.5, 0.5, 0, 0.5, label);
+        plptex(j+0.5, 0.5, 0, 0, 0.5, label);
         if (j < data->target_count)
         {
             snprintf(label, label_len, "SNR: %.0f", pd->target_snr[j]);
-            cpgsch(0.9);
-            cpgptxt(j+0.5, 0.25, 0, 0.5, label);
-            cpgsch(1.0);
+            plschr(0, 0.9);
+            plptex(j+0.5, 0.25, 0, 0, 0.5, label);
+            plschr(0, 1.0);
         }
+
     }
-    cpgsci(1);
-
-sky_allocation_error:
-    free(sky_time);
-    free(sky);
-
-target_allocation_error:
-    free(time);
-    free(intensity);
-    free(noise);
-
+    plcol0(1);
     return ret;
 }
 
@@ -159,36 +161,32 @@ static int plot_fwhm_panel(float x1, float x2, float y1, float y2,
 {
     int ret = 0;
 
-    // PGPLOT requires float arrays
-    float *time = malloc(pd->raw_count*sizeof(float));
-    float *fwhm = malloc(pd->raw_count*sizeof(float));
-    if (!time || !fwhm)
+    // Smoothed FWHM estimate
+    double *smooth = malloc(pd->raw_count*sizeof(double));
+    if (!smooth)
         error_jump(allocation_error, ret, "Allocation error");
 
     for (size_t i = 0; i < pd->raw_count; i++)
-    {
-        time[i] = pd->raw_time[i];
-        fwhm[i] = pd->fwhm[i];
-    }
+        smooth[i] = pd->fwhm[i];
 
     double min_fwhm = pd->fwhm_mean - 5*pd->fwhm_std;
     double max_fwhm = pd->fwhm_mean + 8*pd->fwhm_std;
 
-    cpgsvp(x1, x2, y1, y2);
+    plvpor(x1, x2, y1, y2);
 
     // Plot top axis markers in UTC hour, bottom axis markers in seconds
     // Reserve the top 25% of the plot for the mean FWHM label
-    cpgmtxt("l", 2.75, 0.5, 0.5, "FWHM (\")");
+    plmtex("l", 2.75, 0.5, 0.5, "FWHM (\")");
 
-    cpgsch(0.9);
-    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
-    cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
-    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_fwhm, max_fwhm);
-    cpgbox("bst", 0, 0, "0", 0, 0);
-    cpgsch(1.0);
+    plschr(0, 0.9);
+    plwind(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_fwhm*data->ccd_platescale, max_fwhm*data->ccd_platescale);
+    plbox("cstd", 0, 0, "bcstnv", 0, 0);
+    plwind(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_fwhm, max_fwhm);
+    plbox("bst", 0, 0, "0", 0, 0);
+    plschr(0, 1.0);
 
-    cpgswin(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
-    cpgpt(pd->raw_count, time, fwhm, 229);
+    plwind(pd->time_min, pd->time_max, min_fwhm, max_fwhm);
+    plpoin(pd->raw_count, pd->raw_time, pd->fwhm, 20);
 
     // Calculate running mean
     for (size_t i = 0; i < pd->raw_count; i++)
@@ -205,27 +203,25 @@ static int plot_fwhm_panel(float x1, float x2, float y1, float y2,
         if (start + run >= pd->raw_count)
             run = pd->raw_count - start - 1;
 
-        fwhm[i] = mean_exclude_sigma(&pd->fwhm[start], run, 3);
+        smooth[i] = mean_exclude_sigma(&smooth[start], run, 3);
     }
 
-    cpgsci(2);
-    cpgline(pd->raw_count, time, fwhm);
-    cpgsci(1);
+    plcol0(2);
+    plline(pd->raw_count, pd->raw_time, smooth);
+    plcol0(1);
 
     // Mean FWHM label
-    cpgsch(0.9);
+    plschr(0, 0.9);
     char label[32];
     snprintf(label, 32, "Mean: %.2f\" (%.2fpx)", pd->fwhm_mean*data->ccd_platescale, pd->fwhm_mean);
-    cpgmtxt("t", -1.25, 0.0, -0.1, label);
+    plmtex("t", -1.25, 0.0, -0.1, label);
 
-    snprintf(label, 32, "Current: %.2f\" (%.2fpx)", fwhm[pd->raw_count - 1]*data->ccd_platescale, fwhm[pd->raw_count - 1]);
-    cpgmtxt("t", -1.25, 1.0, 1.1, label);
-    cpgsch(1.0);
+    snprintf(label, 32, "Current: %.2f\" (%.2fpx)", smooth[pd->raw_count - 1]*data->ccd_platescale, smooth[pd->raw_count - 1]);
+    plmtex("t", -1.25, 1.0, 1.1, label);
+    plschr(0, 1.0);
 
+    free(smooth);
 allocation_error:
-    free(time);
-    free(fwhm);
-
     return ret;
 }
 
@@ -234,49 +230,33 @@ static int plot_ratio_panel(float x1, float x2, float y1, float y2,
 {
     int ret = 0;
 
-    // PGPLOT requires float arrays
-    float *time = malloc(pd->filtered_count*sizeof(float));
-    float *ratio = malloc(pd->filtered_count*sizeof(float));
-    float *noise = malloc(pd->filtered_count*sizeof(float));
-    float *fit = malloc(pd->filtered_count*sizeof(float));
-    if (!time || !ratio || !noise || !fit)
-        error_jump(allocation_error, ret, "Allocation error");
-
-    for (size_t i = 0; i < pd->filtered_count; i++)
-    {
-        time[i] = pd->time[i];
-        ratio[i] = pd->ratio[i];
-        noise[i] = pd->ratio_noise[i];
-        fit[i] = pd->ratio_fit[i];
-    }
-
     double min_ratio = pd->ratio_mean - 5*pd->ratio_std;
     double max_ratio = pd->ratio_mean + 5*pd->ratio_std;
 
-    cpgsvp(x1, x2, y1, y2);
-    cpgmtxt("l", 2.75, 0.5, 0.5, "Ratio");
+    plvpor(x1, x2, y1, y2);
+    plmtex("l", 2.75, 0.5, 0.5, "Ratio");
 
     // Plot top axis markers in UTC hour, bottom axis markers in seconds
-    cpgsch(0.9);
-    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_ratio, max_ratio);
-    cpgtbox("cstZ", 0, 0, "bc", 0, 0);
-    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_ratio, max_ratio);
-    cpgbox("bst", 0, 0, "0", 0, 0);
-    cpgsch(1.0);
+    plschr(0, 0.9);
+    plwind(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_ratio, max_ratio);
+    plbox("cstd", 0, 0, "bc", 0, 0);
+    plwind(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_ratio, max_ratio);
+    plbox("bst", 0, 0, "0", 0, 0);
+    plschr(0, 1.0);
 
-    cpgswin(pd->time_min, pd->time_max, min_ratio, max_ratio);
+    plwind(pd->time_min, pd->time_max, min_ratio, max_ratio);
     if (data->plot_error_bars)
-        cpgerrb(6, pd->filtered_count, time, ratio, noise, 0.0);
+        plot_error_bars(pd->time, pd->ratio, pd->ratio_noise, pd->filtered_count);
     else
-        cpgpt(pd->filtered_count, time, ratio, 229);
+        plpoin(pd->filtered_count, pd->time, pd->ratio, 20);
 
     // Plot the polynomial fit
-    cpgsci(2);
+    plcol0(2);
 
     // Don't plot the fit through blocked regions
-    float *t = time;
-    float *t_end = &t[pd->filtered_count];
-    float *f = fit;
+    double *t = pd->time;
+    double *t_end = &t[pd->filtered_count];
+    double *f = pd->ratio_fit;
     do
     {
         double min_time = t[0];
@@ -308,21 +288,14 @@ static int plot_ratio_panel(float x1, float x2, float y1, float y2,
         while (t + count < t_end && *(t + count) <= max_time)
             count++;
 
-        cpgline(count, t, f);
+        plline(count, t, f);
 
         // Start next search from end of this section
         t += count + 1;
         f += count + 1;
     } while (t + 1 < t_end);
 
-    cpgsci(1);
-
-allocation_error:
-    free(time);
-    free(ratio);
-    free(noise);
-    free(fit);
-
+    plcol0(1);
     return ret;
 }
 
@@ -331,46 +304,27 @@ static int plot_mma_panel(float x1, float x2, float y1, float y2,
 {
     int ret = 0;
 
-    // PGPLOT requires float arrays
-    float *time = malloc(pd->filtered_count*sizeof(float));
-    float *mma = malloc(pd->filtered_count*sizeof(float));
-    float *mma_noise = malloc(pd->filtered_count*sizeof(float));
-    if (!time || !mma || !mma_noise)
-        error_jump(allocation_error, ret, "Allocation error");
-
-    for (size_t i = 0; i < pd->filtered_count; i++)
-    {
-        time[i] = pd->time[i];
-        mma[i] = pd->mma[i];
-        mma_noise[i] = pd->mma_noise[i];
-    }
-
     double min_mma = pd->mma_mean - 5*pd->mma_std;
     double max_mma = pd->mma_mean + 5*pd->mma_std;
 
-    cpgsvp(x1, x2, y1, y2);
+    plvpor(x1, x2, y1, y2);
 
-    cpgsch(1.0);
-    cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
+    plschr(0, 1.0);
+    plmtex("l", 2.75, 0.5, 0.5, "mma");
 
     // Plot top axis markers in UTC hour, bottom axis markers in seconds
-    cpgsch(0.9);
-    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_mma, max_mma);
-    cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
-    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_mma, max_mma);
-    cpgbox("bst", 0, 0, "0", 0, 0);
-    cpgsch(1.0);
+    plschr(0, 0.9);
+    plwind(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_mma, max_mma);
+    plbox("cstd", 0, 0, "bcstnv", 0, 0);
+    plwind(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_mma, max_mma);
+    plbox("bst", 0, 0, "0", 0, 0);
+    plschr(0, 1.0);
 
-    cpgswin(pd->time_min, pd->time_max, min_mma, max_mma);
+    plwind(pd->time_min, pd->time_max, min_mma, max_mma);
     if (data->plot_error_bars)
-        cpgerrb(6, pd->filtered_count, time, mma, mma_noise, 0.0);
+        plot_error_bars(pd->time, pd->mma, pd->mma_noise, pd->filtered_count);
     else
-        cpgpt(pd->filtered_count, time, mma, 229);
-
-allocation_error:
-    free(time);
-    free(mma);
-    free(mma_noise);
+        plpoin(pd->filtered_count, pd->time, pd->mma, 20);
 
     return ret;
 }
@@ -402,53 +356,33 @@ static int plot_dft_panel(float x1, float x2, float y1, float y2,
         unit = "m";
     }
 
-    // PGPLOT requires float arrays
-    float *freq = malloc(dft->count*sizeof(float));
-    float *ampl = malloc(dft->count*sizeof(float));
-    float *window_freq = malloc(window->count*sizeof(float));
-    float *window_ampl = malloc(window->count*sizeof(float));
-    if (!freq || !ampl || !window_freq || !window_ampl)
-        error_jump(allocation_error, ret, "Allocation error");
-
-    for (size_t i = 0; i < dft->count; i++)
-    {
-        freq[i] = dft->freq[i];
-        ampl[i] = dft->ampl[i];
-    }
-
-    for (size_t i = 0; i < window->count; i++)
-    {
-        window_freq[i] = window->freq[i];
-        window_ampl[i] = window->ampl[i];
-    }
-
     double max_dft = data->plot_max_dft ? data->plot_max_dft : 1.1*dft->max_ampl;
 
     // Check for overlap with the DFT panel
     double max = 0;
     double threshold_ampl = 0.65*max_dft;
     double threshold_freq = 0.16*dft->max_freq;
-    for (size_t i = 0; i < dft->count && freq[i] < threshold_freq; i++)
-        max = fmax(max, ampl[i]);
+    for (size_t i = 0; i < dft->count && dft->freq[i] < threshold_freq; i++)
+        max = fmax(max, dft->ampl[i]);
     if (max > threshold_ampl)
         max_dft *= max/threshold_ampl;
 
-    cpgsvp(x1, x2, y1, y2);
-    cpgswin(scale*dft->min_freq, scale*dft->max_freq, 0, 1);
-    cpgsch(0.9);
-    cpgbox("bcstn", 0, 0, "0", 0, 0);
-    cpgswin(dft->min_freq, dft->max_freq, 0, max_dft);
-    cpgbox("0", 0, 0, "bcstnv", 0, 0);
-    cpgsch(1.0);
+    plvpor(x1, x2, y1, y2);
+    plwind(scale*dft->min_freq, scale*dft->max_freq, 0, 1);
+    plschr(0, 0.9);
+    plbox("bcstn", 0, 0, "0", 0, 0);
+    plwind(dft->min_freq, dft->max_freq, 0, max_dft);
+    plbox("0", 0, 0, "bcstnv", 0, 0);
+    plschr(0, 1.0);
 
-    cpgsci(2);
-    cpgline(dft->count, freq, ampl);
-    cpgsci(1);
+    plcol0(2);
+    plline(dft->count, dft->freq, dft->ampl);
+    plcol0(1);
 
     snprintf(label, label_len, "Frequency (%sHz)", unit);
-    cpgmtxt("b", 2.5, 0.5, 0.5, label);
+    plmtex("b", 2.5, 0.5, 0.5, label);
 
-    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mma)");
+    plmtex("l", 2.75, 0.5, 0.5, "Amplitude (mma)");
 
     // DFT Window
     float wx1 = x1 + 0.025;
@@ -456,19 +390,13 @@ static int plot_dft_panel(float x1, float x2, float y1, float y2,
     float wy2 = y2 - 0.04;
     float wy1 = y2 - (y2 - y1)/3.5;
 
-    cpgsvp(wx1, wx2, wy1, wy2);
-    cpgswin(window->min_freq, window->max_freq, 0, 1.1);
-    cpgsci(2);
-    cpgline(window->count, window_freq, window_ampl);
-    cpgsci(1);
-    cpgbox("bc", 0, 0, "bc", 0, 0);
-    cpgmtxt("b", 1.25, 0.5, 0.5, "Window");
-
-allocation_error:
-    free(freq);
-    free(ampl);
-    free(window_freq);
-    free(window_ampl);
+    plvpor(wx1, wx2, wy1, wy2);
+    plwind(window->min_freq, window->max_freq, 0, 1.1);
+    plcol0(2);
+    plline(window->count, window->freq, window->ampl);
+    plcol0(1);
+    plbox("bc", 0, 0, "bc", 0, 0);
+    plmtex("b", 1.25, 0.5, 0.5, "Window");
 
     return ret;
 }
@@ -484,7 +412,7 @@ int online_focus_plot(char *data_path, const char *device, double size)
     struct photometry_data *pd = datafile_generate_photometry(data);
     if (!pd)
         error_jump(photometry_error, ret, "Photometry calculation failed");
-
+/*
     if (cpgopen(device) <= 0)
         error_jump(setup_error, ret, "Unable to open PGPLOT window");
 
@@ -504,6 +432,7 @@ int online_focus_plot(char *data_path, const char *device, double size)
 
 plot_error:
     cpgend();
+ */
 setup_error:
     datafile_free_photometry(pd);
 photometry_error:
@@ -531,29 +460,31 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     if (!wd)
         error_jump(window_error, ret, "DFT window calculation failed");
 
-    if (cpgopen(ts_device) <= 0)
-        error_jump(setup_error, ret, "Unable to open PGPLOT window");
-
+    plinit();
+    pladv(0);
+/*
     cpgpap(size, 0.6);
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
     cpgscf(1);
+*/
+    pltimefmt("%H:%M");
+    set_color_table();
+    plssym(0, 0.3);
 
     //
     // Plot blocked ranges
     //
-    cpgsvp(0.065, 0.98, 0.075, 0.93);
-    cpgswin(pd->time_min, pd->time_max, 0, 1);
-    cpgsci(14);
+    plvpor(0.065, 0.98, 0.075, 0.93);
+    plwind(pd->time_min, pd->time_max, 0, 1);
+    plcol0(14);
     for (size_t j = 0; j < data->num_blocked_ranges; j++)
     {
-        cpgmove(data->blocked_ranges[j].x, 0);
-        cpgdraw(data->blocked_ranges[j].x, 1);
-        cpgmove(data->blocked_ranges[j].y, 0);
-        cpgdraw(data->blocked_ranges[j].y, 1);
+        pljoin(data->blocked_ranges[j].x, 0, data->blocked_ranges[j].x, 1);
+        pljoin(data->blocked_ranges[j].y, 0, data->blocked_ranges[j].y, 1);
     }
-    cpgsci(1);
+    plcol0(1);
 
     // Generic label buffer for passing data to pgplot
     char label[64];
@@ -572,21 +503,14 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
         error_jump(plot_error, ret, "Error plotting fwhm panel");
 
     plot_time_axes(0.065, 0.98, 0.075, 0.93, data, pd);
-
-    cpgend();
-
-    //
-    // Plot DFT
-    //
-    if (cpgopen(dft_device) <= 0)
-        error_jump(setup_error, ret, "Unable to open PGPLOT window");
-
+    pladv(0);
+/*
     cpgpap(size, 0.6);
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
     cpgscf(1);
-
+*/
     // DFT
     if (plot_dft_panel(0.065, 0.98, 0.07, 0.97, data, dd, wd))
         error_jump(plot_error, ret, "Error plotting dft panel");
@@ -594,16 +518,15 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     // Calculate median intensity
     qsort(dd->ampl, dd->count, sizeof(double), compare_double);
 
-    cpgsvp(0.065, 0.98, 0.07, 0.97);
-    cpgswin(0, 1, 0, 1);
+    plvpor(0.065, 0.98, 0.07, 0.97);
+    plwind(0, 1, 0, 1);
     snprintf(label, label_len, "Mean: %.2f mma", dd->mean_ampl);
-    cpgptxt(0.97, 0.94, 0, 1.0, label);
+    plptex(0.97, 0.94, 0, 0, 1.0, label);
     snprintf(label, label_len, "Median: %.2f mma", dd->ampl[dd->count/2]);
-    cpgptxt(0.97, 0.90, 0, 1.0, label);
+    plptex(0.97, 0.90, 0, 0, 1.0, label);
 
 plot_error:
-    cpgend();
-setup_error:
+    plend();
     datafile_free_dft(wd);
 window_error:
     datafile_free_dft(dd);
@@ -669,7 +592,7 @@ int plot_range(char *datafile_pattern)
         free(datafile_names);
         return error("No datafiles found matching pattern %s", datafile_pattern);
     }
-
+/*
     int i = 0;
     float x,y;
     char c;
@@ -685,11 +608,11 @@ int plot_range(char *datafile_pattern)
 
         cpgask(0);
         cpgpap(3, 0.1);
-        cpgsch(20);
-        cpgswin(0, 1, 0, 1);
-        cpgsci(1);
-        cpgptxt(0.5, 0.7, 0, 0.5, datafile_names[i]);
-        cpgptxt(0.5, 0.0, 0, 0.5, "Next file: [n] Prev file: [p] Quit: [q]");
+        plschr(0, 20);
+        plwind(0, 1, 0, 1);
+        plcol0(1);
+        plptex(0.5, 0.7, 0, 0, 0.5, datafile_names[i]);
+        plptex(0.5, 0.0, 0, 0, 0.5, "Next file: [n] Prev file: [p] Quit: [q]");
 
         cpgcurs(&x,&y,&c);
         cpgend();
@@ -708,7 +631,7 @@ int plot_range(char *datafile_pattern)
 				break;
 		}
     }
-
+*/
 endLoop:
     free_2d_array(datafile_names, num_files);
     return 0;

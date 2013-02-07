@@ -151,6 +151,9 @@ int main( int argc, char *argv[] )
     else if (argc == 12 && strcmp(argv[1], "noise-histogram") == 0)
         return noise_histogram(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]), atof(argv[6]), atoi(argv[7]), atof(argv[8]), atof(argv[9]), atoi(argv[10]), argv[11]);
 
+    else if (argc == 10 && strncmp(argv[1], "shuffle-dft-harmonics", 11) == 0)
+        return shuffle_dft_harmonics(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]), atof(argv[6]), atof(argv[7]), argv[8], atoi(argv[9]));
+
     // Misc one-off utility functions
     else if (argc == 5 && strcmp(argv[1], "profile") == 0)
         return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));

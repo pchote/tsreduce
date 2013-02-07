@@ -19,7 +19,7 @@
 #include "fit.h"
 
 static size_t plot_colors_max = 8;
-static uint8_t plot_colors[] = {2,8,9,11,5,6,7,12};
+static uint8_t plot_colors[] = {2,4,12,11,5,6,7,12};
 
 static void plot_time_axes(float x1, float x2, float y1, float y2,
                            datafile *data, struct photometry_data *pd)
@@ -108,7 +108,7 @@ static int plot_raw_panel(float x1, float x2, float y1, float y2,
 
     // Mean sky intensity
     cpgswin(pd->time_min, pd->time_max, min_raw, max_raw);
-    cpgsci(15);
+    cpgsci(14);
     cpgpt(pd->raw_count, sky_time, sky, 229);
 
     // Labels
@@ -120,7 +120,7 @@ static int plot_raw_panel(float x1, float x2, float y1, float y2,
 
         if (j == data->target_count)
         {
-            cpgsci(15);
+            cpgsci(14);
             strncpy(label, "Mean Sky", label_len);
         }
         else

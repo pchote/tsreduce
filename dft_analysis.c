@@ -93,6 +93,15 @@ static int load_tsfile(const char *ts_path, struct ts_data *data)
     data->obs_count = count;
     fclose(file);
 
+    // Normalize data to zero-mean
+    double mean = 0;
+    for (size_t i = 0; i < count; i++)
+        mean += data->mma[i];
+
+    mean /= count;
+    for (size_t i = 0; i < count; i++)
+        data->mma[i] -= mean;
+
     return ret;
 
 allocation_error:
@@ -352,11 +361,9 @@ int histogram_fit_gaussian(struct histogram_data *hd, double fit_min, double fit
     if (!center || !count)
         error_jump(error, ret, "Histogram fit allocation failed");
 
-    printf("Source histogram:\n");
     size_t n = 0;
     for (size_t i = 0; i < hd->bin_count; i++)
     {
-        printf("%g %zu\n", hd->center[i], hd->count[i]);
         // Discard zero values (which break the fit) and bins outside the requested fit range
         if (hd->count[i] == 0 || hd->center[i] - hd->bin_width/2 < fit_min || hd->center[i] + hd->bin_width/2 > fit_max)
             continue;
@@ -366,10 +373,6 @@ int histogram_fit_gaussian(struct histogram_data *hd, double fit_min, double fit
         count[n] = hd->count[i];
         n++;
     }
-
-    printf("Fit histogram:\n");
-    for (size_t i = 0; i < n; i++)
-        printf("%g %g\n", center[i], count[i]);
 
     if (fit_gaussian(center, count, n, params))
         error_jump(error, ret, "Fit failed");
@@ -815,10 +818,6 @@ int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, d
     if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
 
-    double *phase_start = calloc(data->freq_count, sizeof(double));
-    if (!phase_start)
-        error_jump(load_failed_error, ret, "Error allocating phase_start array");
-
     for (size_t i = 0; i < data->freq_count; i++)
         data->freq[i] = (i + 1)*base_uhz*1e-6;
 
@@ -827,7 +826,24 @@ int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, d
     double *orig_err = data->err;
     size_t orig_obs_count = data->obs_count;
 
-    for (size_t i = 0; i < orig_obs_count - 1; i++)
+    struct mode
+    {
+        double amplitude;
+        double phase_cycles;
+        double phase_time;
+        double dphase;
+    };
+
+    struct calculation
+    {
+        double time;
+        double amplitude;
+        struct mode modes[10];
+    };
+
+    struct calculation *calculation = calloc(orig_obs_count - 1, sizeof(struct calculation));
+    size_t i = 0;
+    for (; i < orig_obs_count - 1; i++)
     {
         if (orig_time[i] + window_width > orig_time[orig_obs_count - 1])
             break;
@@ -848,7 +864,7 @@ int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, d
         if (ts_data_fit_sinusoids(data))
             error_jump(fit_failed_error, ret, "Sinusoid fit failed");
 
-        double mean_time =  (orig_time[i + j - 1] + orig_time[i])/86400/2;
+        double mean_time = (orig_time[i + j - 1] + orig_time[i])/86400/2;
 
         double fit = 0;
         for (size_t l = 0; l < data->freq_count; l++)
@@ -859,30 +875,41 @@ int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, d
             fit += data->freq_amplitude[2*l+1]*sin(phase);
         }
 
-        printf("%f %f ", mean_time, fit);
+        calculation[i].time = mean_time;
+        calculation[i].amplitude = fit;
 
         for (size_t k = 0; k < data->freq_count; k++)
         {
             double a = data->freq_amplitude[2*k+1];
             double b = data->freq_amplitude[2*k];
             double amp = sqrt(a*a + b*b);
-            double phase = atan2(b, a)/(2*M_PI) - phase_start[k];
-            while (phase > 1) phase -= 1;
-            while (phase < 0) phase += 1;
+            double phase = atan2(b, a)/(2*M_PI);
+
+            if (i > 0)
+            {
+                while (phase - calculation[i-1].modes[k].phase_cycles > 0.5) phase -= 1;
+                while (phase - calculation[i-1].modes[k].phase_cycles < 0.5) phase += 1;
+            }
 
             if (phase > 0.5)
                 phase -= 1;
 
-            if (i == 0)
-            {
-                phase_start[k] = phase;
-                phase = 0;
-            }
+            if (phase > 0 && mean_time > 0.376733 && k == 3)
+                phase -= 1;
 
-            double time_offset = phase/(data->freq[k]*60);
-            printf("%f %f %f ", amp, phase, time_offset);
+            calculation[i].modes[k].amplitude = amp;
+            calculation[i].modes[k].phase_cycles = phase;
+            calculation[i].modes[k].phase_time = phase/(data->freq[k]*60);
         }
+    }
 
+    for (size_t j = 0; j < i; j++)
+    {
+        printf("%f %f ", calculation[j].time, calculation[j].amplitude);
+        for (size_t k = 0; k < data->freq_count; k++)
+            printf("%f %f %f ", calculation[j].modes[k].amplitude,
+                   calculation[j].modes[k].phase_cycles - calculation[0].modes[k].phase_cycles,
+                   calculation[j].modes[k].phase_time - calculation[0].modes[k].phase_time);
         printf("\n");
     }
 
@@ -1023,7 +1050,7 @@ int noise_histogram(const char *ts_path, double base_uhz, size_t freq_count,
                     const char *output_prefix)
 {
     int ret = 0;
-    size_t output_path_len = strlen(output_prefix) + 10;
+    size_t output_path_len = strlen(output_prefix) + 20;
     char *output_path_buffer = malloc(output_path_len);
     if (!output_path_buffer)
         error_jump(load_failed_error, ret, "Allocation error");
@@ -1051,6 +1078,30 @@ int noise_histogram(const char *ts_path, double base_uhz, size_t freq_count,
             error_jump(alloc_failed, ret, "Amplitude fit failed");
     }
 
+    ts_data_print_table(data);
+
+    // DFT
+    {
+        double max_uhz = 5000;
+        double min_uhz = 0;
+        double d_uhz = 1;
+
+        size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+        double *dft_freq = calloc(dft_count, sizeof(double));
+        double *dft_ampl = calloc(dft_count, sizeof(double));
+
+        calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
+
+        // Save output
+        snprintf(output_path_buffer, output_path_len, "%s.dft", output_prefix);
+        FILE *file = fopen(output_path_buffer, "w");
+
+        for (size_t i = 0; i < dft_count; i++)
+            fprintf(file, "%f %f\n", 1e6*dft_freq[i], dft_ampl[i]);
+
+        fclose(file);
+    }
+
     ts_data_prewhiten(data);
 
 
@@ -1062,20 +1113,13 @@ int noise_histogram(const char *ts_path, double base_uhz, size_t freq_count,
 
         size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
         double *dft_freq = calloc(dft_count, sizeof(double));
-        //if (!dft_freq)
-        //    error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
-
         double *dft_ampl = calloc(dft_count, sizeof(double));
-        //if (!dft_ampl)
-        //    error_jump(dftampl_alloc_error, ret, "Error allocating dft_ampl");
 
         calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
 
         // Save output
-        snprintf(output_path_buffer, output_path_len, "%s.dft", output_prefix);
+        snprintf(output_path_buffer, output_path_len, "%s.prewhitened", output_prefix);
         FILE *file = fopen(output_path_buffer, "w");
-        //if (!file)
-        //    error_jump(outfile_open_error, ret, "Error opening output file %s", dft_path);
 
         for (size_t i = 0; i < dft_count; i++)
             fprintf(file, "%f %f\n", 1e6*dft_freq[i], dft_ampl[i]);
@@ -1189,4 +1233,125 @@ alloc_failed:
 load_failed_error:
     return ret;
 
+}
+
+int shuffle_dft_harmonics(char *ts_path, double base_uhz, size_t freq_count, double min_uhz, double max_uhz, double d_uhz, char *out_path, size_t repeats)
+{
+    int ret = 0;
+
+    double freq_search_min = base_uhz - 10;
+    double freq_search_max = base_uhz + 10;
+    double freq_search_step = 0.05;
+
+    struct ts_data *data = ts_data_load_harmonics(ts_path, 1e-6*base_uhz, freq_count);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+    
+    // Optimize fit
+    double best_freq;
+    {
+        double old_chi2 = ts_data_chi2(data);
+        double best_chi2;
+        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_chi2);
+        printf("Optimized base freq from %g to %g: delta-chi2: %g\n", base_uhz, best_freq, old_chi2 - best_chi2);
+
+        for (size_t j = 0; j < freq_count; j++)
+            data->freq[j] = 1e-6*(j+1)*best_freq;
+
+        if (ts_data_fit_sinusoids(data))
+            error_jump(dftfreq_alloc_error, ret, "Amplitude fit failed");
+    }
+
+    ts_data_print_table(data);
+    ts_data_prewhiten(data);
+
+    size_t dft_count = (size_t)((max_uhz - min_uhz)/d_uhz);
+    double *dft_freq = calloc(dft_count, sizeof(double));
+    if (!dft_freq)
+        error_jump(dftfreq_alloc_error, ret, "Error allocating dft_freq");
+
+    double *dft_ampl = calloc(dft_count, sizeof(double));
+    if (!dft_ampl)
+        error_jump(dftampl_alloc_error, ret, "Error allocating dft_freq");
+
+    uint32_t seed = time(NULL);
+    random_generator *rand = random_create(seed);
+    if (!rand)
+        error_jump(rand_alloc_error, ret, "Error allocating random generator");
+
+    FILE *file = fopen(out_path, "w");
+    if (!file)
+        error_jump(outfile_open_error, ret, "Error opening output file %s", out_path);
+
+    // File header
+    fprintf(file, "# Prewhitened and shuffled max DFT amplitudes\n");
+    fprintf(file, "# Data: %s\n", ts_path);
+    fprintf(file, "# Freqs: %g", best_freq);
+    for (size_t j = 1; j < freq_count; j++)
+        fprintf(file, ", %g", (j+1)*best_freq);
+    fprintf(file, "\n");
+    fprintf(file, "# Seed: %u\n", seed);
+    fprintf(file, "# Freq, Max Ampl, Mean Ampl\n");
+
+    // Calculate output
+    for (size_t i = 0; i < repeats; i++)
+    {
+        printf("%zu of %zu\n", i + 1, repeats);
+        random_shuffle_double_array(rand, data->time, data->obs_count);
+        calculate_amplitude_spectrum(data->time, data->mma, data->obs_count, min_uhz*1e-6, max_uhz*1e-6, dft_freq, dft_ampl, dft_count);
+
+        // Find mean and max intensity
+        double freq = 0;
+        double ampl_mean = 0;
+        double ampl_max = 0;
+        for (size_t j = 0; j < dft_count; j++)
+        {
+            ampl_mean += dft_ampl[j];
+            if (dft_ampl[j] > ampl_max)
+            {
+                ampl_max = dft_ampl[j];
+                freq = dft_freq[j];
+            }
+        }
+        ampl_mean /= dft_count;
+        fprintf(file, "%f %f %f\n", freq, ampl_max, ampl_mean);
+        fflush(file);
+    }
+    fclose(file);
+
+outfile_open_error:
+    random_free(rand);
+rand_alloc_error:
+    free(dft_ampl);
+dftampl_alloc_error:
+    free(dft_freq);
+dftfreq_alloc_error:
+    ts_data_free(data);
+load_failed_error:
+    return ret;
+}
+
+
+int test()
+{
+    char *paths[6] =
+    {
+        "20120517.fixed",
+        "20120518.fixed",
+        "20120519.fixed",
+        "20120520.fixed",
+        "20120521.fixed",
+        "20120522.fixed",
+    };
+
+    for (uint8_t i = 0; i < 6; i++)
+    {
+        struct ts_data *data = ts_data_load(paths[i], NULL);
+
+        for (size_t j = 0; j < data->obs_count; j++)
+            printf("%g %g %g\n", i + data->time[j]/86400, data->mma[j], data->err[j]);
+
+        ts_data_free(data);
+    }
+    return 0;
 }

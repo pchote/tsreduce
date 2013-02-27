@@ -885,32 +885,51 @@ int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, d
             double amp = sqrt(a*a + b*b);
             double phase = atan2(b, a)/(2*M_PI);
 
+            // Unwrap phase to match previous observations or within -0.5 - +0.5 cycles
             if (i > 0)
             {
-                while (phase - calculation[i-1].modes[k].phase_cycles > 0.5) phase -= 1;
-                while (phase - calculation[i-1].modes[k].phase_cycles < 0.5) phase += 1;
+                double last_phase = calculation[i-1].modes[k].phase_cycles;
+                while (phase - last_phase > 0.5) phase -= 1;
+                while (phase - last_phase < -0.5) phase += 1;
             }
-
-            if (phase > 0.5)
-                phase -= 1;
-
-            if (phase > 0 && mean_time > 0.376733 && k == 3)
-                phase -= 1;
 
             calculation[i].modes[k].amplitude = amp;
             calculation[i].modes[k].phase_cycles = phase;
             calculation[i].modes[k].phase_time = phase/(data->freq[k]*60);
+            calculation[i].modes[k].dphase = i > 0 ? 1e6 * (calculation[i].modes[k].phase_cycles - calculation[i-1].modes[k].phase_cycles) / (calculation[i].time-calculation[i-1].time) / 86400 : 0;
         }
     }
 
+    // Print amplitude/phase
     for (size_t j = 0; j < i; j++)
     {
         printf("%f %f ", calculation[j].time, calculation[j].amplitude);
         for (size_t k = 0; k < data->freq_count; k++)
             printf("%f %f %f ", calculation[j].modes[k].amplitude,
-                   calculation[j].modes[k].phase_cycles - calculation[0].modes[k].phase_cycles,
-                   calculation[j].modes[k].phase_time - calculation[0].modes[k].phase_time);
+                   calculation[j].modes[k].phase_cycles - calculation[i-1].modes[k].phase_cycles,
+                   calculation[j].modes[k].phase_time - calculation[i-1].modes[k].phase_time);
         printf("\n");
+    }
+
+
+    // Print freq offset
+    // Smooth dphase by 2*n+1 (101 points)
+    size_t n = 50;
+    for (size_t j = n; j < i - n; j++)
+    {
+        fprintf(stderr, "%f ", calculation[j].time);
+        for (size_t k = 0; k < data->freq_count; k++)
+        {
+            double dphase = 0;
+            for (size_t l = j - n; l <= j + n; l++)
+                dphase += calculation[l].modes[k].dphase;
+
+            dphase /= 2*n+1;
+
+            // Normalize by harmonic number
+            fprintf(stderr, "%f ", (data->freq[k]*1e6 + dphase) / (k + 1));
+        }
+        fprintf(stderr, "\n");
     }
 
     data->time = orig_time;

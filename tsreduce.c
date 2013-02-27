@@ -161,8 +161,8 @@ int main( int argc, char *argv[] )
         return detect_repeats(argv[2]);
     else if (argc == 7 && strcmp(argv[1], "bjd") == 0)
         return calculate_bjd(argv[2], argv[3], argv[4], argv[5], atoi(argv[6]));
-    else if (argc == 6 && strcmp(argv[1], "phase") == 0)
-        return monitor_phase_amplitude(argv[2], atof(argv[3]), atoi(argv[4]), atof(argv[5]));
+    else if (argc == 5 && strcmp(argv[1], "phase") == 0)
+        return monitor_phase_amplitude(argv[2], argv[3], atof(argv[4]));
     else if (argc == 4 && strcmp(argv[1], "baseline") == 0)
         return fit_baseline_polynomial(argv[2], atoi(argv[3]));
     else if (argc == 6 && strcmp(argv[1], "shift") == 0)

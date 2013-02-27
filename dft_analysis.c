@@ -811,15 +811,12 @@ load_failed_error:
     return ret;
 }
 
-int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, double window_width)
+int monitor_phase_amplitude(char *ts_path, char *freq_path, double window_width)
 {
     int ret = 0;
-    struct ts_data *data = ts_data_load_harmonics(ts_path, base_uhz*1e-6, freq_count);
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
     if (!data)
         error_jump(load_failed_error, ret, "Error processing data");
-
-    for (size_t i = 0; i < data->freq_count; i++)
-        data->freq[i] = (i + 1)*base_uhz*1e-6;
 
     double *orig_time = data->time;
     double *orig_mma = data->mma;
@@ -927,7 +924,7 @@ int monitor_phase_amplitude(char *ts_path, double base_uhz, size_t freq_count, d
             dphase /= 2*n+1;
 
             // Normalize by harmonic number
-            fprintf(stderr, "%f ", (data->freq[k]*1e6 + dphase) / (k + 1));
+            fprintf(stderr, "%f ", (data->freq[k]*1e6 + dphase) / data->freq_mode[k]);
         }
         fprintf(stderr, "\n");
     }

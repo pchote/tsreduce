@@ -15,7 +15,7 @@ int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, do
 int nonlinear_fit(char *tsFile, char *freqFile);
 int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats);
 
-int monitor_phase_amplitude(char *ts_file, double base_uhz, size_t harmonic_count, double window_width);
+int monitor_phase_amplitude(char *ts_path, char *freq_path, double window_width);
 int fit_baseline_polynomial(char *tsfile, size_t poly_degree);
 
 int fit_gwlib_freqshift(char *ts_file, double first_uhz, double second_uhz, size_t harmonic_count);

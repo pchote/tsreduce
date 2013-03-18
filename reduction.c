@@ -732,28 +732,36 @@ int create_reduction_file(char *outname)
         data->flat_template = NULL;
     }
 
-    char *preview_filename;
     while (true)
     {
         char namebuf[1039];
         char *ret = prompt_user_input("Enter target prefix", NULL);
         snprintf(namebuf, 1039, "^%s-[0-9]+.fits.gz", ret);
         free(ret);
-        data->frame_pattern = strdup(namebuf);
-
-        preview_filename = get_first_matching_file(data->frame_pattern);
-        if (preview_filename)
+        data->reference_frame = get_first_matching_file(namebuf);
+        if (data->reference_frame)
+        {
+            data->frame_pattern = strdup(namebuf);
             break;
-
-        printf("No files found matching pattern: %s/%s\n", data->frame_dir, data->frame_pattern);
-        free(preview_filename);
-        free(data->frame_pattern);
+        }
+        printf("No files found matching pattern: %s/%s\n", data->frame_dir, namebuf);
     }
 
-    // Open the file to find the reference time
-    framedata *frame = framedata_load(preview_filename);
-    if (!frame)
-        error_jump(frameload_error, ret, "Error loading frame %s", preview_filename);
+    framedata *frame = NULL;
+    while (true)
+    {
+        char *ret = prompt_user_input("Enter reference frame", data->reference_frame);
+        frame = framedata_load(ret);
+        if (frame)
+        {
+            free(data->reference_frame);
+            data->reference_frame = ret;
+            break;
+        }
+
+        printf("File not found: %s/%s\n", data->frame_dir, ret);
+        free(ret);
+    }
 
     framedata_subtract_bias(frame);
     if (framedata_start_time(frame, &data->reference_time))
@@ -768,7 +776,7 @@ int create_reduction_file(char *outname)
         if (framedata_subtract(frame, dark))
         {
             framedata_free(dark);
-            error_jump(frameload_error, ret, "Error dark-subtracting frame %s", preview_filename);
+            error_jump(frameload_error, ret, "Error dark-subtracting frame %s", data->reference_frame);
         }
 
         framedata_free(dark);
@@ -819,7 +827,7 @@ int create_reduction_file(char *outname)
         if (framedata_divide(frame, flat))
         {
             framedata_free(flat);
-            error_jump(frameload_error, ret, "Error flat-fielding frame %s", preview_filename);
+            error_jump(frameload_error, ret, "Error flat-fielding frame %s", data->reference_frame);
         }
 
         framedata_free(flat);
@@ -1058,7 +1066,6 @@ int create_reduction_file(char *outname)
 target_error:
 frameload_error:
     framedata_free(frame);
-    free(preview_filename);
 create_flat_error:
 create_dark_error:
     datafile_free(data);

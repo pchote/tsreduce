@@ -49,6 +49,7 @@ typedef struct
     char *frame_pattern;
     char *dark_template;
     char *flat_template;
+    char *reference_frame;
     struct target_data *targets;
     size_t target_count;
     ts_time reference_time;

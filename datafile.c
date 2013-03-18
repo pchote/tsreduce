@@ -116,6 +116,11 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# FlatTemplate: %1024s\n", stringbuf);
             dp->flat_template = strdup(stringbuf);
         }
+        else if (!strncmp(linebuf,"# ReferenceFrame:", 17))
+        {
+            sscanf(linebuf, "# ReferenceFrame: %1024s\n", stringbuf);
+            dp->reference_frame = strdup(stringbuf);
+        }
         else if (!strncmp(linebuf,"# Target:", 9) &&
                  dp->target_count < target_count)
         {
@@ -136,9 +141,7 @@ datafile* datafile_load(char *filename)
             {
                 fprintf(stderr, "Obsolete file format (Version %d).\n", dp->version);
                 fprintf(stderr, "Re-reduce data in Version %d or later to continue.\n", MIN_DATAFILE_VERSION);
-
-                // TODO Cleanup resources properly
-                return NULL;
+                goto error;
             }
         }
         else if (!strncmp(linebuf,"# RatioFitDegree:", 17))
@@ -244,7 +247,6 @@ datafile* datafile_load(char *filename)
                 goto parse_error;
             obs->fwhm[i] = atof(token);
         }
-
         datafile_append_observation(dp, obs);
 
         continue;
@@ -253,8 +255,22 @@ datafile* datafile_load(char *filename)
         free(obs);
     }
 
+    // Automatically find reference frame if it doesn't exist
+    if (!dp->reference_frame)
+    {
+        dp->reference_frame = get_first_matching_file(dp->frame_pattern);
+        if (!dp->reference_frame)
+        {
+            error("Unable to match file pattern `%s' to a reference file", dp->frame_pattern);
+            goto error;
+        }
+    }
+
     fclose(input);
     return dp;
+error:
+    datafile_free(dp);
+    return NULL;
 }
 
 void datafile_free(datafile *data)
@@ -263,6 +279,7 @@ void datafile_free(datafile *data)
     free(data->frame_pattern);
     free(data->dark_template);
     free(data->flat_template);
+    free(data->reference_frame);
     free(data->coord_ra);
     free(data->coord_dec);
 
@@ -356,6 +373,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# DarkTemplate: %s\n", data->dark_template);
     if (data->flat_template)
         fprintf(out, "# FlatTemplate: %s\n", data->flat_template);
+    if (data->reference_frame)
+        fprintf(out, "# ReferenceFrame: %s\n", data->reference_frame);
     if (data->ratio_fit_degree != RATIO_FIT_DEGREE_DEFAULT)
         fprintf(out, "# RatioFitDegree: %d\n", data->ratio_fit_degree);
     if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)

@@ -41,94 +41,94 @@ int scandir(const char *dirname,
             int (*compar)(const struct dirent **,
                           const struct dirent **))
 {
-	WIN32_FIND_DATA wfd;
-	HANDLE hf;
-	struct dirent **plist, **newlist;
-	struct dirent d;
-	int numentries = 0;
-	int allocentries = 255;
-	int i;
-	char path[FILENAME_MAX];
+    WIN32_FIND_DATA wfd;
+    HANDLE hf;
+    struct dirent **plist, **newlist;
+    struct dirent d;
+    int numentries = 0;
+    int allocentries = 255;
+    int i;
+    char path[FILENAME_MAX];
 
-	i = strlen(dirname);
+    i = strlen(dirname);
 
-	if (i > sizeof path - 5)
-		return -1;
+    if (i > sizeof path - 5)
+        return -1;
 
-	strcpy(path, dirname);
-	if (i>0 && dirname[i-1]!='\\' && dirname[i-1]!='/')
-		strcat(path, "\\");
-	strcat(path, "*.*");
+    strcpy(path, dirname);
+    if (i>0 && dirname[i-1]!='\\' && dirname[i-1]!='/')
+        strcat(path, "\\");
+    strcat(path, "*.*");
 
-	hf = FindFirstFile(path, &wfd);
-	if (hf == INVALID_HANDLE_VALUE)
-		return -1;
+    hf = FindFirstFile(path, &wfd);
+    if (hf == INVALID_HANDLE_VALUE)
+        return -1;
 
-	plist = malloc(sizeof *plist * allocentries);
-	if (plist==NULL)
-	{
-		FindClose(hf);
-		return -1;
-	}
+    plist = malloc(sizeof *plist * allocentries);
+    if (plist==NULL)
+    {
+        FindClose(hf);
+        return -1;
+    }
 
-	do
-	{
-		if (numentries==allocentries)
-		{
-			allocentries *= 2;
-			newlist = realloc(plist, sizeof *plist * allocentries);
-			if (newlist==NULL)
-			{
-				for (i=0; i<numentries; i++)
+    do
+    {
+        if (numentries==allocentries)
+        {
+            allocentries *= 2;
+            newlist = realloc(plist, sizeof *plist * allocentries);
+            if (newlist==NULL)
+            {
+                for (i=0; i<numentries; i++)
                     free(plist[i]);
-				free(plist);
-				FindClose(hf);
-				return -1;
-			}
-			plist = newlist;
-		}
+                free(plist);
+                FindClose(hf);
+                return -1;
+            }
+            plist = newlist;
+        }
 
-		strncpy(d.d_name, wfd.cFileName, sizeof d.d_name);
-		d.d_ino = 0;
-		d.d_namlen = strlen(wfd.cFileName);
-		d.d_reclen = sizeof d;
+        strncpy(d.d_name, wfd.cFileName, sizeof d.d_name);
+        d.d_ino = 0;
+        d.d_namlen = strlen(wfd.cFileName);
+        d.d_reclen = sizeof d;
 
-		if (select==NULL || select(&d))
-		{
-			plist[numentries] = malloc(sizeof d);
-			if (plist[numentries]==NULL)
-			{
-				for (i=0; i<numentries; i++)
+        if (select==NULL || select(&d))
+        {
+            plist[numentries] = malloc(sizeof d);
+            if (plist[numentries]==NULL)
+            {
+                for (i=0; i<numentries; i++)
                     free(plist[i]);
-				free(plist);
-				FindClose(hf);
-				return -1;
-			};
-			memcpy(plist[numentries], &d, sizeof d);
-			numentries++;
-		}
-	}
-	while (FindNextFile(hf, &wfd));
+                free(plist);
+                FindClose(hf);
+                return -1;
+            };
+            memcpy(plist[numentries], &d, sizeof d);
+            numentries++;
+        }
+    }
+    while (FindNextFile(hf, &wfd));
 
-	FindClose(hf);
+    FindClose(hf);
 
-	if (numentries==0)
-	{
-		free(plist);
-		*namelist = NULL;
-	}
-	else
-	{
-		newlist = realloc(plist, sizeof *plist * numentries);
-		if (newlist!=NULL)
+    if (numentries==0)
+    {
+        free(plist);
+        *namelist = NULL;
+    }
+    else
+    {
+        newlist = realloc(plist, sizeof *plist * numentries);
+        if (newlist!=NULL)
             plist = newlist;
 
-		if (compar!=NULL)
-			qsort(plist, numentries, sizeof *plist, compar);
+        if (compar!=NULL)
+            qsort(plist, numentries, sizeof *plist, compar);
 
-		*namelist = plist;
-	}
-	return numentries;
+        *namelist = plist;
+    }
+    return numentries;
 }
 
 #endif
@@ -443,11 +443,11 @@ int compare_float(const void *a, const void *b)
 // Prints an vararg error to stderr then returns 1
 int error(const char * format, ...)
 {
-	va_list args;
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
-	fprintf(stderr, "\n");
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fprintf(stderr, "\n");
     return 1;
 }
 
@@ -569,7 +569,7 @@ char *prompt_user_input(char *message, char *fallback)
 
 #ifdef USE_READLINE
     // Prevent trailing space being added after completion
-	rl_completion_suppress_append = 1;
+    rl_completion_suppress_append = 1;
     rl_bind_key('\t', rl_complete);
 
     char *input = readline(prompt);

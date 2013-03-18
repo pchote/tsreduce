@@ -695,18 +695,18 @@ int plot_range(char *datafile_pattern)
         cpgend();
 
         switch (c)
-		{
-			case 'n':
-				if (i < num_files - 1) i++;
-				break;
-			case 'p':
-				if (i > 0) i--;
-				break;
-			case 'q':
-				goto endLoop;
-			default:
-				break;
-		}
+        {
+            case 'n':
+                if (i < num_files - 1) i++;
+                break;
+            case 'p':
+                if (i > 0) i--;
+                break;
+            case 'q':
+                goto endLoop;
+            default:
+                break;
+        }
     }
 
 endLoop:

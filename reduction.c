@@ -438,10 +438,7 @@ int update_reduction(char *dataPath)
     {
         flat = framedata_load(data->flat_template);
         if (!flat)
-        {
-            framedata_free(flat);
             error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
-        }
 
         if (framedata_get_metadata(flat, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
             readnoise = data->ccd_readnoise;
@@ -461,11 +458,19 @@ int update_reduction(char *dataPath)
     {
         dark = framedata_load(data->dark_template);
         if (!dark)
-        {
-            framedata_free(dark);
             error_jump(dark_error, ret, "Error loading frame %s", data->dark_template);
-        }
     }
+
+    framedata *reference = framedata_load(data->reference_frame);
+    if (!reference)
+        error_jump(reference_error, ret, "Error loading reference frame %s", data->reference_frame);
+
+    framedata_subtract_bias(reference);
+    if (dark && framedata_subtract(reference, dark))
+        error_jump(reference_error, ret, "Error dark-subtracting reference frame %s", data->reference_frame);
+
+    if (flat && framedata_divide(reference, flat))
+        error_jump(reference_error, ret, "Error flat-fielding reference frame %s", data->reference_frame);
 
     // Iterate through the files in the directory
     char **frame_paths;
@@ -518,19 +523,18 @@ int update_reduction(char *dataPath)
 
         // Process frame
         double nan = sqrt(-1);
+
+        // Estimate translation from reference frame
+        int32_t xt, yt;
+        if (framedata_estimate_translation(frame, reference, &xt, &yt))
+            error_jump(process_error, ret, "Error calculating frame translation");
+
         for (size_t i = 0; i < data->target_count; i++)
         {
-            // Use the aperture position from the previous frame
-            // as a starting point if it is valid
+            // Offset aperture position by frame offset
             aperture a = data->targets[i].aperture;
-            if (data->obs_end)
-            {
-                double2 last = data->obs_end->pos[i];
-                if (last.x > 0 && last.x < frame->cols)
-                    a.x = last.x;
-                if (last.y > 0 && last.y < frame->rows)
-                    a.y = last.y;
-            }
+            a.x += xt;
+            a.y += yt;
 
             obs->star[i] = 0;
             obs->noise[i] = 0;
@@ -585,6 +589,8 @@ int update_reduction(char *dataPath)
 
 process_error:
     free_2d_array(frame_paths, num_frames);
+reference_error:
+    framedata_free(reference);
 dark_error:
     if (dark)
         framedata_free(dark);

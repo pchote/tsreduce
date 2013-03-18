@@ -1,0 +1,3 @@
+[*.{c,h}]
+tabSize = 4
+softTabs = true

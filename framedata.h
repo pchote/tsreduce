@@ -47,5 +47,6 @@ int framedata_subtract(framedata *fd, framedata *other);
 void framedata_subtract_bias(framedata *fd);
 int framedata_divide(framedata *fd, framedata *other);
 int framedata_start_time(framedata *frame, ts_time *time);
+int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt);
 
 #endif

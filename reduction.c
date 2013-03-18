@@ -1377,6 +1377,57 @@ setup_error:
     return ret;
 }
 
+int frame_translation(const char *frame_path, const char *reference_path, const char *dark_path, const char *flat_path)
+{
+    int ret = 0;
+
+    framedata *dark = framedata_load(dark_path);
+    if (!dark)
+        error_jump(load_error, ret, "Error loading frame %s", dark_path);
+
+    framedata *flat = framedata_load(flat_path);
+    if (!flat)
+        error_jump(load_error, ret, "Error loading frame %s", flat_path);
+
+    framedata *frame = framedata_load(frame_path);
+    if (!frame)
+        error_jump(load_error, ret, "Error loading frame %s", frame_path);
+
+    framedata *reference = framedata_load(reference_path);
+    if (!reference)
+        error_jump(load_error, ret, "Error loading frame %s", reference_path);
+
+    framedata_subtract_bias(frame);
+    framedata_subtract_bias(reference);
+
+    // Process frames
+    framedata_subtract_bias(frame);
+    framedata_subtract_bias(reference);
+    if (framedata_subtract(frame, dark))
+        error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_path);
+    if (framedata_subtract(reference, dark))
+        error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
+
+    if (framedata_divide(frame, flat))
+        error_jump(process_error, ret, "Error flat-fielding frame %s", frame_path);
+    if (framedata_divide(reference, flat))
+        error_jump(process_error, ret, "Error flat-fielding frame %s", reference_path);
+
+    int32_t xt, yt;
+    if (framedata_estimate_translation(frame, reference, &xt, &yt))
+        error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
+
+    printf("Translation: %d %d\n", xt, yt);
+
+process_error:
+load_error:
+    framedata_free(frame);
+    framedata_free(reference);
+    framedata_free(flat);
+    framedata_free(dark);
+    return ret;
+}
+
 // Output radial profile information for the given targetIndex, obsIndex in
 // the reduction file at dataPath
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex)

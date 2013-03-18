@@ -22,6 +22,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
 int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename);
 
 int display_tracer(char *dataPath);
+int frame_translation(const char *frame, const char *reference, const char *dark_path, const char *flat_path);
 int calculate_profile(char *dataPath, int obsIndex, int targetIndex);
 int detect_repeats(char *dataPath);
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);

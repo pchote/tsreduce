@@ -7,6 +7,7 @@
 
 #include <fitsio2.h>
 #include <string.h>
+#include <math.h>
 
 #include "framedata.h"
 #include "helpers.h"
@@ -45,7 +46,7 @@ static int free_metadata_entry(any_t unused, any_t _meta)
 framedata *framedata_load(const char *filename)
 {
     int ret = 0;
-	int status = 0;
+    int status = 0;
     fitsfile *input;
 
     framedata *fd = calloc(1, sizeof(framedata));
@@ -440,3 +441,103 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
 
     return 1;
 }
+
+int framedata_image_region(framedata *frame, uint16_t region[4])
+{
+    uint16_t r[4] = {0, frame->cols, 0, frame->rows};
+    char *str;
+    if (framedata_get_metadata(frame, "IMAG-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
+        sscanf(str, "[%hu, %hu, %hu, %hu]", &r[0], &r[1],
+                                            &r[2], &r[3]);
+    memcpy(region, r, 4*sizeof(uint16_t));
+    return 0;
+}
+
+static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, double **y)
+{
+    int ret = 0;
+    uint16_t xs = region[1] - region[0];
+    uint16_t ys = region[3] - region[2];
+
+    double *xa = calloc(xs, sizeof(double));
+    double *ya = calloc(ys, sizeof(double));
+    if (!xa || !ya)
+        error_jump(error, ret, "allocation_failed");
+
+    // Sum into x and y axes
+    for (uint16_t j = 0; j < ys; j++)
+        for (uint16_t i = 0; i < xs; i++)
+        {
+            double px = frame->data[frame->cols*(region[2] + j) + (i + region[0])];
+            xa[i] += px;
+            ya[j] += px;
+        }
+
+    // Subtracting mean level puts the baseline below zero, so clamp at zero
+    double xm = mean_exclude_sigma(xa, xs, 1);
+    for (uint16_t i = 0; i < xs; i++)
+        xa[i] = fmax(xa[i] - xm, 0);
+
+    double ym = mean_exclude_sigma(ya, ys, 1);
+    for (uint16_t j = 0; j < ys; j++)
+        ya[j] = fmax(ya[j] - ym, 0);
+
+    *x = xa;
+    *y = ya;
+
+    return 0;
+error:
+    free(xa);
+    free(ya);
+    x = NULL;
+    y = NULL;
+    return ret;
+}
+
+int32_t find_max_correlatation(double *a, double *b, uint16_t n)
+{
+    int32_t best_idx = 0;
+    double best = -1;
+    for (int32_t j = -n; j < n; j++)
+    {
+        double ret = 0;
+        for (uint16_t i = 0; i < n; i++)
+            ret += (i+j > 0) ? a[i]*b[i+j] : 0;
+
+        if (ret > best)
+        {
+            best = ret;
+            best_idx = j;
+        }
+    }
+    return best_idx;
+}
+
+int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt)
+{
+    int ret = 0;
+
+    uint16_t fr[4], rr[4];
+    if (framedata_image_region(frame, fr))
+        error_jump(error, ret, "Image region failed");
+    if (framedata_image_region(frame, rr))
+        error_jump(error, ret, "Image region failed");
+
+    if (fr[0] != rr[0] || fr[1] != rr[1] || fr[2] != rr[2] || fr[3] != rr[3])
+        error_jump(error, ret, "frame sizes don't match");
+
+    double *fx, *fy, *rx, *ry;
+    if (sum_into_axes(frame, fr, &fx, &fy))
+        error_jump(error, ret, "Summing into axes failed");
+    if (sum_into_axes(reference, rr, &rx, &ry))
+        error_jump(error, ret, "Summing into axes failed");
+
+    *xt = find_max_correlatation(rx, fx, rr[1] - rr[0]);
+    *yt = find_max_correlatation(ry, fy, rr[3] - rr[2]);
+    return ret;
+error:
+    *xt = 0;
+    *yt = 0;
+    return ret;
+}
+

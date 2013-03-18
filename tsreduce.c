@@ -71,6 +71,10 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "plot-range") == 0)
         return plot_range(argv[2]);
 
+    // `tsreduce translation frame.fits.gz reference.fits.gz master-dark.fits.gz master-flat.fits.gz`
+    else if (argc == 6 && strcmp(argv[1], "translation") == 0)
+        return frame_translation(argv[2], argv[3], argv[4], argv[5]);
+
     // `tsreduce plot ec04207.dat [ts.ps/cps dft.ps/cps 10]
     else if ((argc == 3 || argc == 6 || argc == 7) && strcmp(argv[1], "plot") == 0)
     {

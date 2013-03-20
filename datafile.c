@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <unistd.h>
 
 #include "datafile.h"
 #include "fit.h"
@@ -255,15 +256,31 @@ datafile* datafile_load(char *filename)
         free(obs);
     }
 
-    // Automatically find reference frame if it doesn't exist
+    // Automatically find reference frame if it isn't defined
     if (!dp->reference_frame)
     {
+        char *datadir = getcwd(NULL, 0);
+        if (chdir(dp->frame_dir))
+        {
+            error("Unable to change to frame path: %s", dp->frame_dir);
+            goto error;
+        }
+
         dp->reference_frame = get_first_matching_file(dp->frame_pattern);
+
+        if (chdir(datadir))
+        {
+            error("Unable to return to data directory: %s", datadir);
+            goto error;
+        }
+
         if (!dp->reference_frame)
         {
             error("Unable to match file pattern `%s' to a reference file", dp->frame_pattern);
             goto error;
         }
+
+        error("Warning: ReferenceFrame key not found. Defaulting to %s", dp->reference_frame);
     }
 
     fclose(input);

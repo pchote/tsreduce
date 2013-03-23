@@ -137,6 +137,10 @@ int main( int argc, char *argv[] )
             return playback_reduction(argv[2], atoi(argv[3]), atoi(argv[4]), argv[5], argv[6], atof(argv[7]));
     }
 
+    // `tsreduce plot-json ec04207.dat ec04207.json
+    else if (argc == 4 && strcmp(argv[1], "plot-json") == 0)
+        return online_json(argv[2], argv[3]);
+
     // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`
     else if (argc >= 3 && strcmp(argv[1], "create-ts") == 0)
         return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1]);

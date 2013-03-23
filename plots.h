@@ -10,6 +10,7 @@
 
 int online_focus_plot(char *data_path, const char *device, double size);
 int online_plot(char *data_path, char *ts_device, char *dft_device, double size);
+int online_json(char *data_path, char *json_path);
 int playback_reduction(char *data_path, int delay, int step, char *ts_device, char *dft_device, double size);
 int plot_range(char *datafile_pattern);
 

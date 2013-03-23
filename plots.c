@@ -714,3 +714,142 @@ endLoop:
     return 0;
 }
 
+int online_json(char *data_path, char *json_path)
+{
+    int ret = 0;
+    char *html_plot_colors[] = {"#f80000", "#f88000", "#80f800", "#0080f8", "#00f8f8", "#f800f8", "#f8f800", "#8000f8"};
+    size_t html_plot_colors_max = 8;
+
+    FILE *json = fopen(json_path, "w");
+    if (!json)
+        return error("Error opening output file %s", json_path);
+
+    datafile *data = datafile_load(data_path);
+    if (!data)
+        error_jump(data_error, ret, "Error opening data file %s", data_path);
+
+    struct photometry_data *pd = datafile_generate_photometry(data);
+    if (!pd)
+        error_jump(photometry_error, ret, "Photometry calculation failed");
+
+    struct dft_data *dd = datafile_generate_dft(data, pd);
+    if (!dd)
+        error_jump(dft_error, ret, "DFT calculation failed");
+
+    double window_range = (data->plot_max_uhz - data->plot_min_uhz)/16;
+    double window_freq = (data->plot_max_uhz + data->plot_min_uhz)/2;
+    size_t window_count = data->plot_num_uhz/5;
+    double time_scale = 1.0/pow(10, pd->time_exponent);
+
+    struct dft_data *wd = datafile_generate_window(data, pd, window_freq, window_range, window_count);
+    if (!wd)
+        error_jump(window_error, ret, "DFT window calculation failed");
+
+    fprintf(json, "var data = {\n");
+    fprintf(json, "\t\"mintime\" : %.3f,\n", time_scale*pd->time_min);
+    fprintf(json, "\t\"maxtime\" : %.3f,\n", time_scale*pd->time_max);
+
+    // Blocked ranges
+    fprintf(json, "\t\"blockedranges\" : [");
+    if (data->num_blocked_ranges > 0)
+        fprintf(json, "[%.3f,%.3f]", time_scale*data->blocked_ranges[0].x, data->blocked_ranges[0].y);
+    for (size_t j = 1; j < data->num_blocked_ranges; j++)
+        fprintf(json, "[%.3f,%.3f]", time_scale*data->blocked_ranges[j].x, data->blocked_ranges[j].y);
+    fprintf(json, "],\n");
+
+    // Output raw photometry
+    double max_raw = data->plot_max_raw ? data->plot_max_raw : 1.25*pd->scaled_target_max;
+    int raw_exp = (int)log10(max_raw);
+    double raw_scale = 1.0/pow(10, raw_exp);
+
+    fprintf(json, "\t\"raw\" : {\n");
+    fprintf(json, "\t\t\"ylabel\" : \"Count Rate (10^%d ADU/s)\",\n", raw_exp);
+    if (pd->time_exponent == 0)
+        fprintf(json, "\t\t\"xlabel\" : \"Run Time (s)\",\n");
+    else
+        fprintf(json, "\t\t\"xlabel\" : \"Run Time (10^%d s)\",\n", pd->time_exponent);
+
+    fprintf(json, "\t\t\"targets\" : [\n");
+    for (size_t j = 0; j < data->target_count; j++)
+    {
+        fprintf(json, "\t\t{\n");
+
+        if (data->targets[j].scale == 1.0)
+            fprintf(json, "\t\t\t\"label\" : \"%s<br />SNR: %.0f\",\n", data->targets[j].label, pd->target_snr[j]);
+        else
+            fprintf(json, "\t\t\t\"label\" : \"%g &times; %s<br />SNR: %.0f\",\n", data->targets[j].scale, data->targets[j].label, pd->target_snr[j]);
+        fprintf(json, "\t\t\t\"color\" : \"%s\",\n", html_plot_colors[j%html_plot_colors_max]);
+        fprintf(json, "\t\t\t\"data\" : [");
+        if (data->obs_count > 0)
+            fprintf(json, "[%.3f,%.3f]", time_scale*pd->target_time[j*data->obs_count], data->targets[j].scale*raw_scale*pd->target_intensity[j*data->obs_count]);
+        for (size_t i = j*data->obs_count + 1; i < (j+1)*data->obs_count; i++)
+            fprintf(json, ",[%.3f,%.3f]", time_scale*pd->target_time[i], data->targets[j].scale*raw_scale*pd->target_intensity[i]);
+
+        fprintf(json, "]\n");
+        fprintf(json, "\t\t},\n");
+    }
+
+    // Sky background
+    fprintf(json, "\t\t{\n");
+    fprintf(json, "\t\t\t\"label\" : \"Mean Sky\",\n");
+    fprintf(json, "\t\t\t\"color\" : \"#a8a8a8\",\n");
+    fprintf(json, "\t\t\t\"data\" : [");
+    if (pd->raw_count > 0)
+        fprintf(json, "[%.3f,%.3f]", time_scale*pd->raw_time[0], raw_scale*pd->sky[0]);
+    for (size_t i = 1; i < pd->raw_count; i++)
+        fprintf(json, ",[%.3f,%.3f]", time_scale*pd->raw_time[i], raw_scale*pd->sky[i]);
+    fprintf(json, "]\n");
+    fprintf(json, "\t\t}]\n");
+    fprintf(json, "\t},\n");
+
+    // FWHM
+    fprintf(json, "\t\"fwhm\" : {\n");
+    fprintf(json, "\t\t\"min\" : %.3f,\n", pd->fwhm_mean - 5*pd->fwhm_std);
+    fprintf(json, "\t\t\"max\" : %.3f,\n", pd->fwhm_mean + 5*pd->fwhm_std);
+    fprintf(json, "\t\t\"mean\" : \"%.2f\",\n", pd->fwhm_mean*data->ccd_platescale);
+    fprintf(json, "\t\t\"meanpx\" : \"%.2f\",\n", pd->fwhm_mean);
+    fprintf(json, "\t\t\"data\" : [");
+    if (pd->raw_count > 0)
+        fprintf(json, "[%.3f,%.3f]", time_scale*pd->raw_time[0], pd->fwhm[0]);
+    for (size_t i = 1; i < pd->raw_count; i++)
+        fprintf(json, ",[%.3f,%.3f]", time_scale*pd->raw_time[i], pd->fwhm[i]);
+    fprintf(json, "]\n");
+    fprintf(json, "\t},\n");
+
+    // Ratio
+    fprintf(json, "\t\"ratio\" : {\n");
+    fprintf(json, "\t\t\"min\" : %.3f,\n", pd->ratio_mean - 5*pd->ratio_std);
+    fprintf(json, "\t\t\"max\" : %.3f,\n", pd->ratio_mean + 5*pd->ratio_std);
+    fprintf(json, "\t\t\"data\" : [");
+    if (pd->raw_count > 0)
+        fprintf(json, "[%.3f,%.3f]", time_scale*pd->time[0], pd->ratio[0]);
+    for (size_t i = 1; i < pd->raw_count; i++)
+        fprintf(json, ",[%.3f,%.3f]", time_scale*pd->time[i], pd->ratio[i]);
+    fprintf(json, "]\n");
+    fprintf(json, "\t},\n");
+
+    // mma
+    fprintf(json, "\t\"mma\" : {\n");
+    fprintf(json, "\t\t\"min\" : %.3f,\n", pd->mma_mean - 5*pd->mma_std);
+    fprintf(json, "\t\t\"max\" : %.3f,\n", pd->mma_mean + 5*pd->mma_std);
+    fprintf(json, "\t\t\"data\" : [");
+    if (pd->raw_count > 0)
+        fprintf(json, "[%.3f,%.3f]", time_scale*pd->time[0], pd->mma[0]);
+    for (size_t i = 1; i < pd->raw_count; i++)
+        fprintf(json, ",[%.3f,%.3f]", time_scale*pd->time[i], pd->mma[i]);
+    fprintf(json, "]\n");
+    fprintf(json, "\t}\n");
+
+    fprintf(json, "};\n");
+
+    datafile_free_dft(wd);
+window_error:
+    datafile_free_dft(dd);
+dft_error:
+    datafile_free_photometry(pd);
+photometry_error:
+    datafile_free(data);
+data_error:
+    fclose(json);
+    return ret;
+}

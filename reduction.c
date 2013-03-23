@@ -606,6 +606,7 @@ int create_reduction_file(char *outname)
 {
     int ret = 0;
 
+    char *filename_fmt = "^%s-[0-9]+.(fits.gz|fits|fit|FIT)";
     FILE *fileTest = fopen(outname, "w");
     if (fileTest == NULL)
         return error("Unable to create data file: %s. Does it already exist?", outname);
@@ -648,7 +649,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter dark prefix", "dark");
-                snprintf(dark_pattern, 1039, "^%s-[0-9]+.fits.gz", ret);
+                snprintf(dark_pattern, 1039, filename_fmt, ret);
                 free(ret);
 
                 char **dark_filenames;
@@ -696,7 +697,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter flat prefix", "flat");
-                snprintf(flat_pattern, 32, "^%s-[0-9]+.fits.gz", ret);
+                snprintf(flat_pattern, 32, filename_fmt, ret);
                 free(ret);
 
                 char **flat_filenames;
@@ -742,7 +743,7 @@ int create_reduction_file(char *outname)
     {
         char namebuf[1039];
         char *ret = prompt_user_input("Enter target prefix", NULL);
-        snprintf(namebuf, 1039, "^%s-[0-9]+.fits.gz", ret);
+        snprintf(namebuf, 1039, filename_fmt, ret);
         free(ret);
         data->reference_frame = get_first_matching_file(namebuf);
         if (data->reference_frame)

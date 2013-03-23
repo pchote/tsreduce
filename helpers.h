@@ -58,6 +58,7 @@ void calculate_amplitude_spectrum(double *time, double *mma, size_t count,
 char *canonicalize_path(const char *path);
 
 ts_time parse_time(const char *string);
+ts_time parse_time_ccdops(const char *string);
 ts_time parse_date_time(const char *date, const char *time);
 void serialize_time(ts_time t, char buf[24]);
 double ts_time_to_utc_hour(ts_time t);

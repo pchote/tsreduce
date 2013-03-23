@@ -188,6 +188,18 @@ static ts_time ts_timegm(struct tm *t, uint16_t ms)
     return tt;
 }
 
+// Like ISO 8601 without the timezone offset
+ts_time parse_time_ccdops(const char *string)
+{
+    struct tm t;
+    unsigned int ms = 0;
+    sscanf(string, "%d-%d-%dT%d:%d:%d.%u", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec, &ms);
+    t.tm_year -= 1900;
+    t.tm_mon -= 1;
+
+    return ts_timegm(&t, ms);
+}
+
 ts_time parse_time(const char *string)
 {
     struct tm t;

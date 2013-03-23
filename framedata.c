@@ -93,7 +93,9 @@ framedata *framedata_load(const char *filename)
         if (fits_read_record(input, i + 1, card, &status))
             error_jump(error, ret, "Error reading card %zu", i);
 
-        if (fits_get_keyclass(card) != TYP_USER_KEY)
+        // Ignore keywords we aren't interested in
+        int class = fits_get_keyclass(card);
+        if (class < TYP_WCS_KEY || class == TYP_COMM_KEY)
             continue;
 
         if (fits_read_keyn(input, i + 1, key, value, comment, &status))
@@ -102,7 +104,10 @@ framedata *framedata_load(const char *filename)
         // Parse value
         char type;
         if (fits_get_keytype(value, &type, &status))
-            error_jump(error, ret, "Error determining type for '%s'", value);
+        {
+            error("Unable to determine type for key '%s' - skipping.", key);
+            continue;
+        }
 
         switch (type)
         {
@@ -436,6 +441,14 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
     if (date && date->type == FRAME_METADATA_STRING)
     {
         *out_time = parse_time(date->value.s);
+        return 0;
+    }
+
+    // SBIG CCD-OPS timestamp
+    hashmap_get(fd->metadata_map, "DATE-OBS", (void **)(&date));
+    if (date && date->type == FRAME_METADATA_STRING)
+    {
+        *out_time = parse_time_ccdops(date->value.s);
         return 0;
     }
 

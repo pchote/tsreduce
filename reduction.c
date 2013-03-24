@@ -1184,14 +1184,17 @@ int update_preview(char *preview_filename, char *ds9_title)
 
     // Display frame time
     double frame_exp = 0;
-    char *frame_end = "Unknown";
-    char *frame_date = "Unknown";
-    char *frame_object = "Unknown";
+    char *frame_end = NULL;
+    char *frame_date = NULL;
+    char *frame_object = NULL;
 
     // Ignore errors
-    framedata_get_metadata(frame, "UTC-END", FRAME_METADATA_STRING, &frame_end);
-    framedata_get_metadata(frame, "UTC-DATE", FRAME_METADATA_STRING, &frame_date);
-    framedata_get_metadata(frame, "OBJECT", FRAME_METADATA_STRING, &frame_object);
+    if (framedata_get_metadata(frame, "UTC-END", FRAME_METADATA_STRING, &frame_end))
+        frame_end = strdup("Unknown");
+    if (framedata_get_metadata(frame, "UTC-DATE", FRAME_METADATA_STRING, &frame_date))
+        frame_date = strdup("Unknown");
+    if (framedata_get_metadata(frame, "OBJECT", FRAME_METADATA_STRING, &frame_object))
+        frame_object = strdup("Unknown");
     framedata_get_metadata(frame, "EXPTIME", FRAME_METADATA_DOUBLE, &frame_exp);
 
     if (frame_object)

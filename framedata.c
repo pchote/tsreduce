@@ -515,7 +515,11 @@ int32_t find_max_correlatation(double *a, double *b, uint16_t n)
     {
         double ret = 0;
         for (uint16_t i = 0; i < n; i++)
-            ret += (i+j > 0) ? a[i]*b[i+j] : 0;
+        {
+            // Assume data outside the array bounds are zero
+            uint16_t k = i + j;
+            ret += (k > 0 && k < n) ? a[i]*b[k] : 0;
+        }
 
         if (ret > best)
         {

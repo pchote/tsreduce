@@ -697,7 +697,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter flat prefix", "flat");
-                snprintf(flat_pattern, 32, filename_fmt, ret);
+                snprintf(flat_pattern, 1039, filename_fmt, ret);
                 free(ret);
 
                 char **flat_filenames;

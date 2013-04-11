@@ -18,6 +18,7 @@
 #define CUR_DATAFILE_VERSION 7
 #define MIN_DATAFILE_VERSION 7
 
+#define MMA_FILTER_SIGMA_DEFAULT 5
 #define RATIO_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 0
 #define PLOT_MAX_DFT_DEFAULT 0
@@ -40,6 +41,7 @@ datafile *datafile_alloc()
 {
     datafile *dp = calloc(1, sizeof(datafile));
     dp->version = CUR_DATAFILE_VERSION;
+    dp->mma_filter_sigma = MMA_FILTER_SIGMA_DEFAULT;
     dp->ratio_fit_degree = RATIO_FIT_DEGREE_DEFAULT;
     dp->plot_max_raw = PLOT_MAX_RAW_DEFAULT;
     dp->plot_max_dft = PLOT_MAX_DFT_DEFAULT;
@@ -145,6 +147,8 @@ datafile* datafile_load(char *filename)
                 goto error;
             }
         }
+        else if (!strncmp(linebuf,"# MMAFilterSigma:", 17))
+            sscanf(linebuf, "# MMAFilterSigma: %hhu\n", &dp->mma_filter_sigma);
         else if (!strncmp(linebuf,"# RatioFitDegree:", 17))
             sscanf(linebuf, "# RatioFitDegree: %hhu\n", &dp->ratio_fit_degree);
         else if (!strncmp(linebuf,"# PlotMaxRaw:", 13))
@@ -392,6 +396,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# FlatTemplate: %s\n", data->flat_template);
     if (data->reference_frame)
         fprintf(out, "# ReferenceFrame: %s\n", data->reference_frame);
+    if (data->mma_filter_sigma != MMA_FILTER_SIGMA_DEFAULT)
+        fprintf(out, "# MMAFilterSigma: %d\n", data->mma_filter_sigma);
     if (data->ratio_fit_degree != RATIO_FIT_DEGREE_DEFAULT)
         fprintf(out, "# RatioFitDegree: %d\n", data->ratio_fit_degree);
     if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)
@@ -502,9 +508,6 @@ allocation_error:
 
 struct photometry_data *datafile_generate_photometry(datafile *data)
 {
-    // TODO: Expose this as a parameter
-    double mma_filter_sigma = 3;
-
     if (!data->obs_start)
         return NULL;
 
@@ -712,7 +715,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     // Discard outliers and recalculate mean
     for (size_t i = 0; i < p->filtered_count; i++)
     {
-        if (fabs(p->mma[i] - p->mma_mean) > mma_filter_sigma*p->mma_std)
+        if (fabs(p->mma[i] - p->mma_mean) > data->mma_filter_sigma*p->mma_std)
         {
             if (verbosity >= 1)
                 error("%f is an outlier, setting to 0", p->time[i]);

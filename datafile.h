@@ -59,6 +59,7 @@ typedef struct
     size_t obs_count;
     map_t filename_map;
 
+    uint8_t mma_filter_sigma;
     uint8_t ratio_fit_degree;
     double plot_max_raw;
     double plot_max_dft;

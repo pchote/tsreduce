@@ -140,7 +140,7 @@ char *canonicalize_path(const char *path)
     char path_buf[MAX_PATH], *ptr;
     GetFullPathName(path, MAX_PATH, path_buf, &ptr);
 
-    // Replace all '\' in path cd ../tsreducewith '/'
+    // Replace all '\' in path with '/'
     char *i;
     while ((i = strstr(path_buf, "\\")))
         i[0] = '/';
@@ -159,6 +159,38 @@ char *canonicalize_path(const char *path)
         realpath(path, path_buf);
 #endif
     return strdup(path_buf);
+}
+
+// Cross platform equivalent of basename() that doesn't modify the string.
+// Assumes '/' as path separator, so only use after canonicalize_path()
+const char *last_path_component(const char *path)
+{
+    const char *str = path;
+    const char *last = path;
+    while (*str != '\0')
+    {
+        if (*str == '/')
+            last = str+1;
+        str++;
+    }
+    return last;
+}
+
+// Removes everything after the first '.' in a string
+// Modifies and returns the input string
+char *remove_file_suffix(char *path)
+{
+    char *str = path;
+    while (*str != '\0')
+    {
+        if (*str == '.')
+        {
+            *str = '\0';
+            break;
+        }
+        str++;
+    }
+    return path;
 }
 
 // Cross platform equivalent of gmtime_r()

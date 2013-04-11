@@ -56,6 +56,8 @@ void calculate_amplitude_spectrum(double *time, double *mma, size_t count,
                                   double *freq, double *ampl, size_t length);
 
 char *canonicalize_path(const char *path);
+const char *last_path_component(const char *path);
+char *remove_file_suffix(char *path);
 
 ts_time parse_time(const char *string);
 ts_time parse_time_ccdops(const char *string);

@@ -730,10 +730,12 @@ int create_reduction_file(char *outname)
         data->flat_template = NULL;
     }
 
+    // Default target prefix to filename
+    char *default_prefix = remove_file_suffix(strdup(last_path_component(outname)));
     while (true)
     {
         char namebuf[1039];
-        char *ret = prompt_user_input("Enter target prefix", NULL);
+        char *ret = prompt_user_input("Enter target prefix", default_prefix);
         snprintf(namebuf, 1039, filename_fmt, ret);
         free(ret);
         data->reference_frame = get_first_matching_file(namebuf);
@@ -744,6 +746,7 @@ int create_reduction_file(char *outname)
         }
         printf("No files found matching pattern: %s/%s\n", data->frame_dir, namebuf);
     }
+    free(default_prefix);
 
     framedata *frame = NULL;
     while (true)

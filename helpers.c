@@ -193,6 +193,35 @@ char *remove_file_suffix(char *path)
     return path;
 }
 
+// Removes leading and trailing whitespace from a string
+// Modifies and returns the input string
+char *trim_whitespace(char *input)
+{
+    if (!input)
+        return input;
+
+    size_t len = strlen(input);
+    if (len == 0)
+        return input;
+
+    char *first = input;
+    char *last = input + len - 1;
+
+    // Trim trailing whitespace
+    while (last != first && isspace(*last))
+        *last-- = '\0';
+
+    // Find first non-whitespace charater
+    while (first != last + 1 && isspace(*first))
+        first++;
+
+    // Trim leading whitespace
+    if (first != input)
+        memmove(input, first, last - first + 2);
+
+    return input;
+}
+
 // Cross platform equivalent of gmtime_r()
 static void ts_gmtime(ts_time in, struct tm *out)
 {
@@ -612,10 +641,7 @@ char *prompt_user_input(char *message, char *fallback)
     }
 
 #ifdef USE_READLINE
-    // Prevent trailing space being added after completion
-    rl_completion_suppress_append = 1;
     rl_bind_key('\t', rl_complete);
-
     char *input = readline(prompt);
 
     // Encountered EOF
@@ -629,13 +655,11 @@ char *prompt_user_input(char *message, char *fallback)
     printf("%s", prompt);
     fgets(inputbuf, 1024, stdin);
 
-    // Strip trailing newline
-    size_t len = strlen(inputbuf);
-    if (len >= 1)
-        inputbuf[len - 1] = '\0';
-
     char *input = strdup(inputbuf);
 #endif
+
+    // Trim whitespace and trailing newline
+    trim_whitespace(input);
 
     // Empty string: Return fallback
     if (strlen(input) == 0)

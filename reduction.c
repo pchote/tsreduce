@@ -49,11 +49,6 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     if (!dark)
         error_jump(setup_error, ret, "Error loading frame %s", masterdark);
 
-    double dark_exp = 0;
-    if (framedata_get_metadata(dark, "EXPTIME", FRAME_METADATA_DOUBLE, &dark_exp))
-        error_jump(setup_error, ret, "EXPTIME undefixed for %s", masterdark);
-
-
     framedata *base = framedata_load(frame_paths[0]);
     if (!base)
         error_jump(setup_error, ret, "Error loading frame %s", frame_paths[0]);
@@ -104,17 +99,13 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
                 frame_paths[k], base->rows, base->cols, frame->rows, frame->cols);
         }
 
-        double exp;
-        if (framedata_get_metadata(frame, "EXPTIME", FRAME_METADATA_DOUBLE, &exp))
-        {
-            framedata_free(frame);
-            error_jump(processing_error, ret, "EXPTIME undefixed for %s", frame_paths[k]);
-        }
-
         // Subtract dark, normalized to the flat exposure time
         framedata_subtract_bias(frame);
-        for (size_t i = 0; i < base->rows*base->cols; i++)
-            frame->data[i] -= exp/dark_exp*dark->data[i];
+        if (framedata_subtract_normalized(frame, dark))
+        {
+            framedata_free(frame);
+            error_jump(processing_error, ret, "Dark subtraction failed for %s", frame_paths[k]);
+        }
 
         // Store data in cube for processing
         for (size_t j = 0; j < base->rows*base->cols; j++)
@@ -466,7 +457,7 @@ int update_reduction(char *dataPath)
         error_jump(reference_error, ret, "Error loading reference frame %s", data->reference_frame);
 
     framedata_subtract_bias(reference);
-    if (dark && framedata_subtract(reference, dark))
+    if (dark && framedata_subtract_normalized(reference, dark))
         error_jump(reference_error, ret, "Error dark-subtracting reference frame %s", data->reference_frame);
 
     if (flat && framedata_divide(reference, flat))
@@ -508,7 +499,7 @@ int update_reduction(char *dataPath)
 
         // Process frame
         framedata_subtract_bias(frame);
-        if (dark && framedata_subtract(frame, dark))
+        if (dark && framedata_subtract_normalized(frame, dark))
             error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_paths[i]);
 
         if (flat && framedata_divide(frame, flat))

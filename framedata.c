@@ -360,6 +360,26 @@ int framedata_subtract(framedata *fd, framedata *other)
     return 0;
 }
 
+int framedata_subtract_normalized(framedata *fd, framedata *other)
+{
+    if (fd->cols != other->cols || fd->rows != other->rows)
+        return error("Frame size mismatch");
+
+    double exp;
+    if (framedata_get_metadata(fd, "EXPTIME", FRAME_METADATA_DOUBLE, &exp))
+        return error("Unable to fetch EXPTIME");
+
+    double other_exp = 0;
+    if (framedata_get_metadata(other, "EXPTIME", FRAME_METADATA_DOUBLE, &other_exp))
+        return error("Unable to fetch other EXPTIME");
+
+    for (size_t i = 0; i < fd->cols*fd->rows; i++)
+        fd->data[i] -= exp/other_exp*other->data[i];
+
+    return 0;
+}
+
+
 void framedata_subtract_bias(framedata *fd)
 {
     struct frame_metadata *m;

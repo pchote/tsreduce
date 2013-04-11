@@ -44,6 +44,7 @@ int framedata_put_metadata(framedata *fd, const char *key, int type, void *data,
 int framedata_remove_metadata(framedata *fd, const char *key);
 
 int framedata_subtract(framedata *fd, framedata *other);
+int framedata_subtract_normalized(framedata *fd, framedata *other);
 void framedata_subtract_bias(framedata *fd);
 int framedata_divide(framedata *fd, framedata *other);
 int framedata_start_time(framedata *frame, ts_time *time);

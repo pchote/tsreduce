@@ -458,5 +458,8 @@ double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
 error:
     free(profile);
     free(radius);
-    return ret ? -1 : 2*g[2];
+
+    // Convert from g[2] (= sqrt(2)*sigma) to
+    // fwhm (= 2*sqrt(ln(2))*sqrt(2)*sigma)
+    return ret ? -1 : 2*sqrt(log(2))*g[2];
 }

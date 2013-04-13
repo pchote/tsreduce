@@ -223,34 +223,34 @@ datafile* datafile_load(char *filename)
         // Time
         if (!(token = strtok(NULL, " ")))
             goto parse_error;
-        obs->time = atof(token);
+        obs->time = strtod(token, NULL);
 
         // Target intensity / sky / aperture x / aperture y
         for (size_t i = 0; i < dp->target_count; i++)
         {
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
-            obs->star[i] = atof(token);
+            obs->star[i] = strtod(token, NULL);
 
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
-            obs->noise[i] = atof(token);
+            obs->noise[i] = strtod(token, NULL);
 
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
-            obs->sky[i] = atof(token);
+            obs->sky[i] = strtod(token, NULL);
 
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
-            obs->pos[i].x = atof(token);
+            obs->pos[i].x = strtod(token, NULL);
 
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
-            obs->pos[i].y = atof(token);
+            obs->pos[i].y = strtod(token, NULL);
 
             if (!(token = strtok(NULL, " ")))
                 goto parse_error;
-            obs->fwhm[i] = atof(token);
+            obs->fwhm[i] = strtod(token, NULL);
         }
         datafile_append_observation(dp, obs);
 

@@ -794,7 +794,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32");
-                data->ccd_readnoise = atof(ret);
+                data->ccd_readnoise = strtod(ret, NULL);
                 free(ret);
                 if (data->ccd_readnoise > 0)
                     break;
@@ -808,7 +808,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00");
-                data->ccd_gain = atof(ret);
+                data->ccd_gain = strtod(ret, NULL);
                 free(ret);
 
                 if (data->ccd_gain > 0)
@@ -821,7 +821,7 @@ int create_reduction_file(char *outname)
         if (framedata_get_metadata(flat, "IM-SCALE", FRAME_METADATA_DOUBLE, &data->ccd_platescale))
         {
             char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66");
-            data->ccd_platescale = atof(ret);
+            data->ccd_platescale = strtod(ret, NULL);
             free(ret);
         }
 
@@ -855,7 +855,7 @@ int create_reduction_file(char *outname)
             while (true)
             {
                 char *ret = prompt_user_input("Enter aperture radius (px):", "8");
-                aperture_size = atof(ret);
+                aperture_size = strtod(ret, NULL);
                 free(ret);
                 if (aperture_size > 0)
                     break;
@@ -889,8 +889,12 @@ int create_reduction_file(char *outname)
         char *ds9_zoom;
         if (ts_exec_read("xpaget tsreduce zoom", &ds9_zoom))
             error_jump(frameload_error, ret, "ds9 request zoom failed");
-        float zoom = atof(ds9_zoom);
+        float zoom = strtod(ds9_zoom, NULL);
         free(ds9_zoom);
+
+        // Sanity-check zoom
+        if (zoom < 0.001)
+            zoom = 1;
 
         char *ds9buf;
         if (ts_exec_read("xpaget tsreduce regions", &ds9buf))
@@ -1099,8 +1103,12 @@ int update_preview(char *preview_filename, char *ds9_title)
     char *ds9_zoom;
     if (ts_exec_read(ds9_command_buf, &ds9_zoom))
         error_jump(region_error, ret, "ds9 request zoom failed");
-    float zoom = atof(ds9_zoom);
+    float zoom = strtod(ds9_zoom, NULL);
     free(ds9_zoom);
+
+    // Sanity-check zoom
+    if (zoom < 0.001)
+        zoom = 1;
 
     // Set new frame
     snprintf(ds9_command_buf, 1024, "xpaset -p %s file %s", ds9_title, preview_filename);

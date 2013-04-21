@@ -1078,7 +1078,7 @@ create_dark_error:
 }
 
 // Update the ds9 preview with a frame and FWHM calculations
-int update_preview(char *preview_filename, char *ds9_title)
+int update_preview(char *preview_filename, char *ds9_title, char *autoguide_output)
 {
     int ret = 0;
     char ds9_command_buf[1024];
@@ -1116,6 +1116,7 @@ int update_preview(char *preview_filename, char *ds9_title)
 
     // Parse the region definitions
     char *cur = ds9_regions;
+    bool first = true;
     for (; (cur = strstr(cur, "annulus")) != NULL; cur++)
     {
         // Read aperture coords
@@ -1135,23 +1136,43 @@ int update_preview(char *preview_filename, char *ds9_title)
         double2 xy;
         if (center_aperture(a, frame, &xy))
         {
-            printf("Aperture converge failed. Removing target\n");
+            error("Aperture converge failed. Removing target");
             continue;
         }
         a.x = xy.x;
         a.y = xy.y;
 
+        // Print centroid of the first target to stdout
+        if (autoguide_output && first)
+        {
+            first = false;
+
+            FILE *guide = fopen(autoguide_output, "a");
+            if (!guide)
+                error("Failed to open autoguiding output file %s", autoguide_output);
+            else
+            {
+                ts_time start;
+                if (framedata_start_time(frame, &start))
+                    error("Failed to query frame start time. Skipping centroid output");
+                else
+                    fprintf(guide, "%lu.%03u %.2f %.2f\n", start.time, start.ms, xy.x, xy.y);
+
+                fclose(guide);
+            }
+        }
+
         double sky_intensity, sky_std_dev;
         if (calculate_background(a, frame, &sky_intensity, &sky_std_dev))
         {
-            printf("Sky calculation failed. Removing target\n");
+            error("Sky calculation failed. Removing target");
             continue;
         }
 
         double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
         if (fwhm < 0)
         {
-            printf("Invalid fwhm. Removing target\n");
+            error("Invalid fwhm. Removing target");
             continue;
         }
 

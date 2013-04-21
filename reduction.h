@@ -17,7 +17,7 @@ int print_frame_metadata(char *frame_path);
 
 int update_reduction(char *dataPath);
 int create_reduction_file(char *filePath);
-int update_preview(char *preview_filename, char *ds9_title);
+int update_preview(char *preview_filename, char *ds9_title, char *autoguide_output);
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch);
 int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename);
 

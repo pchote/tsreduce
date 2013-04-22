@@ -17,8 +17,24 @@
 
 int verbosity = 0;
 
+
+void foo(const char *data_path)
+{
+    datafile *data = datafile_load(data_path);
+    struct photometry_data *pd = datafile_generate_photometry(data);
+
+    for (size_t i = 0; i < pd->filtered_count; i++)
+        printf("%g %g\n", pd->time[i], pd->mma[i]);
+
+    datafile_free_photometry(pd);
+    datafile_free(data);
+}
+
 int main( int argc, char *argv[] )
 {
+    foo(argv[1]);
+    return 0;
+
     // `tsreduce create-flat "flat-[0-9]+.fits.gz" 5 master-dark.fits.gz master-flat.fits.gz`
     if (argc == 6 && strcmp(argv[1], "create-flat") == 0)
         return create_flat(argv[2], atoi(argv[3]), argv[4], argv[5]);

@@ -527,6 +527,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->fwhm = calloc(data->obs_count, sizeof(double));
 
     p->time = calloc(data->obs_count, sizeof(double));
+    double *target = calloc(data->obs_count, sizeof(double));
     p->ratio = calloc(data->obs_count, sizeof(double));
     p->ratio_noise = calloc(data->obs_count, sizeof(double));
     p->ratio_fit = calloc(data->obs_count, sizeof(double));
@@ -629,16 +630,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         if (skip)
             continue;
 
-        if (data->target_count > 1)
-        {
-            p->ratio[p->filtered_count] = obs->star[0] / comparison_intensity;
-            p->ratio_noise[p->filtered_count] = (obs->noise[0]/obs->star[0] + comparison_noise/comparison_intensity)*p->ratio[p->filtered_count];
-        }
-        else
-        {
-            p->ratio[p->filtered_count] = obs->star[0];
-            p->ratio_noise[p->filtered_count] = obs->noise[0];
-        }
+        target[p->filtered_count] = obs->star[0];
+        p->ratio[p->filtered_count] = obs->star[1];
+        p->ratio_noise[p->filtered_count] = obs->noise[1];
         p->ratio_mean += p->ratio[p->filtered_count];
         p->time[p->filtered_count] = obs->time;
 
@@ -685,7 +679,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->mma_mean = 0;
     for (size_t i = 0; i < p->filtered_count; i++)
     {
-        // Subtract polynomial fit and convert to mma
+        // Divide by polynomial fit to calculate ratio and convert to mma
         p->ratio_fit[i] = 0;
         double pow = 1;
         for (size_t j = 0; j < p->fit_coeffs_count; j++)
@@ -693,7 +687,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
             p->ratio_fit[i] += pow*p->fit_coeffs[j];
             pow *= p->time[i];
         }
-        p->mma[i] = 1000*(p->ratio[i] - p->ratio_fit[i])/p->ratio_fit[i];
+        p->mma[i] = target[i] / p->ratio_fit[i];
 
         double numer_error = fabs(p->ratio_noise[i]/(p->ratio[i] - p->ratio_fit[i]));
         double denom_error = fabs(p->ratio_noise[i]/p->ratio[i]);

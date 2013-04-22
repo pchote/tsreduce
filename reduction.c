@@ -1170,12 +1170,6 @@ int update_preview(char *preview_filename, char *ds9_title, char *autoguide_outp
         }
 
         double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
-        if (fwhm < 0)
-        {
-            error("Invalid fwhm. Removing target");
-            continue;
-        }
-
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{annulus %f %f %f %f}'",
                  ds9_title, a.x + 1, a.y + 1, a.s1, a.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
@@ -1184,9 +1178,12 @@ int update_preview(char *preview_filename, char *ds9_title, char *autoguide_outp
                  ds9_title, a.x + 1, a.y + 1, a.s1, a.s2);
         ts_exec_write(ds9_command_buf, NULL, 0);
 
-        snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'",
-                 ds9_title, a.x + 1, a.y + 1, fwhm/2);
-        ts_exec_write(ds9_command_buf, NULL, 0);
+        if (!isnan(fwhm) && fwhm > 0)
+        {
+            snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{circle %f %f %f #color=red select=0}'",
+                     ds9_title, a.x + 1, a.y + 1, fwhm/2);
+            ts_exec_write(ds9_command_buf, NULL, 0);
+        }
 
         snprintf(ds9_command_buf, 1024, "xpaset -p %s regions command '{text %f %f #color=green select=0 text=\"FWHM: %.2f arcsec\"}'",
                  ds9_title, a.x + 1, a.y + 1 - a.s2 - 10/zoom, fwhm*plate_scale);

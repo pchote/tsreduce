@@ -734,7 +734,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->time_offset = 3600*ts_time_to_utc_hour(data->reference_time);
     p->time_min = p->raw_time[0];
     p->time_max = p->raw_time[p->raw_count - 1];
-    p->time_exponent = (int)(log10(p->time_max) / 3)*3;
+    p->time_exponent = (int)(log10(p->time_max - p->time_min) / 3)*3;
     p->time_scale = 1.0/pow(10, p->time_exponent);
 
     return p;

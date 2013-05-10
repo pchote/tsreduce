@@ -1261,7 +1261,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
     sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
     double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
 
-    printf("%f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec, epoch));
+    printf("%.8f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec, epoch));
     return 0;
 }
 
@@ -1314,7 +1314,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
 
     // Print file header
     fprintf(out, "# tsreduce create-ts output file\n");
-    fprintf(out, "# Reference time: %s %s UTC; %f BJD\n", reference_date, reference_time, reference_bjd);
+    fprintf(out, "# Reference time: %s %s UTC; %.8f BJD\n", reference_date, reference_time, reference_bjd);
     fprintf(out, "# Files:\n");
     for (size_t i = 0; i < num_datafiles; i++)
         fprintf(out, "#   %s\n", filenames[i]);
@@ -1338,7 +1338,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            fprintf(out,"%f %f %f\n", ts_time_to_bjd(obstime, ra, dec, epoch) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
+            fprintf(out, "%.8f %f %f\n", ts_time_to_bjd(obstime, ra, dec, epoch) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
             num_saved++;
         }
 

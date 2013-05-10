@@ -13,7 +13,7 @@
 
 double jdtobjd(double jd, double2 coords);
 double2 precess(double2 coords, double t0, double t1);
-double tmtojd(struct tm *t);
+double tmtojd(struct tm *t, double ms_offset);
 double tmtoyear(struct tm *t);
 double utcttoffset(time_t ut);
 

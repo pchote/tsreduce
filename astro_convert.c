@@ -464,12 +464,12 @@ double2 precess(double2 coords, double t0, double t1)
 /*
  * Calculate the Julian day for a given UT struct tm
  */
-double tmtojd(struct tm *t)
+double tmtojd(struct tm *t, double ms_offset)
 {
     int year = t->tm_year + 1900;
     int month = t->tm_mon + 1;
     int daynumber = 1721028 + 367*year - 7*(year + (month + 9)/12)/4 - 3*((year + (month - 9)/7)/100 + 1)/4 + 275*month/9 + t->tm_mday;
-    return daynumber + 0.5 + t->tm_hour/24.0 + t->tm_min/1440.0 + t->tm_sec/86400.0;
+    return daynumber + 0.5 + (((ms_offset/1000.0 + t->tm_sec)/60.0 + t->tm_min)/60.0 + t->tm_hour)/24.0;
 }
 
 /*

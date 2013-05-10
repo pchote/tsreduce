@@ -313,8 +313,7 @@ double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch)
     ts_gmtime(t, &tt);
 
     // Convert from UT to TT
-    tt.tm_sec += utcttoffset(t.time);
-    double jd = tmtojd(&tt) + t.ms/86400000.0;
+    double jd = tmtojd(&tt, 1000*utcttoffset(t.time) + t.ms);
 
     // Calculate BJD
     double2 reference_coords = precess((double2){ra, dec}, epoch, tmtoyear(&tt));

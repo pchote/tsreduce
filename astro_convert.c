@@ -464,24 +464,18 @@ double2 precess(double2 coords, double t0, double t1)
 /*
  * Calculate the Julian day for a given UT struct tm
  */
-double sumday[12]= {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 double tmtojd(struct tm *t)
 {
-    double days = sumday[t->tm_mon] + t->tm_mday;
-    double dayfrac = t->tm_hour/24.0 + t->tm_min/1440.0 + t->tm_sec/86400.0;
     int year = t->tm_year + 1900;
-
-    // Leap year (tm_mon = 1 for feb)
-    int nleap = (t->tm_year - 1)/4;
-    if (t->tm_mon > 1 && (year - 4*(year/4)) == 0)
-        days += 1;
-
-    return 2415019.5 + 365*t->tm_year + nleap + days + dayfrac;
+    int month = t->tm_mon + 1;
+    int daynumber = 1721028 + 367*year - 7*(year + (month + 9)/12)/4 - 3*((year + (month - 9)/7)/100 + 1)/4 + 275*month/9 + t->tm_mday;
+    return daynumber + 0.5 + t->tm_hour/24.0 + t->tm_min/1440.0 + t->tm_sec/86400.0;
 }
 
 /*
  * Calculate the (fractional) year for a given UT struct tm
  */
+double sumday[12]= {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
 double tmtoyear(struct tm *t)
 {
     double days = sumday[t->tm_mon] + t->tm_mday;

@@ -1259,7 +1259,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
 
     // Convert dec from DD:'':"" to radians
     sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
-    double dec = (a + b/60 + c/3600)*M_PI/180;
+    double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
 
     printf("%f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec, epoch));
     return 0;
@@ -1302,7 +1302,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
 
     // Convert dec from DD:'':"" to radians
     sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
-    double dec = (a + b/60 + c/3600)*M_PI/180;
+    double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
     double epoch = datafiles[0]->coord_epoch;
 
     double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec, epoch);

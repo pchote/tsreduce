@@ -57,15 +57,6 @@
          location = "group:aperture.c">
       </FileRef>
       <FileRef
-         location = "group:astro_convert.c">
-      </FileRef>
-      <FileRef
-         location = "group:astro_convert.h">
-      </FileRef>
-      <FileRef
-         location = "group:leapseconds.h">
-      </FileRef>
-      <FileRef
          location = "group:random.c">
       </FileRef>
       <FileRef

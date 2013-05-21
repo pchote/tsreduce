@@ -12,6 +12,18 @@ $ ./configure
 $ make
 $ sudo make install
 
+Download the sofa source from http://www.iausofa.org/ and the debian build patches from http://anonscm.debian.org/gitweb/?p=debian-science/packages/iausofa.git;a=tree;f=debian/patches.
+Extract the source and apply the patches:
+$ tar xvf sofa_c-20120301_a.tar.gz
+$ cd sofa
+$ patch -p1 < ../debian_patches_set_installation_path.patch
+$ patch -p1 < ../debian_patches_create_shared_lib.patch
+$ cd 20120301_a/c/src/
+$ make
+$ make install
+
+You may need to edit the makefile to remove the -Wl,-soname option and/or edit the INSTALL_PATH to a different location (like /usr/local).
+
 Clone and build the source code:
 $ git clone https://github.com/pchote/tsreduce
 $ cd tsreduce

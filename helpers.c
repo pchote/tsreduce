@@ -14,8 +14,11 @@
 #include <dirent.h>
 #include <regex.h>
 #include <math.h>
+#include <float.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sofa.h>
+#include <sofam.h>
 
 #ifdef USE_READLINE
 #include <readline/readline.h>
@@ -23,7 +26,6 @@
 #endif
 
 #include "helpers.h"
-#include "astro_convert.h"
 
 #if (defined _WIN32)
 #include <windows.h>
@@ -307,17 +309,101 @@ double ts_difftime(ts_time a, ts_time b)
     return ret;
 }
 
-double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch)
+int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
 {
+    *tdb1 = *tdb2 = 0;
+
     struct tm tt;
     ts_gmtime(t, &tt);
 
-    // Convert from UT to TT
-    double jd = tmtojd(&tt, 1000*utcttoffset(t.time) + t.ms);
+    // Convert ts_time -> sofa internal format in UTC
+    double utc1, utc2;
 
-    // Calculate BJD
-    double2 reference_coords = precess((double2){ra, dec}, epoch, tmtoyear(&tt));
-    return jdtobjd(jd, reference_coords);
+    {
+        int iy = tt.tm_year + 1900;
+        int imo = tt.tm_mon + 1;
+        int id = tt.tm_mday;
+        int ih = tt.tm_hour;
+        int im = tt.tm_min;
+        double sec = tt.tm_sec + t.ms / 1000.0f;
+        if (iauDtf2d("UTC", iy, imo, id, ih, im, sec, &utc1, &utc2))
+            return 1;
+    }
+
+    // Convert UTC -> TAI -> TT
+    double tai1, tai2;
+    if (iauUtctai(utc1, utc2, &tai1, &tai2))
+        return 1;
+
+    double tt1, tt2;
+    if (iauTaitt(tai1, tai2, &tt1, &tt2))
+        return 1;
+
+    // Calculate TDB-TT offset
+    // Assumes geocentric observer
+    // Uses TT instead of TDB (introduces negligible error)
+    double ut11, ut12;
+    if (iauUtcut1(utc1, utc2, 0.3341, &ut11, &ut12))
+        return 1;
+    double ut = fmod(fmod(ut11, 1.0) + fmod(ut12, 1.0), 1.0);
+    double dtr = iauDtdb(tt1, tt2, ut, 0, 0, 0);
+
+    // Calculate TT -> TDB
+    if (iauTttdb(tt1, tt2, dtr, tdb1, tdb2))
+        return 1;
+
+    return 0;
+}
+
+// Precess a J2000 ra, dec (in radians) to the epoch described by tdb1, tdb2
+void precess_j2000(double *ra, double *dec, double epoch, double tdb1, double tdb2)
+{
+    // Convert to cartesian coordinates
+    double c[3];
+    iauS2c(*ra, *dec, c);
+
+    // Precess from epoch to J2000 (if necessary)
+    double precess[3][3];
+    if (abs(epoch - 2000) > DBL_EPSILON)
+    {
+        iauPmat06(DJ00, (epoch - 2000)*DJY, precess);
+        iauTrxp(precess, c, c);
+    }
+
+    // Precess from J2000 to tdb
+    iauPmat06(tdb1, tdb2, precess);
+    iauRxp(precess, c, c);
+
+    // Convert back to spherical coordinates
+    iauC2s(c, ra, dec);
+}
+
+// Convert a time to bjd, accounting for light travel time in the direction ra,dec (J2000)
+double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch)
+{
+    // Convert time from UTC to TDB
+    double tdb1, tdb2;
+    if (ts_time_to_tdb(t, &tdb1, &tdb2))
+        return 0;
+
+    // Precess J2000 coordinates to the observation time
+    precess_j2000(&ra, &dec, epoch, tdb1, tdb2);
+
+    // Calculate earth position relative to the solar system barycenter
+    // Assumes geocentric observer (introduces maximum error of ~21ms)
+    double pvb[2][3];
+    iauEpv00(tdb1, tdb2, pvb, pvb);
+
+    // Calculate the unit vector pointing towards the target
+    double dir[3];
+    iauS2c(ra, dec, dir);
+
+    // Additional light travel distance is just the dot product
+    // of the barycenter->observer and observer->target vectors
+    double offset = iauPdp(pvb[0], dir);
+
+    // Convert offset from AU to light travel time (in days)
+    return tdb1 + tdb2 + 0.005775518331089534*offset;
 }
 
 // Helper function to free a 2d char array allocated using malloc etc.
@@ -336,7 +422,6 @@ float *cast_double_array_to_float(double *d_ptr, size_t count)
         f_ptr[i] = d_ptr[i];
     return f_ptr;
 }
-
 
 // versionsort isn't defined on all platforms (e.g osx), so define our own copy
 // Taken from GNU strverscmp.c, licenced under GPLv2 or later

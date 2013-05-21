@@ -8,7 +8,7 @@ USE_READLINE := TRUE
 CC = gcc
 LINKER = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
-LFLAGS = -lcfitsio -lcpgplot -lpgplot
+LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c
 
 ifeq ($(USE_READLINE),TRUE)
     LFLAGS += -lreadline
@@ -27,7 +27,7 @@ ifeq ($(shell uname),Darwin)
     endif
 endif
 
-SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c plots.c astro_convert.c random.c hashmap.c
+SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c plots.c random.c hashmap.c
 OBJ = $(SRC:.c=.o)
 
 ifeq ($(MSYSTEM),MINGW32)

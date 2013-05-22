@@ -1250,7 +1250,7 @@ frame_error:
 /*
  * Calculate the BJD time for a given UTC timestamp and observation coordinates
  */
-int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, double epoch)
+int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string)
 {
     // Convert ra from HH:MM:SS to radians
     double a,b,c;
@@ -1261,7 +1261,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string, dou
     sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
     double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
 
-    printf("%.8f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec, epoch));
+    printf("%.8f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec));
     return 0;
 }
 
@@ -1292,7 +1292,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     }
     printf("Loaded %zu datafiles\n", num_datafiles);
 
-    if (!datafiles[0]->coord_ra || !datafiles[0]->coord_dec || datafiles[0]->coord_epoch == 0)
+    if (!datafiles[0]->coord_ra || !datafiles[0]->coord_dec)
         error_jump(coord_error, ret, "Datafile %s doesn't specify star coordinates", filenames[0]);
 
     // Convert ra from HH:MM:SS to radians
@@ -1303,9 +1303,8 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     // Convert dec from DD:'':"" to radians
     sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
     double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
-    double epoch = datafiles[0]->coord_epoch;
 
-    double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec, epoch);
+    double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec);
     printf("Reference BJD: %f\n", reference_bjd);
 
     FILE *out = fopen(ts_filename, "w+");
@@ -1323,7 +1322,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     size_t num_saved = 0;
     for (size_t i = 0; i < num_datafiles; i++)
     {
-        double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec, epoch);
+        double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec);
 
         // Calculate precessed RA and DEC at the start of each night
         // This is already far more accurate than we need
@@ -1338,7 +1337,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            fprintf(out, "%.8f %f %f\n", ts_time_to_bjd(obstime, ra, dec, epoch) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
+            fprintf(out, "%.8f %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
             num_saved++;
         }
 

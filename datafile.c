@@ -31,7 +31,6 @@
 #define CCD_GAIN_DEFAULT 0
 #define CCD_READNOISE_DEFAULT 0
 #define CCD_PLATESCALE_DEFAULT 1.0
-#define COORD_EPOCH_DEFAULT 0
 extern int verbosity;
 
 /*
@@ -53,7 +52,6 @@ datafile *datafile_alloc()
     dp->ccd_gain = CCD_GAIN_DEFAULT;
     dp->ccd_readnoise = CCD_READNOISE_DEFAULT;
     dp->ccd_platescale = CCD_PLATESCALE_DEFAULT;
-    dp->coord_epoch = COORD_EPOCH_DEFAULT;
 
     dp->filename_map = hashmap_new();
     return dp;
@@ -185,8 +183,6 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# DEC: %1024s\n", stringbuf);
             dp->coord_dec = strdup(stringbuf);
         }
-        else if (!strncmp(linebuf,"# Epoch:", 8))
-            sscanf(linebuf, "# Epoch: %lf\n", &dp->coord_epoch);
         else if (!strncmp(linebuf,"# BlockRange:", 13) &&
                  dp->num_blocked_ranges < block_count)
         {
@@ -430,8 +426,6 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# RA: %s\n", data->coord_ra);
     if (data->coord_dec)
         fprintf(out, "# DEC: %s\n", data->coord_dec);
-    if (data->coord_epoch != COORD_EPOCH_DEFAULT)
-        fprintf(out, "# Epoch: %g\n", data->coord_epoch);
 
     fprintf(out, "### (x, y, Radius, Inner Sky Radius, Outer Sky Radius) [plot scale] - Label\n");
     for (size_t i = 0; i < data->target_count; i++)

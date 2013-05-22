@@ -355,39 +355,13 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
     return 0;
 }
 
-// Precess a J2000 ra, dec (in radians) to the epoch described by tdb1, tdb2
-void precess_j2000(double *ra, double *dec, double epoch, double tdb1, double tdb2)
-{
-    // Convert to cartesian coordinates
-    double c[3];
-    iauS2c(*ra, *dec, c);
-
-    // Precess from epoch to J2000 (if necessary)
-    double precess[3][3];
-    if (abs(epoch - 2000) > DBL_EPSILON)
-    {
-        iauPmat06(DJ00, (epoch - 2000)*DJY, precess);
-        iauTrxp(precess, c, c);
-    }
-
-    // Precess from J2000 to tdb
-    iauPmat06(tdb1, tdb2, precess);
-    iauRxp(precess, c, c);
-
-    // Convert back to spherical coordinates
-    iauC2s(c, ra, dec);
-}
-
-// Convert a time to bjd, accounting for light travel time in the direction ra,dec (J2000)
-double ts_time_to_bjd(ts_time t, double ra, double dec, double epoch)
+// Convert a time to bjd, accounting for light travel time in the direction ra,dec (J2000 / ICRS coordinates)
+double ts_time_to_bjd(ts_time t, double ra, double dec)
 {
     // Convert time from UTC to TDB
     double tdb1, tdb2;
     if (ts_time_to_tdb(t, &tdb1, &tdb2))
         return 0;
-
-    // Precess J2000 coordinates to the observation time
-    precess_j2000(&ra, &dec, epoch, tdb1, tdb2);
 
     // Calculate earth position relative to the solar system barycenter
     // Assumes geocentric observer (introduces maximum error of ~21ms)

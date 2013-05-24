@@ -1261,7 +1261,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string)
     sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
     double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
 
-    printf("%.8f\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec));
+    printf("%.8Lf\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec));
     return 0;
 }
 
@@ -1322,11 +1322,11 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     size_t num_saved = 0;
     for (size_t i = 0; i < num_datafiles; i++)
     {
-        double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec);
+        long double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec);
 
         // Calculate precessed RA and DEC at the start of each night
         // This is already far more accurate than we need
-        printf("%s start BJD: %f\n", filenames[i], start_bjd);
+        printf("%s start BJD: %Lf\n", filenames[i], start_bjd);
 
         struct photometry_data *pd = datafile_generate_photometry(datafiles[i]);
         if (!pd)
@@ -1337,7 +1337,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            fprintf(out, "%.8f %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
+            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
             num_saved++;
         }
 

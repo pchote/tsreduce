@@ -356,7 +356,7 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
 }
 
 // Convert a time to bjd, accounting for light travel time in the direction ra,dec (J2000 / ICRS coordinates)
-double ts_time_to_bjd(ts_time t, double ra, double dec)
+long double ts_time_to_bjd(ts_time t, double ra, double dec)
 {
     // Convert time from UTC to TDB
     double tdb1, tdb2;
@@ -374,10 +374,10 @@ double ts_time_to_bjd(ts_time t, double ra, double dec)
 
     // Additional light travel distance is just the dot product
     // of the barycenter->observer and observer->target vectors
-    double offset = iauPdp(pvb[0], dir);
+    long double offset = iauPdp(pvb[0], dir);
 
     // Convert offset from AU to light travel time (in days)
-    return tdb1 + tdb2 + 0.005775518331089534*offset;
+    return (long double)tdb1 + (long double)tdb2 + 0.005775518331089534*offset;
 }
 
 // Helper function to free a 2d char array allocated using malloc etc.

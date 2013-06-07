@@ -608,27 +608,32 @@ int create_reduction_file(char *outname)
     // Store the current directory so we can return before saving the data file
     char *datadir = getcwd(NULL, 0);
 
-    while (true)
-    {
-        char *ret = prompt_user_input("Enter frame path", ".");
-        data->frame_dir = canonicalize_path(ret);
-        if (!chdir(data->frame_dir))
-        {
-            free(ret);
-            break;
-        }
-        printf("Invalid frame path: %s\n", ret);
-        free(data->frame_dir);
-        free(ret);
-    }
-
     char *input = prompt_user_input("Use calibration frames", "y");
     bool use_calibration = !strcmp(input, "y");
     free(input);
 
     if (use_calibration)
     {
-        data->dark_template = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz");
+        char *dark_path;
+        while (true)
+        {
+            char *ret = prompt_user_input("Enter darks path", ".");
+            dark_path = canonicalize_path(ret);
+            if (!chdir(dark_path))
+            {
+                free(ret);
+                break;
+            }
+            printf("Invalid frame path: %s\n", ret);
+            free(dark_path);
+            free(ret);
+        }
+
+        char *master_dark = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz");
+        size_t dark_size = strlen(master_dark) + strlen(dark_path) + 2;
+        data->dark_template = malloc(dark_size*sizeof(char));
+        snprintf(data->dark_template, dark_size, "%s/%s", dark_path, master_dark);
+        free(master_dark);
 
         // Create master-dark if necessary
         if (access(data->dark_template, F_OK) != -1)
@@ -651,7 +656,7 @@ int create_reduction_file(char *outname)
                     break;
                 }
 
-                printf("No files found matching pattern: %s/%s\n", data->frame_dir, dark_pattern);
+                printf("No files found matching pattern: %s/%s\n", dark_path, dark_pattern);
             }
 
             int minmax = 0;
@@ -673,10 +678,36 @@ int create_reduction_file(char *outname)
 
             int failed = create_dark(dark_pattern, minmax, data->dark_template);
             if (failed)
+            {
+                free(dark_path);
                 error_jump(create_dark_error, ret, "master dark generation failed");
+            }
+        }
+        free(dark_path);
+
+        // Return to data dir
+        chdir(datadir);
+
+        char *flat_path;
+        while (true)
+        {
+            char *ret = prompt_user_input("Enter flats path", ".");
+            flat_path = canonicalize_path(ret);
+            if (!chdir(flat_path))
+            {
+                free(ret);
+                break;
+            }
+            printf("Invalid frame path: %s\n", ret);
+            free(flat_path);
+            free(ret);
         }
 
-        data->flat_template = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
+        char *master_flat = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
+        size_t flat_size = strlen(master_flat) + strlen(flat_path) + 2;
+        data->flat_template = malloc(flat_size*sizeof(char));
+        snprintf(data->flat_template, flat_size, "%s/%s", flat_path, master_flat);
+        free(master_flat);
 
         // Create master-flat if necessary
         if (access(data->flat_template, F_OK) != -1)
@@ -699,7 +730,7 @@ int create_reduction_file(char *outname)
                     break;
                 }
 
-                printf("No files found matching pattern: %s/%s\n", data->frame_dir, flat_pattern);
+                printf("No files found matching pattern: %s/%s\n", flat_path, flat_pattern);
             }
 
             int minmax = 0;
@@ -721,13 +752,34 @@ int create_reduction_file(char *outname)
 
             int failed = create_flat(flat_pattern, minmax, data->dark_template, data->flat_template);
             if (failed)
+            {
+                free(flat_path);
                 error_jump(create_flat_error, ret, "master flat generation failed");
+            }
         }
+        free(flat_path);
     }
     else
     {
         data->dark_template = NULL;
         data->flat_template = NULL;
+    }
+
+    // Return to data dir
+    chdir(datadir);
+
+    while (true)
+    {
+        char *ret = prompt_user_input("Enter frame path", ".");
+        data->frame_dir = canonicalize_path(ret);
+        if (!chdir(data->frame_dir))
+        {
+            free(ret);
+            break;
+        }
+        printf("Invalid frame path: %s\n", ret);
+        free(data->frame_dir);
+        free(ret);
     }
 
     // Default target prefix to filename

@@ -8,6 +8,7 @@
 #include <fitsio2.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 #include "framedata.h"
 #include "helpers.h"
@@ -48,6 +49,9 @@ framedata *framedata_load(const char *filename)
     int ret = 0;
     int status = 0;
     fitsfile *input;
+
+    // Suppress unused variable warning
+    (void)ret;
 
     framedata *fd = calloc(1, sizeof(framedata));
     if (!fd)
@@ -239,7 +243,7 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
                 }
                 case FRAME_METADATA_INT:
                 {
-                    snprintf(buf, 100, "%lld", metadata->value.i);
+                    snprintf(buf, 100, "%" PRIi64, metadata->value.i);
                     val = buf;
                     break;
                 }
@@ -430,7 +434,7 @@ void framedata_print_metadata(framedata *fd)
                 printf("%s (string) / ", m->value.s);
                 break;
             case FRAME_METADATA_INT:
-                printf("%lld (int) / ", m->value.i);
+                printf("%" PRIi64 " (int) / ", m->value.i);
                 break;
             case FRAME_METADATA_DOUBLE:
                 printf("%f (double) / ", m->value.d);

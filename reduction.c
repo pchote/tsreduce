@@ -13,7 +13,7 @@
 #include <dirent.h>
 #include <regex.h>
 #include <stdbool.h>
-#include <stdint.h>
+#include <inttypes.h>
 
 #include "datafile.h"
 #include "framedata.h"
@@ -1156,7 +1156,7 @@ int update_preview(char *preview_filename, char *ds9_title, char *autoguide_outp
                 if (framedata_start_time(frame, &start))
                     error("Failed to query frame start time. Skipping centroid output");
                 else
-                    fprintf(guide, "%lu.%03u %.2f %.2f\n", start.time, start.ms, xy.x, xy.y);
+                    fprintf(guide, "%" PRIuMAX ".%03" PRIu16 " %.2f %.2f\n", (intmax_t)start.time, start.ms, xy.x, xy.y);
 
                 fclose(guide);
             }

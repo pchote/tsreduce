@@ -126,7 +126,7 @@ int scandir(const char *dirname,
             plist = newlist;
 
         if (compar!=NULL)
-            qsort(plist, numentries, sizeof *plist, compar);
+            qsort(plist, numentries, sizeof *plist, (int(*)(const void *, const void *))compar);
 
         *namelist = plist;
     }
@@ -228,7 +228,10 @@ char *trim_whitespace(char *input)
 static void ts_gmtime(ts_time in, struct tm *out)
 {
 #ifdef _WIN64
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-function-declaration"
     _gmtime_s(out, &in.time);
+#pragma GCC diagnostic pop
 #elif defined _WIN32
     *out = *localtime(&in.time);
 #else

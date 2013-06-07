@@ -7,8 +7,8 @@ USE_READLINE := TRUE
 
 CC = gcc
 LINKER = gcc
-CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_XOPEN_SOURCE -D_BSD_SOURCE
-LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c
+CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE
+LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm
 
 ifeq ($(USE_READLINE),TRUE)
     LFLAGS += -lreadline
@@ -18,6 +18,7 @@ endif
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
     LINKER = gfortran
+	CFLAGS += -D_DARWIN_C_SOURCE
     LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng
 
     # Requires newer libreadline than osx provides by default - installed with hombrew

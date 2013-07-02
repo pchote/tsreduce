@@ -438,6 +438,9 @@ double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
     for (size_t i = 0; i < max; i++)
     {
         double r = i + 1;
+        if (xy.x < r || xy.x + r >= frame->cols || xy.y < r || xy.y + r >= frame->rows)
+            error_jump(error, ret, "FWHM calculation extends outside frame");
+
         double intensity = integrate_aperture(xy, r, frame) - bg*M_PI*r*r;
         double p = (intensity - last_intensity) / (M_PI*(2*r - 1));
         last_intensity = intensity;

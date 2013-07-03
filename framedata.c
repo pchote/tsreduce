@@ -573,6 +573,17 @@ int framedata_estimate_translation(framedata *frame, framedata *reference, int32
     if (sum_into_axes(reference, rr, &rx, &ry))
         error_jump(error, ret, "Summing into axes failed");
 
+    FILE *xout = fopen("xtrans.dat", "w");
+    for (size_t i = 0; i < fr[1] - fr[0]; i++)
+        fprintf(xout, "%zu %f %f\n", i + fr[0], fx[i], rx[i]);
+
+    fclose(xout);
+    FILE *yout = fopen("ytrans.dat", "w");
+    for (size_t i = 0; i < fr[3] - fr[2]; i++)
+        fprintf(yout, "%zu %f %f\n", i + fr[2], fy[i], ry[i]);
+
+    fclose(yout);
+
     *xt = find_max_correlatation(rx, fx, rr[1] - rr[0]);
     *yt = find_max_correlatation(ry, fy, rr[3] - rr[2]);
     return ret;

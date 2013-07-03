@@ -19,6 +19,8 @@ int verbosity = 0;
 
 int main( int argc, char *argv[] )
 {
+    print_time_offsets();
+    return 0;
     // `tsreduce create-flat "flat-[0-9]+.fits.gz" 5 master-dark.fits.gz master-flat.fits.gz`
     if (argc == 6 && strcmp(argv[1], "create-flat") == 0)
         return create_flat(argv[2], atoi(argv[3]), argv[4], argv[5]);

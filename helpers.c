@@ -383,6 +383,19 @@ long double ts_time_to_bjd(ts_time t, double ra, double dec)
     return (long double)tdb1 + (long double)tdb2 + 0.005775518331089534*offset;
 }
 
+void print_time_offsets()
+{
+    ts_time first = parse_date_time("1970-01-01", "12:00:00");
+    for (int i = 0; i < 50*365 + 10; i+= 1)
+    {
+        ts_time blah = first;
+        blah.time += i*86400;
+        double epoch = 1970 + i/365.25;
+        printf("%d %.10Lf %.10f\n", i, ts_time_to_bjd(blah, 0,0), epoch);
+        //printf("%d %.10f %.10f\n", i, ts_time_to_bjd(blah, 0,0, 2000), epoch);
+    }
+}
+
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, size_t len)
 {

@@ -39,6 +39,8 @@ typedef struct
     uint16_t ms;
 } ts_time;
 
+void print_time_offsets();
+
 void free_2d_array(char **array, size_t len);
 float *cast_double_array_to_float(double *d_ptr, size_t count);
 size_t get_matching_files(const char *pattern, char ***files);

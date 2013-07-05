@@ -152,11 +152,6 @@ int main( int argc, char *argv[] )
     else if ((argc == 4 || argc == 5) && strcmp(argv[1], "preview") == 0)
         return update_preview(argv[2], argv[3], argc == 5 ? argv[4] : NULL);
 
-    // Misc one-off utility functions
-    else if (argc == 5 && strcmp(argv[1], "profile") == 0)
-        return calculate_profile(argv[2], atoi(argv[3]), atoi(argv[4]));
-    else if (argc == 3 && strcmp(argv[1], "repeats") == 0)
-        return detect_repeats(argv[2]);
     else if (argc == 6 && strcmp(argv[1], "bjd") == 0)
         return calculate_bjd(argv[2], argv[3], argv[4], argv[5]);
     else

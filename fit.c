@@ -6,6 +6,7 @@
  */
 
 #include <stdlib.h>
+#include <float.h>
 #include <math.h>
 #include "helpers.h"
 
@@ -182,6 +183,13 @@ static void sinusoidal_fit(double t, double *basis, size_t n, void *freqs)
     }
 }
 
+static void gaussian_fit(double x, double *basis, size_t n, void *sigma)
+{
+    double s = *(double *)sigma;
+    double xs = x/s;
+    basis[0] = exp(-0.5*xs*xs);
+}
+
 // Calculate a polynomial fit to the given x,y data
 int fit_polynomial(double *x, double *y, double *e, size_t n, double *coeffs, size_t degree)
 {
@@ -198,25 +206,42 @@ int fit_sinusoids(double *x, double *y, double *e, size_t n, double *freqs, size
 }
 
 /*
- * Fit a single gaussian to data.
- * Returns a,b,c where y = a*exp(((x - b)/c)^2)
+ * Fit a gaussian of the form ampl*exp(0.5*(x/sigma)^2) by incrementing the sigma in fixed steps.
  */
-int fit_gaussian(double *x, double *y, size_t n, double *params)
+int fit_gaussian(double *x, double *y, size_t n, double min_sigma, double max_sigma, double dsigma, double *sigma, double *ampl)
 {
-    // Can easily fit a gausian by taking logs and fitting a parabola
-    double *ly = malloc(n*sizeof(double));
-    if (!ly)
-        return error("Allocation failed");
+    double best_sigma = 0;
+    double best_ampl = 0;
+    double best_fit = DBL_MAX;
+    double s = min_sigma;
 
-    for (size_t i = 0; i < n; i++)
-        ly[i] = log(y[i]);
+    do
+    {
+        double a;
+        int ret = fit(x, y, NULL, n, &a, 1, gaussian_fit, &s);
+        if (ret)
+            return ret;
 
-    double c[3];
-    int ret = fit(x, ly, NULL, n, c, 3, polynomial_fit, NULL);
-    params[0] = exp(c[0] - 0.25*c[1]*c[1]/c[2]);
-    params[1] = -0.5*c[1]/c[2];
-    params[2] = sqrt(-0.5/c[2]);
-    free(ly);
+        double fit = 0;
+        for (size_t j = 0; j < n; j++)
+        {
+            double xs = x[j]/s;
+            double dy = y[j] - a*exp(-0.5*xs*xs);
+            fit += dy*dy;
+        }
 
-    return ret;
+        if (fit < best_fit)
+        {
+            best_fit = fit;
+            best_sigma = s;
+            best_ampl = a;
+        }
+
+        s += dsigma;
+    } while (s < max_sigma);
+
+    *sigma = best_sigma;
+    *ampl = best_ampl;
+    return 0;
 }
+

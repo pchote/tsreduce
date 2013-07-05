@@ -454,15 +454,13 @@ double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
         }
     }
 
-    double g[3];
-    if (fit_gaussian(radius, profile, n, g))
+    double sigma, ampl;
+    if (fit_gaussian(radius, profile, 2*n, 1, max, 0.1, &sigma, &ampl))
         error_jump(error, ret, "Gaussian fit failed");
 
 error:
     free(profile);
     free(radius);
 
-    // Convert from g[2] (= sqrt(2)*sigma) to
-    // fwhm (= 2*sqrt(ln(2))*sqrt(2)*sigma)
-    return ret ? -1 : 2*sqrt(log(2))*g[2];
+    return ret ? -1 : 2*sqrt(2*log(2))*sigma;
 }

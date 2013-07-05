@@ -10,6 +10,6 @@
 
 int fit_sinusoids(double *x, double *y, double *e, size_t c, double *freqs, size_t numFreqs, double *amplitudes);
 int fit_polynomial(double *x, double *y, double *e, size_t c, double *coeffs, size_t degree);
-int fit_gaussian(double *x, double *y, size_t n, double min_sigma, double max_sigma, size_t count, double *sigma, double *ampl);
+int fit_gaussian(double *x, double *y, size_t n, double min_sigma, double max_sigma, double dsigma, double *sigma, double *ampl);
 
 #endif

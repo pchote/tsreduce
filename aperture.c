@@ -455,7 +455,7 @@ double estimate_fwhm(framedata *frame, double2 xy, double bg, double max_radius)
     }
 
     double sigma, ampl;
-    if (fit_gaussian(radius, profile, 2*n, 1.0, max_radius, 4*max, &sigma, &ampl))
+    if (fit_gaussian(radius, profile, 2*n, 1, max, 0.1, &sigma, &ampl))
         error_jump(error, ret, "Gaussian fit failed");
 
 error:

@@ -208,34 +208,37 @@ int fit_sinusoids(double *x, double *y, double *e, size_t n, double *freqs, size
 /*
  * Fit a gaussian of the form ampl*exp(0.5*(x/sigma)^2) by incrementing the sigma in fixed steps.
  */
-int fit_gaussian(double *x, double *y, size_t n, double min_sigma, double max_sigma, size_t count, double *sigma, double *ampl)
+int fit_gaussian(double *x, double *y, size_t n, double min_sigma, double max_sigma, double dsigma, double *sigma, double *ampl)
 {
     double best_sigma = 0;
     double best_ampl = 0;
     double best_fit = DBL_MAX;
-    for (size_t i = 0; i < count; i++)
+    double s = min_sigma;
+
+    do
     {
-        double sigma = min_sigma + i*(max_sigma - min_sigma)/(count - 1);
-        double amplitude;
-        int ret = fit(x, y, NULL, n, &amplitude, 1, gaussian_fit, &sigma);
+        double a;
+        int ret = fit(x, y, NULL, n, &a, 1, gaussian_fit, &s);
         if (ret)
             return ret;
 
         double fit = 0;
         for (size_t j = 0; j < n; j++)
         {
-            double xs = x[j]/sigma;
-            double dy = y[j] - amplitude*exp(-0.5*xs*xs);
+            double xs = x[j]/s;
+            double dy = y[j] - a*exp(-0.5*xs*xs);
             fit += dy*dy;
         }
 
         if (fit < best_fit)
         {
             best_fit = fit;
-            best_sigma = sigma;
-            best_ampl = amplitude;
+            best_sigma = s;
+            best_ampl = a;
         }
-    }
+
+        s += dsigma;
+    } while (s < max_sigma);
 
     *sigma = best_sigma;
     *ampl = best_ampl;

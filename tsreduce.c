@@ -154,6 +154,8 @@ int main( int argc, char *argv[] )
 
     else if (argc == 6 && strcmp(argv[1], "bjd") == 0)
         return calculate_bjd(argv[2], argv[3], argv[4], argv[5]);
+    else if (argc == 5 && strcmp(argv[1], "profile") == 0)
+        return calculate_profile(argv[2], argv[3], atoi(argv[4]));
     else
         error("Invalid args");
     return 0;

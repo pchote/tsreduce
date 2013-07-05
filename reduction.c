@@ -1516,6 +1516,167 @@ load_error:
     return ret;
 }
 
+// Output radial profile information for the given targetIndex, obsIndex in
+// the reduction file at dataPath
+int calculate_profile(char *dataPath, char *filename, int target)
+{
+    int ret = 0;
+
+    // Read file header
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    if (chdir(data->frame_dir))
+        error_jump(data_error, ret, "Invalid frame path: %s", data->frame_dir);
+
+    double readnoise = 0, gain = 1;
+    framedata *flat = NULL;
+
+    if (data->flat_template)
+    {
+        flat = framedata_load(data->flat_template);
+        if (!flat)
+            error_jump(flat_error, ret, "Error loading frame %s", data->flat_template);
+
+        if (framedata_get_metadata(flat, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
+            readnoise = data->ccd_readnoise;
+
+        if (readnoise <= 0)
+            error_jump(flat_error, ret, "CCD Read noise unknown. Define CCDReadNoise in %s.", dataPath);
+
+        if (framedata_get_metadata(flat, "CCD-GAIN", FRAME_METADATA_DOUBLE, &gain))
+            gain = data->ccd_gain;
+
+        if (gain <= 0)
+            error_jump(flat_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
+    }
+
+    framedata *dark = NULL;
+    if (data->dark_template)
+    {
+        dark = framedata_load(data->dark_template);
+        if (!dark)
+            error_jump(dark_error, ret, "Error loading frame %s", data->dark_template);
+    }
+
+    framedata *reference = framedata_load(data->reference_frame);
+    if (!reference)
+        error_jump(reference_error, ret, "Error loading reference frame %s", data->reference_frame);
+
+    framedata_subtract_bias(reference);
+    if (dark && framedata_subtract_normalized(reference, dark))
+        error_jump(reference_error, ret, "Error dark-subtracting reference frame %s", data->reference_frame);
+
+    if (flat && framedata_divide(reference, flat))
+        error_jump(reference_error, ret, "Error flat-fielding reference frame %s", data->reference_frame);
+
+    framedata *frame = framedata_load(filename);
+    if (!frame)
+    {
+        framedata_free(frame);
+        error_jump(process_error, ret, "Error loading frame %s", frame);
+    }
+
+    // Process frame
+    framedata_subtract_bias(frame);
+    if (dark && framedata_subtract_normalized(frame, dark))
+        error_jump(process_error, ret, "Error dark-subtracting frame %s", filename);
+
+    if (flat && framedata_divide(frame, flat))
+        error_jump(process_error, ret, "Error flat-fielding frame %s", filename);
+
+    // Estimate translation from reference frame
+    int32_t xt, yt;
+    if (framedata_estimate_translation(frame, reference, &xt, &yt))
+        error_jump(process_error, ret, "Error calculating frame translation");
+
+    // Offset aperture position by frame offset
+    aperture a = data->targets[target].aperture;
+    a.x += xt;
+    a.y += yt;
+
+    size_t steps = (size_t)a.s1;
+    double *profile = calloc(2*steps, sizeof(double));
+    double *integrated = calloc(2*steps, sizeof(double));
+    double *radius = calloc(2*steps, sizeof(double));
+    if (!profile || !integrated || !radius)
+        error_jump(error, ret, "Allocation error");
+
+    double2 xy;
+    if (center_aperture(a, frame, &xy))
+        error_jump(error, ret, "Aperture centering failed");
+
+    double sky_intensity = 0;
+    if (calculate_background(a, frame, &sky_intensity, NULL))
+        error_jump(error, ret, "Failed to calculate background");
+
+    printf("Centered aperture to %f %f; sky is %f\n", xy.x, xy.y, sky_intensity);
+    double last_intensity = 0;
+    size_t n = 0;
+    for (size_t i = 0; i < steps; i++)
+    {
+        double r = i + 1;
+        if (xy.x < r || xy.x + r >= frame->cols || xy.y < r || xy.y + r >= frame->rows)
+            error_jump(error, ret, "FWHM calculation extends outside frame");
+
+        double intensity = integrate_aperture(xy, r, frame) - sky_intensity*M_PI*r*r;
+        double p = (intensity - last_intensity) / (M_PI*(2*r - 1));
+        last_intensity = intensity;
+
+        if (p > 1)
+        {
+            integrated[2*n + 1] = integrated[2*n] = intensity;
+            profile[2*n + 1] = profile[2*n] = p;
+            radius[2*n] = r;
+            radius[2*n + 1] = -r;
+            n++;
+        }
+    }
+
+    double sigma, ampl;
+    if (fit_gaussian(radius, profile, 2*n, 1, steps, 0.1, &sigma, &ampl))
+        error_jump(error, ret, "Gaussian fit failed");
+
+    // Save profile
+    printf("# Radius Profile Intensity\n");
+    double last = 0;
+    for (size_t i = 0; i < 2*n; i+= 2)
+    {
+        printf("%g %g %f %f %f\n", last + 0.5, -last - 0.5, integrated[i], profile[i], log10(profile[i]));
+        printf("%g %g %f %f %f\n", radius[i] + 0.5, -radius[i] - 0.5, integrated[i], profile[i], log10(profile[i]));
+        last = radius[i];
+    }
+
+    // Save gaussian fit
+    printf("# FWHM = %f\n", 2*sqrt(2*log(2))*sigma);
+    for (size_t i = 0; i < 4*steps; i++)
+    {
+        double r = i/4.0;
+        double arg = r/sigma;
+        double fit = ampl*exp(-0.5*arg*arg);
+        printf("%g %g %g %g\n", r, -r, fit, log10(fit));
+    }
+error:
+    free(radius);
+    free(integrated);
+    free(profile);
+
+process_error:
+    framedata_free(frame);
+reference_error:
+    framedata_free(reference);
+dark_error:
+    if (dark)
+        framedata_free(dark);
+flat_error:
+    if (flat)
+        framedata_free(flat);
+data_error:
+    datafile_free(data);
+    return ret;
+}
+
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix)
 {
     int ret = 0;

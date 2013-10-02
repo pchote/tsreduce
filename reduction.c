@@ -47,7 +47,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     // Frame geometry for all subsequent frames is assumed to match the master-dark
     framedata *dark = framedata_load(masterdark);
     if (!dark)
-        error_jump(setup_error, ret, "Error loading frame %s", masterdark);
+        error_jump(dark_error, ret, "Error loading frame %s", masterdark);
 
     framedata *base = framedata_load(frame_paths[0]);
     if (!base)
@@ -238,6 +238,7 @@ processing_error:
 setup_error:
     if (base)
         framedata_free(base);
+dark_error:
     if (dark)
         framedata_free(dark);
 insufficient_frames_error:
@@ -1471,19 +1472,19 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
 
     framedata *dark = framedata_load(dark_path);
     if (!dark)
-        error_jump(load_error, ret, "Error loading frame %s", dark_path);
+        error_jump(dark_error, ret, "Error loading frame %s", dark_path);
 
     framedata *flat = framedata_load(flat_path);
     if (!flat)
-        error_jump(load_error, ret, "Error loading frame %s", flat_path);
+        error_jump(flat_error, ret, "Error loading frame %s", flat_path);
 
     framedata *frame = framedata_load(frame_path);
     if (!frame)
-        error_jump(load_error, ret, "Error loading frame %s", frame_path);
+        error_jump(frame_error, ret, "Error loading frame %s", frame_path);
 
     framedata *reference = framedata_load(reference_path);
     if (!reference)
-        error_jump(load_error, ret, "Error loading frame %s", reference_path);
+        error_jump(reference_error, ret, "Error loading frame %s", reference_path);
 
     framedata_subtract_bias(frame);
     framedata_subtract_bias(reference);
@@ -1508,11 +1509,14 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     printf("Translation: %d %d\n", xt, yt);
 
 process_error:
-load_error:
-    framedata_free(frame);
     framedata_free(reference);
+reference_error:
+    framedata_free(frame);
+frame_error:
     framedata_free(flat);
+flat_error:
     framedata_free(dark);
+dark_error:
     return ret;
 }
 

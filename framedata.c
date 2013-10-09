@@ -262,13 +262,14 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
         }
         case FRAME_METADATA_DOUBLE:
         {
-            // Allow int to be returned as double
-            if (metadata->type != FRAME_METADATA_DOUBLE &&
-                metadata->type != FRAME_METADATA_INT)
-                return FRAME_METADATA_INVALID_TYPE;
+            // Allow int and string to be returned as double
+            switch (metadata->type)
+            {
+                case FRAME_METADATA_DOUBLE: *(double *)data = metadata->value.d; break;
+                case FRAME_METADATA_INT: *(double *)data = (double)metadata->value.i; break;
+                case FRAME_METADATA_STRING: *(double *)data = atof(metadata->value.s); break;
+            }
 
-            *(double *)data = metadata->type == FRAME_METADATA_DOUBLE ?
-                metadata->value.d : (double)metadata->value.i;
             return FRAME_METADATA_OK;
         }
         case FRAME_METADATA_BOOL:
@@ -465,6 +466,15 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
     if (date && date->type == FRAME_METADATA_STRING)
     {
         *out_time = parse_time(date->value.s);
+        return 0;
+    }
+
+    // Rangahau acquisition timestamps
+    hashmap_get(fd->metadata_map, "UTC", (void **)(&date));
+    if (date && date->type == FRAME_METADATA_STRING)
+    {
+        *out_time = parse_time(date->value.s);
+        out_time->ms = 0;
         return 0;
     }
 

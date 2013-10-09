@@ -598,7 +598,7 @@ int create_reduction_file(char *outname)
 {
     int ret = 0;
 
-    char *filename_fmt = "^%s(-|.)[0-9]+.(fits.gz|fits|fit|FIT)";
+    char *filename_fmt = "^%s(-|.|_)[0-9]+.(fits.gz|fit.gz|fits|fit|FIT)";
     FILE *fileTest = fopen(outname, "w");
     if (fileTest == NULL)
         return error("Unable to create data file: %s. Does it already exist?", outname);

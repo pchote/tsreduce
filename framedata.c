@@ -451,9 +451,10 @@ void framedata_print_metadata(framedata *fd)
 int framedata_start_time(framedata *fd, ts_time *out_time)
 {
     struct frame_metadata *date, *time;
+
+    // Puoko-nui
     hashmap_get(fd->metadata_map, "UTC-DATE", (void **)(&date));
     hashmap_get(fd->metadata_map, "UTC-BEG", (void **)(&time));
-
     if (date && date->type == FRAME_METADATA_STRING &&
         time && time->type == FRAME_METADATA_STRING)
     {
@@ -461,7 +462,7 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
         return 0;
     }
 
-    // Legacy keywords
+    // Puoko-nui (legacy)
     hashmap_get(fd->metadata_map, "GPSTIME", (void **)(&date));
     if (date && date->type == FRAME_METADATA_STRING)
     {
@@ -469,17 +470,17 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
         return 0;
     }
 
-    // Rangahau acquisition timestamps
-    hashmap_get(fd->metadata_map, "UTC", (void **)(&date));
-    if (date && date->type == FRAME_METADATA_STRING)
+    // Quilt
+    hashmap_get(fd->metadata_map, "DATE-OBS", (void **)(&date));
+    hashmap_get(fd->metadata_map, "UTC", (void **)(&time));
+    if (date && date->type == FRAME_METADATA_STRING &&
+        time && time->type == FRAME_METADATA_STRING)
     {
-        *out_time = parse_time(date->value.s);
-        out_time->ms = 0;
+        *out_time = parse_date_time(date->value.s, time->value.s);
         return 0;
     }
 
-    // SBIG CCD-OPS timestamp
-    hashmap_get(fd->metadata_map, "DATE-OBS", (void **)(&date));
+    // SBIG CCD-OPS
     if (date && date->type == FRAME_METADATA_STRING)
     {
         *out_time = parse_time_ccdops(date->value.s);

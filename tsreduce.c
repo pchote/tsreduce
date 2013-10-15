@@ -155,11 +155,10 @@ int main( int argc, char *argv[] )
     else if (argc == 6 && strcmp(argv[1], "bjd") == 0)
         return calculate_bjd(argv[2], argv[3], argv[4], argv[5]);
 
-    else if (argc == 14 && strcmp(argv[1], "noise-histogram") == 0)
+    else if (argc == 11 && strcmp(argv[1], "noise-histogram") == 0)
         return noise_histogram(argv[2], argv[3],
             atof(argv[4]), atof(argv[5]), atoi(argv[6]),
-            atof(argv[7]), atof(argv[8]), atoi(argv[9]),
-            atof(argv[10]), atof(argv[11]), atoi(argv[12]), argv[13]);
+            atof(argv[7]), atof(argv[8]), atoi(argv[9]), argv[10]);
 
     else
         error("Invalid args");

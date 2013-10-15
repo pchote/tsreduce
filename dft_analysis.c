@@ -599,20 +599,8 @@ load_failed_error:
     return ret;
 }
 
-int nonlinear_fit(char *ts_path, char *freq_path)
+int optimize_frequency_fit(struct ts_data *data, double *initialchi2, double *finalchi2)
 {
-    int ret = 0;
-    struct ts_data *data = ts_data_load(ts_path, freq_path);
-    if (!data)
-        error_jump(load_failed_error, ret, "Error processing data");
-
-    double *initial_freq = calloc(data->freq_count, sizeof(double));
-    if (!initial_freq)
-        error_jump(allocation_error, ret, "Error allocating fit_freqs");
-
-    for (size_t j = 0; j < data->freq_count; j++)
-        initial_freq[j] = data->freq[j];
-
     // Vary frequency between x-20 .. x + 20 in 0.01 steps
     double coarse_step = 1.0/(24*3600);
     int32_t coarse_step_count = 5;
@@ -620,7 +608,7 @@ int nonlinear_fit(char *ts_path, char *freq_path)
     int32_t fine_step_count = 10;
 
     double chi2 = ts_data_chi2(data);
-    double initialchi2 = chi2;
+    *initialchi2 = chi2;
     double lastouterchi2 = chi2;
     double lastchi2 = chi2;
     do
@@ -682,12 +670,24 @@ int nonlinear_fit(char *ts_path, char *freq_path)
         }
     } while (chi2 < lastouterchi2);
 
-    printf("%f -> %f (%f)\n", initialchi2, chi2, initialchi2 - chi2);
+	*finalchi2 = chi2;
+	return 0;
+}
+
+int nonlinear_fit(char *ts_path, char *freq_path)
+{
+    int ret = 0;
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+
+	double initialchi2, finalchi2;
+	optimize_frequency_fit(data, &initialchi2, &finalchi2);
+
+    printf("%f -> %f (%f)\n", initialchi2, finalchi2, initialchi2 - finalchi2);
     for (size_t i = 0; i < data->freq_count; i++)
         printf("%-4s %7.2f %d\n", data->freq_label[i], 1e6*data->freq[i], data->freq_mode[i]);
 
-    free(initial_freq);
-allocation_error:
     ts_data_free(data);
 load_failed_error:
     return ret;
@@ -777,9 +777,6 @@ static void step_freq_fit(struct ts_data *data, double freq_min, double freq_max
     *best_chi2 = DBL_MAX;
     while (fit_freq <= freq_max)
     {
-        for (size_t j = 0; j < data->freq_count; j++)
-            data->freq[j] = 1e-6*(j+1)*fit_freq;
-
         if (ts_data_fit_sinusoids(data))
         {
             fprintf(stderr, "fit failed\n");

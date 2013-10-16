@@ -1016,5 +1016,74 @@ noise_histogram_failed:
     ts_data_free(data);
 load_failed_error:
     return ret;
+}
 
+int o_minus_c(const char *data, const char *str_ref_bjd, long double period, long double phase_offset)
+{
+    int ret = 0;
+
+    FILE *file = fopen(data, "r");
+    if (!file)
+        return error("Unable to open file: %s", data);
+
+    // Count the number of entries to allocate
+    char linebuf[1024];
+    size_t total = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL)
+        if (linebuf[0] != '#' && linebuf[0] != '\n')
+            total++;
+
+    rewind(file);
+
+    long double *bjd = calloc(total, sizeof(long double));
+    if (!bjd)
+        error_jump(bjd_alloc_error, ret, "Error allocating bjdb array");
+
+    double *phase = calloc(total, sizeof(double));
+    if (!phase)
+        error_jump(phase_alloc_error, ret, "Error allocating phase array");
+
+    size_t num = 0;
+    while (fgets(linebuf, sizeof(linebuf)-1, file) != NULL && num < total)
+    {
+        // Skip comment / empty lines
+        if (linebuf[0] == '#' || linebuf[0] == '\n')
+            continue;
+
+        int read = sscanf(linebuf, "%Lf %lf %*s\n", &bjd[num], &phase[num]);
+        if (read != 2)
+            error_jump(invalid_data_error, ret, "Invalid data line (%d entries)", read);
+
+        num++;
+    }
+    fclose(file);
+
+    long double ref_bjd;
+    sscanf(str_ref_bjd, "%Lf", &ref_bjd);
+
+    printf("# Reference BJD: %Lf\n", ref_bjd);
+    printf("# Reference period: %Lf\n", period);
+    printf("#        dBJD          cycles           dphase           dsec\n");
+    for (size_t i = 0; i < total; i++)
+    {
+        long double dbjd = bjd[i] - ref_bjd;
+        long double cycles = dbjd*86400.0L / period;
+
+        //long double cyclesa = (dbjda * (long double)86400.0 / period);
+        //long double cyclesb = (dbjdb * (long double)8.64e-5 / period);
+        long double offset = cycles*2*M_PI - phase[i] + phase_offset;
+        while (offset > M_PI)
+            offset -= 2*M_PI;
+        while (offset < -M_PI)
+            offset += 2*M_PI;
+
+        printf("%15.6Lf %15.6Lf %15.6Lf %15.6Lf\n", dbjd, cycles, offset, offset * period / (2 * M_PI));
+    }
+
+invalid_data_error:
+    free(phase);
+phase_alloc_error:
+    free(bjd);
+bjd_alloc_error:
+    return ret;
 }

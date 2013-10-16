@@ -18,6 +18,7 @@
 struct ts_data
 {
     // Timeseries data
+	double bjd;
     double *time;
     double *mma;
     double *err;
@@ -62,8 +63,20 @@ static int load_tsfile(const char *ts_path, struct ts_data *data)
 
     size_t total = 0;
     while (fgets(linebuf, sizeof(linebuf) - 1, file))
+	{
+		// Load time header
+		if (linebuf[0] == '#' && strncmp(linebuf, "# Reference time:", 17) == 0)
+		{
+			char bjd[128];
+	        sscanf(linebuf, "# Reference time: %*d-%*d-%*d %*d:%*d:%*f UTC; %s BJD\n", bjd);
+
+			data->bjd = atof(bjd);
+            printf("%s %f\n", bjd, data->bjd);
+		}
+
         if (linebuf[0] != '#' && linebuf[0] != '\n')
             total++;
+	}
     rewind(file);
 
     data->time = calloc(total, sizeof(double));

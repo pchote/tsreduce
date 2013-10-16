@@ -18,6 +18,7 @@
 struct ts_data
 {
     // Timeseries data
+	double bjda, bjdb;
     double *time;
     double *mma;
     double *err;
@@ -62,8 +63,22 @@ static int load_tsfile(const char *ts_path, struct ts_data *data)
 
     size_t total = 0;
     while (fgets(linebuf, sizeof(linebuf) - 1, file))
+	{
+		// Load time header
+		if (linebuf[0] == '#' && strncmp(linebuf, "# Reference time:", 17) == 0)
+		{
+			int bjda, bjdb;
+	        int r = sscanf(linebuf, "# Reference time: %*d-%*d-%*d %*d:%*d:%*f UTC; %d.%d BJD\n", &bjda, &bjdb);
+			if (r != 2)
+		        error_jump(allocation_error, ret, "Invalid time header: `%s`", linebuf);
+
+			data->bjda = bjda;
+			data->bjdb = bjdb > 0 ? copysign(bjdb / pow(10, (int)log10(bjdb) + 1), bjda) : 0;
+		}
+
         if (linebuf[0] != '#' && linebuf[0] != '\n')
             total++;
+	}
     rewind(file);
 
     data->time = calloc(total, sizeof(double));
@@ -91,7 +106,6 @@ static int load_tsfile(const char *ts_path, struct ts_data *data)
     }
     data->obs_count = count;
     fclose(file);
-
     return ret;
 
 allocation_error:

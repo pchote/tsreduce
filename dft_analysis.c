@@ -981,9 +981,10 @@ int noise_histogram(const char *ts_path, const char *freq_path,
 			printf("Noise histogram failed\n");
 
 	    double data_gaussian[3];
-	    if (histogram_fit_analytic_gaussian(data_histogram,mean - 5*std, mean + 5*std, data_gaussian))
+	    if (histogram_fit_analytic_gaussian(data_histogram, mean - 5*std, mean + 5*std, data_gaussian))
 	        printf("Noise histogram fit failed\n");
 
+        histogram_free(data_histogram);
     	fprintf(randomized, " %8.5f", data_gaussian[2]);
 		
 		// Output values to collated data files

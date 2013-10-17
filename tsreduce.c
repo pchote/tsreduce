@@ -163,6 +163,9 @@ int main( int argc, char *argv[] )
     else if (argc == 6 && strcmp(argv[1], "omc") == 0)
          return o_minus_c(argv[2], argv[3], (long double)atof(argv[4]), (long double)atof(argv[5]));
 
+    else if (argc == 4 && strcmp(argv[1], "run-data") == 0)
+        return print_run_data(argv[2], atof(argv[3]));
+
     else
         error("Invalid args");
     return 0;

@@ -1087,3 +1087,19 @@ phase_alloc_error:
 bjd_alloc_error:
     return ret;
 }
+
+int print_run_data(const char *ts_path, double exptime)
+{
+    int ret = 0;
+    struct ts_data *data = ts_data_load(ts_path, NULL);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+
+    long double bjd = (long double)data->bjda + (long double)data->bjdb;
+    double run_length = data->time[data->obs_count - 1] - data->time[0];
+    printf("%s & %.8Lf & %.2f & %zu & %.0f\\\\\n", ts_path, bjd, run_length / 86400, data->obs_count, data->obs_count * exptime / run_length * 100);
+
+    ts_data_free(data);
+load_failed_error:
+    return ret;
+}

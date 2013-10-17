@@ -44,11 +44,56 @@ static int free_metadata_entry(any_t unused, any_t _meta)
     return MAP_OK;
 }
 
+static int load_and_fix_padding(const char *filename, uint8_t **framedata, size_t *length)
+{
+    *framedata = NULL;
+    *length = 0;
+
+    FILE *frame = fopen(filename, "r");
+    if (!frame)
+        return error("Unable to open frame %s", filename);
+
+    // Query file size
+    fseek(frame, 0L, SEEK_END);
+    size_t file_size = (size_t)ftell(frame);
+    fseek(frame, 0L, SEEK_SET);
+
+    size_t mem_size = 2880 * (file_size / 2880);
+    if (mem_size != file_size)
+    {
+        error("Warning: Truncated file detected: %s", filename);
+
+        // Add an extra block to hold the remainder plus padding
+        mem_size += 2880;
+    }
+
+    uint8_t *data = calloc(mem_size, sizeof(uint8_t));
+    if (!data)
+    {
+        fclose(frame);
+        return error("Unable to allocate %zu bytes for %s", mem_size, filename);
+    }
+
+    if (fread(data, sizeof(uint8_t), file_size, frame) != file_size)
+    {
+        free(data);
+        fclose(frame);
+        return error("Unable to read %zu bytes from %s", file_size, filename);
+    }
+
+    fclose(frame);
+
+    *framedata = data;
+    *length = mem_size;
+    return 0;
+}
+
 framedata *framedata_load(const char *filename)
 {
     int ret = 0;
     int status = 0;
     fitsfile *input;
+    uint8_t *padded_data = NULL;
 
     // Suppress unused variable warning
     (void)ret;
@@ -66,6 +111,31 @@ framedata *framedata_load(const char *filename)
             error("%s\n", fitserr);
 
         error_jump(error, ret, "fits_open_image failed with error %d; %s", status, filename);
+    }
+
+    // The FITS specification requires files be an integer number of 2880 blocks.
+    // If the length doesn't match then the file may be corrupted or saved by
+    // software that violates the specification (e.g. Quilt).
+    //
+    // It is assumed that any uncompressed files that aren't an integer block size have
+    // been saved using Quilt, and are padded to the required length and re-opened.
+    // This may produce unexpected results if the frame was truncated for other reasons
+    // (e.g. interrupted transfer).
+
+    char type[20]; // MAX_PREFIX_LEN from cfitsio's cfileio.c
+    fits_url_type(input, type, &status);
+
+    if (strcmp("file://", type) == 0 && (input->Fptr->filesize % 2880) != 0)
+    {
+        size_t length = 0;
+        if (load_and_fix_padding(filename, &padded_data, &length))
+            error_jump(error, ret, "load_and_fix_padding failed for frame: %s", filename);
+
+        fits_close_file(input, &status);
+        if (fits_open_memfile(&input, filename, READONLY, (void **)(&padded_data), &length, 0, NULL, &status))
+        {
+            error_jump(error, ret, "fits_open_memfile failed with error %d; %s", status, filename);
+        }
     }
 
     // Query the image size
@@ -152,17 +222,20 @@ framedata *framedata_load(const char *filename)
                 break;
             }
         }
-
     }
 
     fits_close_file(input, &status);
+    if (padded_data)
+        free(padded_data);
 
     return fd;
 
 error:
-    framedata_free(fd);
-
     fits_close_file(input, &status);
+    framedata_free(fd);
+    if (padded_data)
+        free(padded_data);
+
     return NULL;
 }
 

@@ -301,40 +301,7 @@ struct histogram_data *histogram_create(double *data, size_t count, double minim
     return hd;
 }
 
-int histogram_fit_analytic_gaussian(struct histogram_data *hd, double fit_min, double fit_max, double params[3])
-{
-    int ret = 0;
-
-    double *center = calloc(hd->bin_count, sizeof(double));
-    double *count = calloc(hd->bin_count, sizeof(double));
-    if (!center || !count)
-        error_jump(error, ret, "Histogram fit allocation failed");
-
-    size_t n = 0;
-    for (size_t i = 0; i < hd->bin_count; i++)
-    {
-        // Discard zero values (which break the fit) and bins outside the requested fit range
-        if (hd->count[i] == 0 || hd->center[i] - hd->bin_width/2 < fit_min || hd->center[i] + hd->bin_width/2 > fit_max)
-            continue;
-
-        // Transform center of range to 0
-        center[n] = hd->center[i] - (fit_min + fit_max) / 2;
-        count[n] = hd->count[i];
-        n++;
-    }
-
-    if (fit_analytical_gaussian(center, count, n, params))
-        error_jump(error, ret, "Fit failed");
-
-    // Correct offset
-    params[1] += (fit_min + fit_max) / 2;
-error:
-    free(count);
-    free(center);
-    return ret;
-}
-
-int histogram_fit_gaussian(struct histogram_data *hd, double center, double max_sigma, double *sigma, double *amplitude)
+int histogram_fit_gaussian(struct histogram_data *hd, bool fit_center, double step_sigma, double *center, double *amplitude, double *sigma)
 {
     int ret = 0;
 
@@ -350,24 +317,39 @@ int histogram_fit_gaussian(struct histogram_data *hd, double center, double max_
         if (hd->count[i] == 0)
             continue;
 
-        // Transform center of range to 0
-        x[n] = hd->center[i] - center;
+        x[n] = hd->center[i];
         y[n] = hd->count[i];
         n++;
     }
-	double step_sigma = 0.01;
-	printf("Fitting gaussian with %zu points between %f and %f with sigma between %f and %f in %f steps\n", n, x[0], x[n-1], hd->bin_width, max_sigma, step_sigma);
-    if (fit_gaussian(x, y, n, hd->bin_width, max_sigma, step_sigma, sigma, amplitude))
+
+    // Fit with an analytic gaussian as a rough initial guess
+    double params[3];
+    if (fit_analytical_gaussian(x, y, n, params))
+        error_jump(error, ret, "Analytic Fit failed");
+
+    // Center histogram
+    if (fit_center)
+    {
+        *center = params[1];
+        for (size_t i = 0; i < n; i++)
+            x[i] -= params[1];
+    }
+    else
+        *center = 0;
+
+    double min_sigma = fmax((int)(hd->bin_width / step_sigma), 1) * step_sigma;        
+    double max_sigma = (int)(params[2] * 4 / step_sigma) * step_sigma;
+
+    if (fit_gaussian(x, y, n, min_sigma, max_sigma, step_sigma, sigma, amplitude))
         error_jump(error, ret, "Fit failed");
 
-	printf("found best-fit parameters %f %f\n", *sigma, *amplitude);
 error:
     free(x);
     free(y);
     return ret;
 }
 
-int histogram_export(struct histogram_data *hd, double gaussian_params[3], const char *path)
+int histogram_export(struct histogram_data *hd, double center, double amplitude, double sigma, const char *path)
 {
     int ret = 0;
 
@@ -375,11 +357,11 @@ int histogram_export(struct histogram_data *hd, double gaussian_params[3], const
     if (!output)
         error_jump(file_error, ret, "Unable to open histogram for writing: %s", path);
 
-    fprintf(output, "# Fit parameters: ampl: %g mu: %g sigma: %g\n", gaussian_params[0], gaussian_params[1], gaussian_params[2]);
+    fprintf(output, "# Fit parameters: ampl: %g mu: %g sigma: %g\n", amplitude, center, sigma);
     for (size_t i = 0; i < hd->bin_count; i++)
     {
-        double arg = (hd->center[i] - gaussian_params[1])/gaussian_params[2];
-        double fit = gaussian_params[0]*exp(-0.5*arg*arg);
+        double arg = (hd->center[i] - center)/sigma;
+        double fit = amplitude*exp(-0.5*arg*arg);
         fprintf(output, "%g %g %zu %g %g\n", hd->center[i] - hd->bin_width/2, hd->center[i] + hd->bin_width/2, hd->count[i], hd->center[i], fit);
     }
 
@@ -859,13 +841,12 @@ int noise_histogram(const char *ts_path, const char *freq_path,
     if (!noise_histogram)
         error_jump(noise_histogram_failed, ret, "Noise histogram failed");
 
-    double noise_gaussian[3] = {0,0,0};
-	double max_sigma = 20;
-    if (histogram_fit_gaussian(noise_histogram, 0, max_sigma, &noise_gaussian[2], &noise_gaussian[0]))
+    double noise_center, noise_amplitude, noise_sigma;
+    if (histogram_fit_gaussian(noise_histogram, false, 0.01, &noise_center, &noise_amplitude, &noise_sigma))
         error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
 
     snprintf(output_path_buffer, output_path_len, "%s.hist", output_prefix);
-    if (histogram_export(noise_histogram, noise_gaussian, output_path_buffer))
+    if (histogram_export(noise_histogram, noise_center, noise_amplitude, noise_sigma, output_path_buffer))
         error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
 
     snprintf(output_path_buffer, output_path_len, "%s.rand", output_prefix);
@@ -873,7 +854,7 @@ int noise_histogram(const char *ts_path, const char *freq_path,
     if (!randomized)
         error_jump(randomized_failed, ret, "Unable to open randomized data for writing: %s", output_path_buffer);
 
-    uint32_t seed = time(NULL);
+    uint32_t seed = 1381894841;//time(NULL);
     random_generator *rand = random_create(seed);
     if (!rand)
         error_jump(rand_error, ret, "Error creating random generator");
@@ -892,7 +873,8 @@ int noise_histogram(const char *ts_path, const char *freq_path,
         error_jump(ampl_alloc_error, ret, "Error copying amplitudes");
 
 	// Generate a data table for all the results
-	double *calculated = calloc(2*data->freq_count*randomize_count, sizeof(double));
+	double *calculated_amplitude = calloc(data->freq_count*randomize_count, sizeof(double));
+	double *calculated_phase = calloc(data->freq_count*randomize_count, sizeof(double));
 
     // Synthesize artificial data with random noise and find best-fit phase
     fprintf(randomized, "# Files: %s %s\n", ts_path, freq_path);
@@ -916,7 +898,7 @@ int noise_histogram(const char *ts_path, const char *freq_path,
 
         for (size_t i = 0; i < data->obs_count; i++)
         {
-            data->mma[i] = random_normal(rand, noise_gaussian[1], noise_gaussian[2]);
+            data->mma[i] = random_normal(rand, noise_center, noise_sigma);
             for (size_t j = 0; j < data->freq_count; j++)
             {
                 double phase = 2*M_PI*data->freq[j]*data->time[i];
@@ -943,7 +925,7 @@ int noise_histogram(const char *ts_path, const char *freq_path,
 
 				if (k > 0)
 				{
-					double last = calculated[(2*j + 1)*randomize_count + k - 1];
+					double last = calculated_phase[j*randomize_count + k - 1];
 					double delta = phase - last;
 					if (delta > M_PI)
 						phase -= 2*M_PI;
@@ -951,8 +933,8 @@ int noise_histogram(const char *ts_path, const char *freq_path,
 						phase += 2*M_PI;
 				}
 
-				calculated[2*j*randomize_count + k] = ampl;
-				calculated[(2*j + 1)*randomize_count + k] = phase;
+				calculated_amplitude[j*randomize_count + k] = ampl;
+				calculated_phase[j*randomize_count + k] = phase;
 	        	fprintf(randomized, " %8.5f %8.5f", ampl, phase);
 			}
 		}
@@ -962,44 +944,32 @@ int noise_histogram(const char *ts_path, const char *freq_path,
     }
 
 	fprintf(randomized, "#");
-    for (size_t j = 0; j < 2*data->freq_count; j++)
+    for (size_t j = 0; j < data->freq_count; j++)
 	{
-		// Initial guess of mean and standard deviation
-		double mean = 0;
-		for (size_t i = 0; i < randomize_count; i++)
-			mean += calculated[j*randomize_count + i];
-		mean /= randomize_count;
-
-	    double std = 0;
-	    for (size_t i = 0; i < randomize_count; i++)
-	        std += (calculated[j*randomize_count + i] - mean) * (calculated[j*randomize_count + i] - mean);
-	    std = sqrt(std / randomize_count);
-
 		// Use the guess to calculate a proper fit
-	    struct histogram_data *data_histogram = histogram_create(&calculated[j*randomize_count], randomize_count, mean - 5*std, mean + 5*std, 100);
-	    if (!data_histogram)
+	    struct histogram_data *phase_histogram = histogram_create(&calculated_phase[j*randomize_count], randomize_count, 0, 2*M_PI, 1000);
+	    if (!phase_histogram)
 			printf("Noise histogram failed\n");
 
-	    double data_gaussian[3];
-	    if (histogram_fit_analytic_gaussian(data_histogram, mean - 5*std, mean + 5*std, data_gaussian))
-	        printf("Noise histogram fit failed\n");
+        double phase_center, phase_amplitude, phase_sigma;
+        if (histogram_fit_gaussian(phase_histogram, true, 0.0001, &phase_center, &phase_amplitude, &phase_sigma))
+            error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
 
-        histogram_free(data_histogram);
-    	fprintf(randomized, " %8.5f", data_gaussian[2]);
+        char foo[1024];        
+        snprintf(foo, 1024, "%s.hist.%s.lo", output_prefix, data->freq_label[j]);
+        histogram_export(phase_histogram, phase_center, phase_amplitude, phase_sigma, foo);
+        histogram_free(phase_histogram);
+    	fprintf(randomized, " %8.5f %8.5f", phase_sigma, 0.0f);
 		
 		// Output values to collated data files
-		bool is_phase = (j % 2) == 1;
-        double a = orig_ampl[2*(j / 2)+1];
-        double b = orig_ampl[2*(j / 2)];
-		
-		double value = is_phase ? atan2(b, a) : sqrt(a*a + b*b);
-        while (is_phase && value > 2*M_PI) value -= 2*M_PI;
-        while (is_phase && value < 0) value += 2*M_PI;
+		double value = atan2(orig_ampl[2*j], orig_ampl[2*j + 1]);
+        while (value > 2*M_PI) value -= 2*M_PI;
+        while (value < 0) value += 2*M_PI;
 
 		char outname[1024];
-		snprintf(outname, 1024, "%s.%s", data->freq_label[j / 2], is_phase ? "phase" : "ampl");
+		snprintf(outname, 1024, "%s.%s", data->freq_label[j], "phase");
 	    FILE *out = fopen(outname, "a");
-		fprintf(out, "%.8Lf %10.5f %10.5f %s %s\n", (long double)data->bjda + (long double)data->bjdb, value, data_gaussian[2], ts_path, freq_path);
+		fprintf(out, "%.8Lf %10.5f %10.5f %10.5f %s %s\n", (long double)data->bjda + (long double)data->bjdb, value, phase_center, phase_sigma, ts_path, freq_path);
 		fclose(out);
 	}
 	fprintf(randomized, "\n");
@@ -1104,3 +1074,4 @@ int print_run_data(const char *ts_path, double exptime)
 load_failed_error:
     return ret;
 }
+

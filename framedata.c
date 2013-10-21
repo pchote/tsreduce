@@ -88,6 +88,13 @@ static int load_and_fix_padding(const char *filename, uint8_t **framedata, size_
     return 0;
 }
 
+static void print_fits_error()
+{
+    char fitserr[128];
+    while (fits_read_errmsg(fitserr))
+        error("%s\n", fitserr);
+}
+
 framedata *framedata_load(const char *filename)
 {
     int ret = 0;
@@ -106,10 +113,7 @@ framedata *framedata_load(const char *filename)
 
     if (fits_open_image(&input, filename, READONLY, &status))
     {
-        char fitserr[128];
-        while (fits_read_errmsg(fitserr))
-            error("%s\n", fitserr);
-
+        print_fits_error();
         error_jump(error, ret, "fits_open_image failed with error %d; %s", status, filename);
     }
 
@@ -134,6 +138,7 @@ framedata *framedata_load(const char *filename)
         fits_close_file(input, &status);
         if (fits_open_memfile(&input, filename, READONLY, (void **)(&padded_data), &length, 0, NULL, &status))
         {
+            print_fits_error();
             error_jump(error, ret, "fits_open_memfile failed with error %d; %s", status, filename);
         }
     }
@@ -142,7 +147,10 @@ framedata *framedata_load(const char *filename)
     fits_read_key(input, TINT, "NAXIS1", &fd->cols, NULL, &status);
     fits_read_key(input, TINT, "NAXIS2", &fd->rows, NULL, &status);
     if (status)
+    {
+        print_fits_error();
         error_jump(error, ret, "querying NAXIS failed");
+    }
 
     fd->data = (double *)malloc(fd->cols*fd->rows*sizeof(double));
     if (!fd->data)
@@ -154,7 +162,10 @@ framedata *framedata_load(const char *filename)
     // Load header keys
     int keyword_count = 0;
     if (fits_get_hdrspace(input, &keyword_count, NULL, &status))
+    {
+        print_fits_error();
         error_jump(error, ret, "fits_get_hdrspace failed");
+    }
 
     for (size_t i = 0; i < keyword_count; i++)
     {
@@ -165,7 +176,10 @@ framedata *framedata_load(const char *filename)
 
         // We're only interested in user keys
         if (fits_read_record(input, i + 1, card, &status))
+        {
+            print_fits_error();
             error_jump(error, ret, "Error reading card %zu", i);
+        }
 
         // Ignore keywords we aren't interested in
         int class = fits_get_keyclass(card);
@@ -173,12 +187,16 @@ framedata *framedata_load(const char *filename)
             continue;
 
         if (fits_read_keyn(input, i + 1, key, value, comment, &status))
+        {
+            print_fits_error();
             error_jump(error, ret, "Error reading key %zu", i);
+        }
 
         // Parse value
         char type;
         if (fits_get_keytype(value, &type, &status))
         {
+            print_fits_error();
             error("Unable to determine type for key '%s' - skipping.", key);
             continue;
         }
@@ -189,7 +207,10 @@ framedata *framedata_load(const char *filename)
             {
                 LONGLONG val;
                 if (ffc2jj(value, &val, &status))
+                {
+                    print_fits_error();
                     error_jump(error, ret, "Error parsing '%s' as integer", value);
+                }
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_INT, &(int64_t){val}, comment);
                 break;
@@ -198,7 +219,10 @@ framedata *framedata_load(const char *filename)
             {
                 double val;
                 if (ffc2dd(value, &val, &status))
+                {
+                    print_fits_error();
                     error_jump(error, ret, "Error parsing '%s' as double", value);
+                }
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_DOUBLE, &val, comment);
                 break;
@@ -207,7 +231,10 @@ framedata *framedata_load(const char *filename)
             {
                 int val;
                 if (ffc2ll(value, &val, &status))
+                {
+                    print_fits_error();
                     error_jump(error, ret, "Error parsing '%s' as boolean", value);
+                }
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_BOOL, &(bool){val}, comment);
                 break;
@@ -216,7 +243,10 @@ framedata *framedata_load(const char *filename)
             {
                 char val[FLEN_VALUE];
                 if (ffc2s(value, val, &status))
+                {
+                    print_fits_error();
                     error_jump(error, ret, "Error parsing '%s' as type '%c'", value, type);
+                }
 
                 framedata_put_metadata(fd, key, FRAME_METADATA_STRING, val, comment);
                 break;
@@ -279,7 +309,10 @@ int framedata_save(framedata *fd, const char *path)
 
     // Write the frame data to the image
     if (fits_write_img(out, TDOUBLE, 1, fd->rows*fd->cols, fd->data, &status))
+    {
+        print_fits_error();
         error("fits_write_img failed with status %d", status);
+    }
 
     fits_close_file(out, &status);
     return 0;

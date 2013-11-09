@@ -5,10 +5,8 @@
 
 USE_READLINE := TRUE
 
-CC = gcc
-LINKER = gcc
-CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE
-LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm
+CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE -I/usr/local/include/
+LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -L/usr/local/lib/
 
 ifeq ($(USE_READLINE),TRUE)
     LFLAGS += -lreadline

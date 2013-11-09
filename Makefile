@@ -5,8 +5,6 @@
 
 USE_READLINE := TRUE
 
-CC = gcc
-LINKER = gcc
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE
 LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm
 
@@ -18,14 +16,17 @@ endif
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
     LINKER = gfortran
-	CFLAGS += -D_DARWIN_C_SOURCE
-    LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng
+	CFLAGS += -D_DARWIN_C_SOURCE -I/usr/local/include/
+    LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng -L/usr/local/lib
 
     # Requires newer libreadline than osx provides by default - installed with hombrew
     ifeq ($(USE_READLINE),TRUE)
         LFLAGS += -L/usr/local/opt/readline/lib
         CFLAGS += -I/usr/local/opt/readline/include
     endif
+else
+	CC = gcc
+	LINKER = gcc
 endif
 
 SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c plots.c random.c hashmap.c

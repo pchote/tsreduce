@@ -492,11 +492,16 @@ int update_reduction(char *dataPath)
         }
 
         // Calculate time at the start of the exposure relative to ReferenceTime
-        ts_time frame_time;
-        if (framedata_start_time(frame, &frame_time))
-            error_jump(process_error, ret, "No known time headers found");
+        //ts_time frame_time;
+        //if (framedata_start_time(frame, &frame_time))
+         //   error_jump(process_error, ret, "No known time headers found");
 
-        double midtime = ts_difftime(frame_time, data->reference_time) + exptime / 2;
+        double midtime;// = ts_difftime(frame_time, data->reference_time) + exptime / 2;
+        if (framedata_get_metadata(frame, "CCD-TIME", FRAME_METADATA_DOUBLE, &midtime))
+        {
+            framedata_free(frame);
+            error_jump(process_error, ret, "CCD-TIME undefined in %s", frame_paths[i]);
+        }
 
         // Process frame
         framedata_subtract_bias(frame);
@@ -517,10 +522,12 @@ int update_reduction(char *dataPath)
         double nan = sqrt(-1);
 
         // Estimate translation from reference frame
-        int32_t xt, yt;
-        if (framedata_estimate_translation(frame, reference, &xt, &yt))
-            error_jump(process_error, ret, "Error calculating frame translation");
+        //int32_t xt, yt;
+        //if (framedata_estimate_translation(frame, reference, &xt, &yt))
+        //    error_jump(process_error, ret, "Error calculating frame translation");
 
+        int32_t xt = 0;
+        int32_t yt = 0;
         for (size_t i = 0; i < data->target_count; i++)
         {
             // Offset aperture position by frame offset
@@ -531,11 +538,11 @@ int update_reduction(char *dataPath)
             obs->star[i] = 0;
             obs->noise[i] = 0;
             obs->sky[i] = 0;
-            obs->pos[i] = (double2){0,0};
+            obs->pos[i] = (double2){a.x,a.y};
             obs->fwhm[i] = 0;
 
             bool failed = false;
-            if (!center_aperture(a, frame, &obs->pos[i]))
+            //if (!center_aperture(a, frame, &obs->pos[i]))
             {
                 double bg = 0;
                 if (calculate_background(a, frame, &bg, NULL))
@@ -553,8 +560,8 @@ int update_reduction(char *dataPath)
                 if (obs->fwhm[i] < 0)
                     failed = true;
             }
-            else
-                failed = true;
+            //else
+            //    failed = true;
 
             if (failed)
             {

@@ -1,12 +1,17 @@
+==================== CONFIGURE TOOLCHAIN ====================
 
-Windows:
+First follow the instructions from INSTALL.windows in the Puoko-nui repository to set up MSYS and MinGW-w64.
 
-This assumes that MinGW, git etc are set up as instructed for the puoko-nui acquisition program
+==================== INSTALL DEPENDENCIES ====================
 
 The home directory path "~" below refers to the MinGW home directory
 
 Download the mingw regex library from http://sourceforge.net/projects/mingw/files/Other/UserContributed/regex/mingw-regex-2.5.1/
-Extract, ./configure, make, and install
+
+Compile with
+$ ./configure
+$ make
+$ make install
 
 Download the original PGPLOT 5.2.2 code from ftp://ftp.astro.caltech.edu/pub/pgplot/pgplot522.tar.gz and extract to ~/pgplot
 
@@ -14,9 +19,6 @@ Download the PGPLOT patch for windows 7 from http://www.ii.uib.no/~avle/pgplot.h
 Extract the files in patchfor522.zip on top of ~/pgplot
 
 ======== 32-bit MinGW only ========
-Install gfortran by running the following command from the MinGW shell
-$ mingw-get install fortran
-
 Insert the following code in ~/pgplot/sys/gruser.c between the lines "char *getlogin();" and "void GRUSER(string, length, maxlen)"
 
 #if defined __MINGW32__ && !defined HAVE_GETLOGIN
@@ -39,30 +41,19 @@ w32_getlogin (void)
 #define HAVE_GETLOGIN 1
 #endif
 
-The dll path for libgfortran-3 is broken, so copy the dlls to somewhere more useful
-TODO: copy dlls to /usr/local/bin
-
 ======== End 32-bit MinGW only ========
-======== 64-bit MinGW only ========
-
-The dll path for libgfortran-3 is broken, so copy the dlls to somewhere more useful
-cp /mingw/x86_64-w64-mingw32/lib/*.dll /usr/local/bin
-
-======== End 64-bit MinGW only ========
-
-TODO: Copy dlls to tsreduce folder so it can be run from windows
 
 Create a dir ~/pgplot-5.2 and cd into it
 Copy the new drivers.list into ~/pgplot-5.2
 The following should run without problems
 
-../pgplot/makemake ../pgplot win7
-make
-make cpg
+Compile with
+$ ../pgplot/makemake ../pgplot win7
+$ make
+$ make cpg
 
 Install the library by copying the files:
 cp libpgplot.a libcpgplot.a /usr/local/lib
-cp libcpgplot.a /usr/local/lib
 cp cpgplot.h /usr/local/include
 mkdir /usr/local/share/pgplot
 cp grfont.dat rgb.txt /usr/local/share/pgplot
@@ -77,12 +68,18 @@ $ cd sofa
 $ patch -p1 < ../debian_patches_set_installation_path.patch
 $ patch -p1 < ../debian_patches_create_shared_lib.patch
 $ cd 20120301_a/c/src/
+
+Edit the Makefile to set `INSTALL_DIR = /usr/local`
+
 $ make
 $ make install
 
-You may need to edit the makefile to remove the -Wl,-soname option and/or edit the INSTALL_PATH to a different location (like /usr/local).
+==================== BUILD TSREDUCE ====================
 
 Return to the home directory and checkout and build the tsreduce code
-git clone https://github.com/pchote/tsreduce.git
-cd tsreduce
-make USE_READLINE=false
+$ cd ~
+$ git clone https://github.com/pchote/tsreduce.git
+$ cd tsreduce
+$ make USE_READLINE=false
+
+Append `:~/tsreduce` to the PATH definition in ~/.profile to add tsreduce to the system path.

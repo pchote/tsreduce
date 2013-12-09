@@ -737,8 +737,8 @@ int animated_window(char *ts_path)
 
     double display_freq_min = 500;
     double display_freq_max = 4000;
-    double display_freq_step = 5;
-    double window_length = 4.0*3600; // 4h
+    double display_freq_step = 1;
+    double window_length = 2.0*3600; // 4h
     size_t window_increment = 2; // Number of data points to step through each iteration
 
     size_t display_freq_count = (size_t)((display_freq_max - display_freq_min)/display_freq_step);
@@ -761,6 +761,9 @@ int animated_window(char *ts_path)
     struct ts_data *data = calloc(1, sizeof(struct ts_data));
     if (!data)
         return 1;
+
+    if (load_tsfile(ts_path, data))
+        error_jump(load_failed_error, ret, "Error loading timeseries data");
 
     double *display_dftfreq = (double *)malloc(display_freq_count*sizeof(double));
     if (!display_dftfreq)
@@ -809,7 +812,7 @@ int animated_window(char *ts_path)
     cpgsvp(0.1, 0.9, 0.075, 0.5);
     cpgmtxt("l", 2, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("b", 2, 0.5, 0.5, "Time (Hours)");
-
+    
     for (size_t i = 0, window_start = 0; window_start < data->obs_count; i++, window_start += window_increment)
     {
         // Calculate window_end
@@ -954,6 +957,7 @@ display_dftampl_alloc_error:
     free(display_dftfreq);
 display_dftfreq_alloc_error:
     ts_data_free(data);
+load_failed_error:
     return ret;
 }
 
@@ -1110,6 +1114,165 @@ freq_alloc_error:
     free(time);
 time_alloc_error:
     fclose(file);
+load_failed_error:
+    return ret;
+}
+
+static void set_color_table()
+{
+    float l[9] = {0.0, 0.005, 0.17, 0.33, 0.50, 0.67, 0.83, 1.0, 1.7};
+    float r[9] = {0.0, 0.0, 0.0, 0.0, 0.6, 1.0, 1.0, 1.0, 1.0};
+    float g[9] = {0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.6, 0.0, 1.0};
+    float b[9] = {0.0, 0.3, 0.8, 1.0, 0.3, 0.0, 0.0, 0.0, 1.0};
+    cpgctab(l, r, g, b, 9, 1.0, 0.5);
+}
+
+int colorplot(const char *ts_path)
+{
+    int ret = 0;
+
+    struct ts_data *data = calloc(1, sizeof(struct ts_data));
+    if (!data)
+        return 1;
+
+    if (load_tsfile(ts_path, data))
+        error_jump(load_failed_error, ret, "Error loading timeseries data");
+
+    double freq_min = 500;
+    double freq_max = 4000;
+    size_t freq_steps = 700;
+    size_t time_steps = 500;
+    double window_extent = 6840;
+
+    freq_min = 750;
+    freq_max = 1050;
+    freq_steps = 100;
+    time_steps = 400;
+    
+    double time_min = data->time[0] + window_extent;
+    double time_max = data->time[data->obs_count - 1] - window_extent;
+
+    double *mmi_windowed = (double *)malloc(data->obs_count*sizeof(double));
+    if (!mmi_windowed)
+        error_jump(mmi_windowed_alloc_error, ret, "Error allocating mmi_windowed");
+
+    if (cpgopen("plot.ps/cps") <= 0)
+        error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
+
+    // 800 x 480
+    cpgpap(9.41, 0.6);
+    cpgask(0);
+    cpgslw(3);
+    cpgsfs(2);
+    cpgscf(2);
+
+
+    printf("%zu\n", data->obs_count);
+
+	float x_scale = (time_max-time_min)/(time_steps-1);
+	float y_scale = (freq_max-freq_min)/(freq_steps-1);
+	float tr[] = {time_min-x_scale, x_scale, 0, freq_min-y_scale, 0, y_scale};
+
+	float min_amplitude = 0;
+	float max_amplitude = 50;
+	float *amplitude = calloc(time_steps*freq_steps, sizeof(float));
+    if (!amplitude)
+        error_jump(amplitude_alloc_error, ret, "Error allocating amplitude");
+
+    double *temp_ampl = calloc(freq_steps, sizeof(double));
+    if (!temp_ampl)
+        error_jump(temp_ampl_alloc_error, ret, "Error allocating temp_ampl");
+    
+    double *temp_freq = calloc(freq_steps, sizeof(double));
+    if (!temp_freq)
+        error_jump(temp_freq_alloc_error, ret, "Error allocating temp_freq");
+
+    double *temp_time = calloc(data->obs_count, sizeof(double));
+    if (!temp_time)
+        error_jump(temp_time_alloc_error, ret, "Error allocating temp_time");
+    
+    double *temp_mmi = calloc(data->obs_count, sizeof(double));
+    if (!temp_mmi)
+        error_jump(temp_mmi_alloc_error, ret, "Error allocating temp_mmi");
+
+    double dt = (time_max - time_min)/time_steps;
+
+	set_color_table();
+
+
+    for (size_t k = 4; k >= 1; k--)
+    {
+        double freq_diff = freq_max - freq_min;
+        double mid_freq = k * (freq_max + freq_min) / 2;
+        double local_freq_min = mid_freq - freq_diff/2;
+        double local_freq_max =  mid_freq + freq_diff/2;
+        
+    	for (size_t i = 0; i < time_steps; i++)
+    	{
+            double mid_time = time_min + i*dt;
+            size_t n = 0;
+        	for (size_t j = 0; j < data->obs_count; j++)
+            {
+                if ((data->time[j] >= mid_time - window_extent) && (data->time[j] <= mid_time + window_extent))
+                {
+                    temp_time[n] = data->time[j];
+                    temp_mmi[n] = data->mma[j];
+                    n++;
+                }
+            }
+
+            // Window function
+            if (k == 4)
+            {
+                // Generate sinusoid
+            	for (size_t j = 0; j < n; j++)
+                    temp_mmi[j] = max_amplitude * sin(2*M_PI*k*(freq_max + freq_min) / 2*1e-6*temp_time[j]);
+            }
+
+            calculate_amplitude_spectrum(temp_time, temp_mmi, n, local_freq_min*1e-6, local_freq_max*1e-6, temp_freq, temp_ampl, freq_steps);
+
+        	for (size_t j = 0; j < freq_steps; j++)
+                amplitude[j*time_steps + i] = temp_ampl[j];
+    	}
+
+        size_t l = 5 - k;
+        cpgsvp(0.1, 0.9, 0.075 + (l-1)*0.225, 0.075 + l*0.225);
+
+    	//cpgsitf(2); // Use a sqrt mapping between value and colour
+        cpgswin(time_min, time_max, freq_min, freq_max);
+    	cpgimag(amplitude, time_steps, freq_steps, 1, time_steps, 1, freq_steps, min_amplitude, max_amplitude, tr);
+        
+        if (k == 4)
+        {
+            local_freq_max = (freq_max - freq_min) / 2;
+            local_freq_min = -local_freq_max;
+        }
+        cpgswin(6 + time_min / 3600, 6 + time_max / 3600, local_freq_min, local_freq_max);
+        cpgbox("bcst", 1, 4, "bcstnv", 100, 4);
+    }
+
+    cpgsvp(0.1, 0.9, 0.075, 0.075 + 4*0.225);
+    cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
+    cpgmtxt("b", 3, 0.5, 0.5, "UTC Hour");
+
+    cpgswin(6 + time_min / 3600, 6 + time_max / 3600, freq_min, freq_max);
+    cpgbox("bstn", 1, 4, "0", 0, 0);
+    
+    free(temp_mmi);
+temp_mmi_alloc_error:
+    free(temp_time);
+temp_time_alloc_error:
+    free(temp_freq);
+temp_freq_alloc_error:
+    free(temp_ampl);
+temp_ampl_alloc_error:
+    free(amplitude);
+amplitude_alloc_error:
+    cpgend();
+pgplot_open_error:
+    free(mmi_windowed);
+mmi_windowed_alloc_error:
+    ts_data_free(data);
 load_failed_error:
     return ret;
 }

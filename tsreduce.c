@@ -161,6 +161,8 @@ int main( int argc, char *argv[] )
         return animated_window(argv[2]);
     else if (argc == 7 && strcmp(argv[1], "dft-slide") == 0)
         return dft_slidewindow(argv[2], atof(argv[3]), atof(argv[4]), atof(argv[5]), atoi(argv[6]));
+    else if (argc == 3 && strncmp(argv[1], "color", 5) == 0)
+        return colorplot(argv[2]);
     else
         error("Invalid args");
     return 0;

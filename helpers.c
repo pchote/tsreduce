@@ -348,7 +348,7 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
     double ut11, ut12;
     if (iauUtcut1(utc1, utc2, 0.3341, &ut11, &ut12))
         return 1;
-    double ut = fmod(fmod(ut11, 1.0) + fmod(ut12, 1.0), 1.0);
+    double ut = fmod(fmod(ut11, 1.0) + fmod(ut12, 1.0), 1.0) + 0.5;
     double dtr = iauDtdb(tt1, tt2, ut, 0, 0, 0);
 
     // Calculate TT -> TDB

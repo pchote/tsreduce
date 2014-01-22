@@ -183,8 +183,20 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# DEC: %1024s\n", stringbuf);
             dp->coord_dec = strdup(stringbuf);
         }
+        else if (!strncmp(linebuf,"# Lat:", 6))
+        {
+            sscanf(linebuf, "# Lat: %1024s\n", stringbuf);
+            dp->coord_lat = strdup(stringbuf);
+        }
+        else if (!strncmp(linebuf,"# Lon:", 6))
+        {
+            sscanf(linebuf, "# Lon: %1024s\n", stringbuf);
+            dp->coord_lon = strdup(stringbuf);
+        }
+        else if (!strncmp(linebuf,"# Alt:", 6))
+            sscanf(linebuf, "# Alt: %lf\n", &dp->coord_alt);
         else if (!strncmp(linebuf,"# BlockRange:", 13) &&
-                 dp->num_blocked_ranges < block_count)
+            dp->num_blocked_ranges < block_count)
         {
             sscanf(linebuf, "# BlockRange: (%lf, %lf)\n",
                    &dp->blocked_ranges[dp->num_blocked_ranges].x,

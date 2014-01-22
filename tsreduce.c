@@ -152,8 +152,13 @@ int main( int argc, char *argv[] )
     else if ((argc == 4 || argc == 5) && strcmp(argv[1], "preview") == 0)
         return update_preview(argv[2], argv[3], argc == 5 ? argv[4] : NULL);
 
-    else if (argc == 6 && strcmp(argv[1], "bjd") == 0)
-        return calculate_bjd(argv[2], argv[3], argv[4], argv[5]);
+    else if ((argc == 6 || argc == 9) && strcmp(argv[1], "bjd") == 0)
+    {
+        if (argc == 9)
+            return calculate_bjd(argv[2], argv[3], argv[4], argv[5], argv[6], argv[7], atof(argv[8]));
+        else
+            return calculate_bjd(argv[2], argv[3], argv[4], argv[5], NULL, NULL, 0);
+    }
     else
         error("Invalid args");
     return 0;

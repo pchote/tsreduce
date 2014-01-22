@@ -312,26 +312,30 @@ double ts_difftime(ts_time a, ts_time b)
     return ret;
 }
 
-int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
+int ts_time_to_sofa_time(ts_time t, double *utc1, double *utc2)
 {
-    *tdb1 = *tdb2 = 0;
+    *utc1 = *utc2 = 0;
 
     struct tm tt;
     ts_gmtime(t, &tt);
 
     // Convert ts_time -> sofa internal format in UTC
-    double utc1, utc2;
+    int iy = tt.tm_year + 1900;
+    int imo = tt.tm_mon + 1;
+    int id = tt.tm_mday;
+    int ih = tt.tm_hour;
+    int im = tt.tm_min;
+    double sec = tt.tm_sec + t.ms / 1000.0f;
 
-    {
-        int iy = tt.tm_year + 1900;
-        int imo = tt.tm_mon + 1;
-        int id = tt.tm_mday;
-        int ih = tt.tm_hour;
-        int im = tt.tm_min;
-        double sec = tt.tm_sec + t.ms / 1000.0f;
-        if (iauDtf2d("UTC", iy, imo, id, ih, im, sec, &utc1, &utc2))
-            return 1;
-    }
+    return iauDtf2d("UTC", iy, imo, id, ih, im, sec, utc1, utc2);
+}
+
+
+int sofa_time_to_tdb(double utc1, double utc2, double dut1,
+    double lat, double lon, double alt,
+    double *tdb1, double *tdb2)
+{
+    *tdb1 = *tdb2 = 0;
 
     // Convert UTC -> TAI -> TT
     double tai1, tai2;
@@ -342,14 +346,31 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
     if (iauTaitt(tai1, tai2, &tt1, &tt2))
         return 1;
 
-    // Calculate TDB-TT offset
-    // Assumes geocentric observer
-    // Uses TT instead of TDB (introduces negligible error)
+    // Calculate TDB - TT offset
+    // Uses TT instead of TDB (introduces negligible error - ~2us)
     double ut11, ut12;
-    if (iauUtcut1(utc1, utc2, 0.3341, &ut11, &ut12))
+    if (iauUtcut1(utc1, utc2, dut1, &ut11, &ut12))
         return 1;
     double ut = fmod(fmod(ut11, 1.0) + fmod(ut12, 1.0), 1.0) + 0.5;
-    double dtr = iauDtdb(tt1, tt2, ut, 0, 0, 0);
+
+    // Default (geocentric) observer
+    double u = 0;
+    double v = 0;
+    double elon = 0;
+
+    // Include observatory position
+    if (lon >= 0 && alt >= 0)
+    {
+        elon = 2*M_PI - lon;
+        double xyz[3];
+        if (iauGd2gc(1, elon, lat, alt, xyz))
+            return 1;
+
+        u = sqrt(xyz[0]*xyz[0] + xyz[1]*xyz[1]) / 1e3;
+        v = xyz[2] / 1e3;
+    }
+
+    double dtr = iauDtdb(tt1, tt2, ut, elon, u, v);
 
     // Calculate TT -> TDB
     if (iauTttdb(tt1, tt2, dtr, tdb1, tdb2))
@@ -359,17 +380,40 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
 }
 
 // Convert a time to bjd, accounting for light travel time in the direction ra,dec (J2000 / ICRS coordinates)
-long double ts_time_to_bjd(ts_time t, double ra, double dec)
+long double ts_time_to_bjd(ts_time t, double ra, double dec, double lat, double lon, double alt)
 {
-    // Convert time from UTC to TDB
-    double tdb1, tdb2;
-    if (ts_time_to_tdb(t, &tdb1, &tdb2))
-        return 0;
+    // TODO: Move this outside
+    double dut1 = -0.0265342;
 
-    // Calculate earth position relative to the solar system barycenter
-    // Assumes geocentric observer (introduces maximum error of ~21ms)
-    double pvb[2][3];
-    iauEpv00(tdb1, tdb2, pvb, pvb);
+    double utc1, utc2;
+    if (ts_time_to_sofa_time(t, &utc1, &utc2))
+        return 1;
+
+    // Convert UTC -> TAI -> TDB
+    double tdb1, tdb2;
+    if (sofa_time_to_tdb(utc1, utc2, dut1, lat, lon, alt, &tdb1, &tdb2))
+        return 1;
+
+    // Calculate observer position relative to the solar system barycenter
+    double bary[3];
+    if (lon >= 0 && alt >= 0)
+    {
+        iauASTROM out1;
+        double out2;
+
+        if (iauApco13(utc1, utc2, dut1, 2*M_PI - lon, lat, alt, 0, 0, 0, 0, 0, 0, &out1, &out2))
+            return 1;
+
+        iauCp(out1.eb, bary);
+    }
+    else
+    {
+        // Calculate earth position relative to the solar system barycenter
+        // Assumes geocentric observer (maximum error of ~21ms)
+        double pvb[2][3];
+        iauEpv00(tdb1, tdb2, pvb, pvb);
+        iauCp(pvb[0], bary);
+    }
 
     // Calculate the unit vector pointing towards the target
     double dir[3];
@@ -377,7 +421,7 @@ long double ts_time_to_bjd(ts_time t, double ra, double dec)
 
     // Additional light travel distance is just the dot product
     // of the barycenter->observer and observer->target vectors
-    long double offset = iauPdp(pvb[0], dir);
+    long double offset = iauPdp(bary, dir);
 
     // Convert offset from AU to light travel time (in days)
     return (long double)tdb1 + (long double)tdb2 + 0.005775518331089534*offset;

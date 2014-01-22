@@ -75,6 +75,9 @@ typedef struct
 
     char *coord_ra;
     char *coord_dec;
+    char *coord_lat;
+    char *coord_lon;
+    double coord_alt;
 
     double2 *blocked_ranges;
     int num_blocked_ranges;

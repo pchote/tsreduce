@@ -65,7 +65,7 @@ ts_time parse_time_ccdops(const char *string);
 ts_time parse_date_time(const char *date, const char *time);
 void serialize_time(ts_time t, char buf[24]);
 double ts_time_to_utc_hour(ts_time t);
-long double ts_time_to_bjd(ts_time t, double ra, double dec);
+long double ts_time_to_bjd(ts_time t, double ra, double dec, double lat, double lon, double alt);
 double ts_difftime(ts_time a, ts_time b);
 char *prompt_user_input(char *message, char *fallback);
 

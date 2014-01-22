@@ -1303,7 +1303,8 @@ frame_error:
 /*
  * Calculate the BJD time for a given UTC timestamp and observation coordinates
  */
-int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string)
+int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string,
+    char *lat_string, char *lon_string, double alt)
 {
     // Convert ra from HH:MM:SS to radians
     double a,b,c;
@@ -1314,7 +1315,21 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string)
     sscanf(dec_string, "%lf:%lf:%lf", &a, &b, &c);
     double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
 
-    printf("%.8Lf\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec));
+    double lat = -1;
+    double lon = -1;
+    if (lat_string != NULL)
+    {
+        sscanf(lat_string, "%lf:%lf:%lf", &a, &b, &c);
+        lat = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
+    }
+
+    if (lon_string != NULL)
+    {
+        sscanf(lon_string, "%lf:%lf:%lf", &a, &b, &c);
+        lon = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
+    }
+
+    printf("%.8Lf\n", ts_time_to_bjd(parse_date_time(date, time), ra, dec, lat, lon, alt));
     return 0;
 }
 
@@ -1357,7 +1372,24 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
     double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
 
-    double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec);
+    double lat = -1;
+    double lon = -1;
+    double alt = -1;
+
+    if (datafiles[0]->coord_lat || datafiles[0]->coord_lon)
+    {
+        if (!datafiles[0]->coord_lat || !datafiles[0]->coord_lon)
+            error_jump(coord_error, ret, "Datafile %s must specify both latitude and longitude", filenames[0]);
+
+        sscanf(datafiles[0]->coord_lat, "%lf:%lf:%lf", &a, &b, &c);
+        lat = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
+
+        sscanf(datafiles[0]->coord_lon, "%lf:%lf:%lf", &a, &b, &c);
+        lon = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
+        alt = datafiles[0]->coord_alt;
+    }
+
+    double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec, lat, lon, alt);
     printf("Reference BJD: %f\n", reference_bjd);
 
     FILE *out = fopen(ts_filename, "w+");
@@ -1375,7 +1407,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
     size_t num_saved = 0;
     for (size_t i = 0; i < num_datafiles; i++)
     {
-        long double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec);
+        long double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec, lat, lon, alt);
 
         // Calculate precessed RA and DEC at the start of each night
         // This is already far more accurate than we need
@@ -1390,7 +1422,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
+            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec, lat, lon, alt) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
             num_saved++;
         }
 

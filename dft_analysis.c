@@ -835,26 +835,35 @@ int noise_histogram(const char *ts_path, const char *freq_path,
         fclose(file);
     }
 
-	printf("Calculating noise...\n");
-    // Calculate gaussian noise spectrum
-    struct histogram_data *noise_histogram = histogram_create(data->mma, data->obs_count, min_mma, max_mma, bin_count);
-    if (!noise_histogram)
-        error_jump(noise_histogram_failed, ret, "Noise histogram failed");
+    double *noise_samples = calloc(data->obs_count, sizeof(double));
+    for (size_t i = 0; i < data->obs_count; i++)
+        noise_samples[i] = data->mma[i];
 
-    double noise_center, noise_amplitude, noise_sigma;
-    if (histogram_fit_gaussian(noise_histogram, false, 0.01, &noise_center, &noise_amplitude, &noise_sigma))
-        error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
+    {
+    	printf("Calculating noise...\n");
+        // Calculate gaussian noise spectrum
+        struct histogram_data *noise_histogram = histogram_create(noise_samples, data->obs_count, min_mma, max_mma, bin_count);
+        if (!noise_histogram)
+            error_jump(noise_histogram_failed, ret, "Noise histogram failed");
 
-    snprintf(output_path_buffer, output_path_len, "%s.hist", output_prefix);
-    if (histogram_export(noise_histogram, noise_center, noise_amplitude, noise_sigma, output_path_buffer))
-        error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
+        double noise_center, noise_amplitude, noise_sigma;
+        if (histogram_fit_gaussian(noise_histogram, false, 0.01, &noise_center, &noise_amplitude, &noise_sigma))
+            error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
+
+        snprintf(output_path_buffer, output_path_len, "%s.hist", output_prefix);
+        if (histogram_export(noise_histogram, noise_center, noise_amplitude, noise_sigma, output_path_buffer))
+            error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
+
+noise_histogram_processing_failed:
+            histogram_free(noise_histogram);
+    }
 
     snprintf(output_path_buffer, output_path_len, "%s.rand", output_prefix);
     FILE *randomized = fopen(output_path_buffer, "w");
     if (!randomized)
         error_jump(randomized_failed, ret, "Unable to open randomized data for writing: %s", output_path_buffer);
 
-    uint32_t seed = 1381894841;//time(NULL);
+    uint32_t seed = time(NULL);
     random_generator *rand = random_create(seed);
     if (!rand)
         error_jump(rand_error, ret, "Error creating random generator");
@@ -898,7 +907,7 @@ int noise_histogram(const char *ts_path, const char *freq_path,
 
         for (size_t i = 0; i < data->obs_count; i++)
         {
-            data->mma[i] = random_normal(rand, noise_center, noise_sigma);
+            data->mma[i] = noise_samples[random_uint32_max(rand, data->obs_count)];
             for (size_t j = 0; j < data->freq_count; j++)
             {
                 double phase = 2*M_PI*data->freq[j]*data->time[i];
@@ -981,8 +990,6 @@ ampl_alloc_error:
 rand_error:
     fclose(randomized);
 randomized_failed:
-noise_histogram_processing_failed:
-    histogram_free(noise_histogram);
 noise_histogram_failed:
     ts_data_free(data);
 load_failed_error:

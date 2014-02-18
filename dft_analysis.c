@@ -1352,7 +1352,7 @@ load_failed_error:
 }
 
 static void step_freq_fit(struct ts_data *data, double freq_min, double freq_max, double freq_step,
-            double *best_freq, double *best_chi2)
+            double *best_freq, double *best_ampl, double *best_chi2)
 {
 
     // Step through fit frequencies
@@ -1374,6 +1374,7 @@ static void step_freq_fit(struct ts_data *data, double freq_min, double freq_max
         if (chi2 < *best_chi2)
         {
             *best_freq = fit_freq;
+            *best_ampl = sqrt(data->freq_amplitude[0]*data->freq_amplitude[0] + data->freq_amplitude[1]*data->freq_amplitude[1]);
             *best_chi2 = chi2;
         }
         fit_freq += freq_step;
@@ -1390,10 +1391,9 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
     if (!output_path_buffer)
         error_jump(load_failed_error, ret, "Allocation error");
 
-
-    double freq_search_min = base_uhz - 10;
-    double freq_search_max = base_uhz + 10;
-    double freq_search_step = 0.05;
+    double freq_search_min = base_uhz - 5;
+    double freq_search_max = base_uhz + 5;
+    double freq_search_step = 0.1;
 
     struct ts_data *data = ts_data_load_harmonics(ts_path, 1e-6*base_uhz, freq_count);
     if (!data)
@@ -1402,8 +1402,8 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
     // Optimize fit
     {
         double old_chi2 = ts_data_chi2(data);
-        double best_freq, best_chi2;
-        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_chi2);
+        double best_freq, best_chi2, best_ampl;
+        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_ampl, &best_chi2);
         printf("Optimized base freq from %g to %g: delta-chi2: %g\n", base_uhz, best_freq, old_chi2 - best_chi2);
 
         for (size_t j = 0; j < freq_count; j++)
@@ -1413,6 +1413,13 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
             error_jump(alloc_failed, ret, "Amplitude fit failed");
     }
 
+    double initial_freq = data->freq[0] * 1e6;
+    double initial_ampl = sqrt(data->freq_amplitude[0]*data->freq_amplitude[0] + data->freq_amplitude[1]*data->freq_amplitude[1]);
+    printf("Initial freq: %f\n", initial_freq);
+
+    double ampl_search_min = initial_ampl - 5;
+    double ampl_search_max = initial_ampl + 5;
+    double ampl_search_step = 0.25;
     ts_data_print_table(data);
 
     // DFT
@@ -1468,7 +1475,7 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
         error_jump(noise_histogram_failed, ret, "Noise histogram failed");
 
     double noise_center, noise_amplitude, noise_sigma;
-    if (histogram_fit_gaussian(noise_histogram, true, 0.01, &noise_center, &noise_amplitude, &noise_sigma))
+    if (histogram_fit_gaussian(noise_histogram, false, 0.01, &noise_center, &noise_amplitude, &noise_sigma))
         error_jump(noise_histogram_processing_failed, ret, "Noise histogram fit failed");
 
     snprintf(output_path_buffer, output_path_len, "%s.hist", output_prefix);
@@ -1511,6 +1518,11 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
     if (!fitted_freq)
         error_jump(fitted_alloc_failed, ret, "Allocation failed");
 
+    // Synthesize artificial data with random noise and find best-fit frequency
+    double *fitted_ampl = calloc(randomize_count, sizeof(double));
+    if (!fitted_ampl)
+        error_jump(fitted_alloc_failed, ret, "Allocation failed");
+
     fprintf(randomized, "# Seed: %u\n", seed);
     for (size_t k = 0; k < randomize_count; k++)
     {
@@ -1529,15 +1541,16 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
         }
 
         // Step through fit frequencies
-        double best_freq, best_chi2;
-        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_chi2);
-        fprintf(randomized, "%zu %.2f %g\n", k, best_freq, best_chi2);
+        double best_freq, best_chi2, best_ampl;
+        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_ampl, &best_chi2);
+        fprintf(randomized, "%zu %.2f %.2f %g\n", k, best_freq, best_ampl, best_chi2);
         fflush(randomized);
 
-        fitted_freq[k] = best_freq;
+        fitted_freq[k] = best_freq - initial_freq;
+        fitted_ampl[k] = best_ampl - initial_ampl;
     }
 
-    struct histogram_data *freq_histogram = histogram_create(fitted_freq, randomize_count, freq_search_min, freq_search_max, (freq_search_max - freq_search_min) / freq_search_step);
+    struct histogram_data *freq_histogram = histogram_create(fitted_freq, randomize_count, freq_search_min - initial_freq, freq_search_max - initial_freq, (freq_search_max - freq_search_min) / freq_search_step);
     if (!freq_histogram)
         error_jump(freq_histogram_failed, ret, "Freq histogram failed");
 
@@ -1549,6 +1562,27 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
     if (histogram_export(freq_histogram, freq_center, freq_amplitude, freq_sigma, output_path_buffer))
         error_jump(freq_histogram_processing_failed, ret, "Freq histogram fit failed");
 
+    struct histogram_data *ampl_histogram = histogram_create(fitted_ampl, randomize_count, ampl_search_min - initial_ampl, ampl_search_max - initial_ampl, (ampl_search_max - ampl_search_min) / ampl_search_step);
+    if (!ampl_histogram)
+        error_jump(freq_histogram_failed, ret, "ampl histogram failed");
+
+    double ampl_center, ampl_amplitude, ampl_sigma;
+    if (histogram_fit_gaussian(ampl_histogram, true, 0.01, &ampl_center, &ampl_amplitude, &ampl_sigma))
+        error_jump(freq_histogram_processing_failed, ret, "ampl histogram fit failed");
+
+    snprintf(output_path_buffer, output_path_len, "%s.amplhist", output_prefix);
+    if (histogram_export(ampl_histogram, ampl_center, ampl_amplitude, ampl_sigma, output_path_buffer))
+        error_jump(freq_histogram_processing_failed, ret, "ampl histogram fit failed");
+
+    {
+        // Save output
+        snprintf(output_path_buffer, output_path_len, "%s.data", output_prefix);
+        FILE *file = fopen(output_path_buffer, "w");
+
+        fprintf(file, "%s %.2f $\\pm$ %.2f & %f $\\pm$ %2f\n", output_prefix, initial_freq, freq_sigma, initial_ampl, ampl_sigma);
+
+        fclose(file);
+    }
 freq_histogram_processing_failed:
     histogram_free(freq_histogram);
 freq_histogram_failed:
@@ -1586,8 +1620,8 @@ int shuffle_dft_harmonics(char *ts_path, double base_uhz, size_t freq_count, dou
     double best_freq;
     {
         double old_chi2 = ts_data_chi2(data);
-        double best_chi2;
-        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_chi2);
+        double best_chi2, best_ampl;
+        step_freq_fit(data, freq_search_min, freq_search_max, freq_search_step, &best_freq, &best_ampl, &best_chi2);
         printf("Optimized base freq from %g to %g: delta-chi2: %g\n", base_uhz, best_freq, old_chi2 - best_chi2);
 
         for (size_t j = 0; j < freq_count; j++)

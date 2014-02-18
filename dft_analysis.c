@@ -1120,11 +1120,11 @@ load_failed_error:
 
 static void set_color_table()
 {
-    float l[9] = {0.0, 0.005, 0.17, 0.33, 0.50, 0.67, 0.83, 1.0, 1.7};
-    float r[9] = {0.0, 0.0, 0.0, 0.0, 0.6, 1.0, 1.0, 1.0, 1.0};
-    float g[9] = {0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.6, 0.0, 1.0};
-    float b[9] = {0.0, 0.3, 0.8, 1.0, 0.3, 0.0, 0.0, 0.0, 1.0};
-    cpgctab(l, r, g, b, 9, 1.0, 0.5);
+    float l[9] = {0.0, 0.33, 0.66, 1.0};
+    float r[9] = {1.0, 0.0, 0.0, 1.0};
+    float g[9] = {1.0, 0.0, 1.0, 0.0};
+    float b[9] = {1.0, 1.0, 0.0, 0.0};
+    cpgctab(l, r, g, b, 4, 1.0, 0.5);
 }
 
 int colorplot(const char *ts_path)
@@ -1140,8 +1140,8 @@ int colorplot(const char *ts_path)
 
     double freq_min = 500;
     double freq_max = 4000;
-    size_t freq_steps = 700;
-    size_t time_steps = 500;
+    size_t freq_steps = 70;
+    size_t time_steps = 50;
     double window_extent = 6840;
 
     freq_min = 750;
@@ -1156,16 +1156,16 @@ int colorplot(const char *ts_path)
     if (!mmi_windowed)
         error_jump(mmi_windowed_alloc_error, ret, "Error allocating mmi_windowed");
 
-    if (cpgopen("plot.ps/cps") <= 0)
+    if (cpgopen("plot.ps/vcps") <= 0)
         error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
 
     // 800 x 480
-    cpgpap(9.41, 0.6);
+    cpgpap(6.5, 0.45);
     cpgask(0);
-    cpgslw(3);
+    cpgslw(1);
     cpgsfs(2);
     cpgscf(2);
-
+    cpgsch(1.8);
 
     printf("%zu\n", data->obs_count);
 
@@ -1199,7 +1199,8 @@ int colorplot(const char *ts_path)
 
 	set_color_table();
 
-
+    double n = 0.12;
+    double o = 0.205;
     for (size_t k = 4; k >= 1; k--)
     {
         double freq_diff = freq_max - freq_min;
@@ -1235,8 +1236,9 @@ int colorplot(const char *ts_path)
                 amplitude[j*time_steps + i] = temp_ampl[j];
     	}
 
-        size_t l = 5 - k;
-        cpgsvp(0.1, 0.9, 0.075 + (l-1)*0.225, 0.075 + l*0.225);
+        size_t l = k;//5 - k;
+        double m = (k == 4 ? -0.05 : 0);
+        cpgsvp(0.1, 0.88, n + (l-1)*o - m, n + l*o - m);
 
     	//cpgsitf(2); // Use a sqrt mapping between value and colour
         cpgswin(time_min, time_max, freq_min, freq_max);
@@ -1250,14 +1252,33 @@ int colorplot(const char *ts_path)
         cpgswin(6 + time_min / 3600, 6 + time_max / 3600, local_freq_min, local_freq_max);
         cpgbox("bcst", 1, 4, "bcstnv", 100, 4);
     }
+    
 
-    cpgsvp(0.1, 0.9, 0.075, 0.075 + 4*0.225);
+    cpgsvp(0.1, 0.88, n, n + 3*o);
     cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
-    cpgmtxt("b", 3, 0.5, 0.5, "UTC Hour");
-
+    cpgmtxt("B", 2.5, 0.5, 0.5, "UTC Hour");
     cpgswin(6 + time_min / 3600, 6 + time_max / 3600, freq_min, freq_max);
     cpgbox("bstn", 1, 4, "0", 0, 0);
+
+    cpgsvp(0.1, 0.88, n + 0.05 + 3*o, n + 0.05 + 4*o);
+    cpgmtxt("l", 4, 0.5, 0.5, "Window");
     
+
+    cpgsvp(0.90, 0.92,  n, n + 4*o + 0.05);
+
+    size_t amplitude_steps = 50;
+    float *ampl_scale_data = calloc(amplitude_steps, sizeof(float));
+    float ampl_scale = (max_amplitude-min_amplitude)/(amplitude_steps-1);
+    for (size_t i = 0; i < amplitude_steps; i++)
+        ampl_scale_data[i] = min_amplitude + i * ampl_scale;
+
+    float atr[] = {-0.5, 1, 0, min_amplitude-ampl_scale, 0, ampl_scale, 0, 1};
+    cpgswin(0, 1, min_amplitude, max_amplitude);
+    cpgimag(ampl_scale_data, 1, amplitude_steps, 1, 1, 1, amplitude_steps, min_amplitude, max_amplitude, atr);
+
+    cpgbox("bc", 0, 0, "bcsmv", 0, 0);
+    cpgmtxt("r", 3.2, 0.5, 0.5, "Intensity (mma)");
+
     free(temp_mmi);
 temp_mmi_alloc_error:
     free(temp_time);

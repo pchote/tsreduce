@@ -1156,7 +1156,8 @@ int colorplot(const char *ts_path)
     if (!mmi_windowed)
         error_jump(mmi_windowed_alloc_error, ret, "Error allocating mmi_windowed");
 
-    if (cpgopen("plot.ps/vcps") <= 0)
+//    if (cpgopen("plot.ps/vcps") <= 0)
+    if (cpgopen("2/xs") <= 0)
         error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
 
     // 800 x 480
@@ -1200,7 +1201,10 @@ int colorplot(const char *ts_path)
 	set_color_table();
 
     double n = 0.12;
-    double o = 0.205;
+    double o = 0.20;
+    double q[] = {0.1, 0.3666, 0.6333};
+    double r[] = {0.3566, 0.6233, 0.89};
+
     for (size_t k = 4; k >= 1; k--)
     {
         double freq_diff = freq_max - freq_min;
@@ -1236,35 +1240,53 @@ int colorplot(const char *ts_path)
                 amplitude[j*time_steps + i] = temp_ampl[j];
     	}
 
-        size_t l = k;//5 - k;
-        double m = (k == 4 ? -0.05 : 0);
-        cpgsvp(0.1, 0.88, n + (l-1)*o - m, n + l*o - m);
-
-    	//cpgsitf(2); // Use a sqrt mapping between value and colour
-        cpgswin(time_min, time_max, freq_min, freq_max);
-    	cpgimag(amplitude, time_steps, freq_steps, 1, time_steps, 1, freq_steps, min_amplitude, max_amplitude, tr);
-        
-        if (k == 4)
+        for (size_t v = 0; v < 3; v++)
         {
-            local_freq_max = (freq_max - freq_min) / 2;
-            local_freq_min = -local_freq_max;
+            size_t l = k;//5 - k;
+            double m = (k == 4 ? -0.02 : 0);
+            cpgsvp(q[v], r[v], n + (l-1)*o - m, n + l*o - m);
+
+        	//cpgsitf(2); // Use a sqrt mapping between value and colour
+            cpgswin(time_min, time_max, freq_min, freq_max);
+        	cpgimag(amplitude, time_steps, freq_steps, 1, time_steps, 1, freq_steps, min_amplitude, max_amplitude, tr);
+        
+            if (k == 4)
+            {
+                local_freq_max = (freq_max - freq_min) / 2;
+                local_freq_min = -local_freq_max;
+            }
+
+            cpgswin(6 + time_min / 3600, 6 + time_max / 3600, local_freq_min, local_freq_max);
+            cpgbox("bcst", 1, 4, v == 0 ? "bcstnv" : "bcst", 100, 4);
+            
         }
-        cpgswin(6 + time_min / 3600, 6 + time_max / 3600, local_freq_min, local_freq_max);
-        cpgbox("bcst", 1, 4, "bcstnv", 100, 4);
     }
     
 
     cpgsvp(0.1, 0.88, n, n + 3*o);
     cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
     cpgmtxt("B", 2.5, 0.5, 0.5, "UTC Hour");
-    cpgswin(6 + time_min / 3600, 6 + time_max / 3600, freq_min, freq_max);
-    cpgbox("bstn", 1, 4, "0", 0, 0);
 
-    cpgsvp(0.1, 0.88, n + 0.05 + 3*o, n + 0.05 + 4*o);
+
+    cpgsvp(0.1, 0.88, n + 0.02 + 3*o, n + 0.02 + 4*o);
     cpgmtxt("l", 4, 0.5, 0.5, "Window");
-    
+  
+    for (size_t v = 0; v < 3; v++)
+    {
+        size_t k = 4;
+        size_t l = k;//5 - k;
+        double m = (k == 4 ? -0.02 : 0);
+        cpgsvp(q[v], r[v], n + (l-1)*o - m, n + l*o - m);
 
-    cpgsvp(0.90, 0.92,  n, n + 4*o + 0.05);
+        char buf[1024]; strcpy(buf, ts_path);
+        buf[strlen(buf)-3] = '\0';
+        cpgmtxt("t", 0.5, 0.5, 0.5, buf);
+        
+        cpgsvp(q[v], r[v], n, n + 3*o);
+        cpgswin(6 + time_min / 3600, 6 + time_max / 3600, freq_min, freq_max);
+        cpgbox("bstn", 1, 4, "0", 0, 0);
+    }
+    cpgsvp(0.90, 0.92,  n, n + 4*o + 0.02);
 
     size_t amplitude_steps = 50;
     float *ampl_scale_data = calloc(amplitude_steps, sizeof(float));

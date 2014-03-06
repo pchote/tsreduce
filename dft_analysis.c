@@ -1156,8 +1156,8 @@ int colorplot(const char *ts_path)
     if (!mmi_windowed)
         error_jump(mmi_windowed_alloc_error, ret, "Error allocating mmi_windowed");
 
-//    if (cpgopen("plot.ps/vcps") <= 0)
-    if (cpgopen("2/xs") <= 0)
+    if (cpgopen("plot.ps/vcps") <= 0)
+//    if (cpgopen("2/xs") <= 0)
         error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
 
     // 800 x 480
@@ -1202,8 +1202,9 @@ int colorplot(const char *ts_path)
 
     double n = 0.12;
     double o = 0.20;
-    double q[] = {0.1, 0.3666, 0.6333};
-    double r[] = {0.3566, 0.6233, 0.89};
+
+    double q[] = {0.1, 0.5};
+    double r[] = {0.49, 0.89};
 
     for (size_t k = 4; k >= 1; k--)
     {
@@ -1240,7 +1241,7 @@ int colorplot(const char *ts_path)
                 amplitude[j*time_steps + i] = temp_ampl[j];
     	}
 
-        for (size_t v = 0; v < 3; v++)
+        for (size_t v = 0; v < 2; v++)
         {
             size_t l = k;//5 - k;
             double m = (k == 4 ? -0.02 : 0);
@@ -1271,7 +1272,7 @@ int colorplot(const char *ts_path)
     cpgsvp(0.1, 0.88, n + 0.02 + 3*o, n + 0.02 + 4*o);
     cpgmtxt("l", 4, 0.5, 0.5, "Window");
   
-    for (size_t v = 0; v < 3; v++)
+    for (size_t v = 0; v < 2; v++)
     {
         size_t k = 4;
         size_t l = k;//5 - k;

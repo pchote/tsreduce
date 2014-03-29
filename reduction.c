@@ -24,6 +24,33 @@
 
 extern int verbosity;
 
+double calculate_readnoise(framedata *master, double *data_cube, size_t num_frames, uint16_t region[4], bool subtract_master)
+{
+    size_t region_px = (region[1] - region[0])*(region[3] - region[2]);
+    double variance = 0;
+
+    for (uint16_t j = region[2]; j < region[3]; j++)
+    {
+        for (uint16_t i = region[0]; i < region[1]; i++)
+        {
+            for (size_t k = 0; k < num_frames; k++)
+            {
+                double diff = data_cube[num_frames*(j*master->cols + i) + k];
+
+                // Bias frames need to have the master bias subtracted to find the difference
+                // Flat frames (overscan) have already been bias subtracted by the dark frame
+                if (subtract_master)
+                    diff -= master->data[j*master->cols + i];
+
+                variance += diff * diff;
+            }
+        }
+    }
+    variance /= region_px * num_frames;
+
+    return sqrt(variance);
+}
+
 // Create a flat field frame from the frames listed by the command `flatcmd',
 // rejecting `minmax' highest and lowest pixel values after subtracting
 // the dark frame `masterdark'.
@@ -56,16 +83,12 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     if (base->rows != dark->rows || base->cols != dark->cols)
         error_jump(setup_error, ret, "Dark and flat frame sizes don't match");
 
-    uint16_t image_region[4], bias_region[4];
+    uint16_t image_region[4];
     framedata_image_region(base, image_region);
-    framedata_bias_region(base, bias_region);
     size_t image_region_px = (image_region[1] - image_region[0])*(image_region[3] - image_region[2]);
-    size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
 
     // Data cube for processing the flat data
     //        data[0] = frame[0][0,0], data[1] = frame[1][0,0] ... data[num_frames] = frame[0][1,0] etc
-    double bias_variance = 0;
-
     double *data_cube = calloc(num_frames*base->cols*base->rows, sizeof(double));
     double *frame_mean = calloc(num_frames, sizeof(double));
     if (!data_cube || !frame_mean)
@@ -97,14 +120,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
 
         // Store data in cube for processing
         for (size_t j = 0; j < base->rows*base->cols; j++)
-        {
             data_cube[num_frames*j + k] = frame->data[j];
-
-            // The frame has been bias subtracted, so the remaining signal
-            // in the bias region is caused by readout noise
-            if (region_contains(bias_region, j % base->cols, j / base->cols))
-                bias_variance += frame->data[j]*frame->data[j];
-        }
 
         // Calculate normalization factor to make the image region 1
         double mean = region_mean(image_region, frame->data, frame->cols);
@@ -158,9 +174,13 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         free(cube_slice);
     }
 
+    uint16_t bias_region[4];
+    framedata_bias_region(base, bias_region);
+    size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
+
     if (bias_region_px)
     {
-        double readnoise = sqrt(bias_variance/(num_frames*bias_region_px));
+        double readnoise = calculate_readnoise(base, data_cube, num_frames, bias_region, false);
 
         // Calculate gain from each image
         double *gain = calloc(num_frames, sizeof(double));

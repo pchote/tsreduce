@@ -89,11 +89,10 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         }
 
         // Subtract dark, normalized to the flat exposure time
-        framedata_subtract_bias(frame);
-        if (framedata_subtract_normalized(frame, dark))
+        if (framedata_calibrate(frame, dark, NULL))
         {
             framedata_free(frame);
-            error_jump(processing_error, ret, "Dark subtraction failed for %s", frame_paths[k]);
+            error_jump(processing_error, ret, "Calibration failed for %s", frame_paths[k]);
         }
 
         // Store data in cube for processing
@@ -324,37 +323,8 @@ int display_frame(char *data_path, char *frame_name)
     if (!frame)
         error_jump(setup_error, ret, "Error loading frame %s", obs->filename);
 
-    framedata_subtract_bias(frame);
-
-    if (data->dark_template)
-    {
-        framedata *dark = framedata_load(data->dark_template);
-        if (!dark)
-            error_jump(process_error, ret, "Error loading frame %s", data->dark_template);
-
-        if (framedata_subtract(frame, dark))
-        {
-            framedata_free(dark);
-            error_jump(process_error, ret, "Error dark-subtracting frame %s", obs->filename);
-        }
-
-        framedata_free(dark);
-    }
-
-    if (data->flat_template)
-    {
-        framedata *flat = framedata_load(data->flat_template);
-        if (!flat)
-            error_jump(process_error, ret, "Error loading frame %s", data->flat_template);
-
-        if (framedata_divide(frame, flat))
-        {
-            framedata_free(flat);
-            error_jump(process_error, ret, "Error flat-fielding frame %s", obs->filename);
-        }
-
-        framedata_free(flat);
-    }
+    if (framedata_calibrate_load(frame, data->dark_template, data->flat_template))
+        error_jump(process_error, ret, "Error processing frame %s", obs->filename);
 
     if (init_ds9())
         error_jump(setup_error, ret, "Unable to launch ds9");
@@ -446,12 +416,8 @@ int update_reduction(char *dataPath)
     if (!reference)
         error_jump(reference_error, ret, "Error loading reference frame %s", data->reference_frame);
 
-    framedata_subtract_bias(reference);
-    if (dark && framedata_subtract_normalized(reference, dark))
-        error_jump(reference_error, ret, "Error dark-subtracting reference frame %s", data->reference_frame);
-
-    if (flat && framedata_divide(reference, flat))
-        error_jump(reference_error, ret, "Error flat-fielding reference frame %s", data->reference_frame);
+    if (framedata_calibrate(reference, dark, flat))
+        error_jump(reference_error, ret, "Error calibrating reference frame %s", data->reference_frame);
 
     // Iterate through the files in the directory
     char **frame_paths;
@@ -488,12 +454,8 @@ int update_reduction(char *dataPath)
         double midtime = ts_difftime(frame_time, data->reference_time) + exptime / 2;
 
         // Process frame
-        framedata_subtract_bias(frame);
-        if (dark && framedata_subtract_normalized(frame, dark))
-            error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_paths[i]);
-
-        if (flat && framedata_divide(frame, flat))
-            error_jump(process_error, ret, "Error flat-fielding frame %s", frame_paths[i]);
+        if (framedata_calibrate(frame, dark, flat))
+            error_jump(process_error, ret, "Error calibrating frame %s", frame_paths[i]);
 
         struct observation *obs = datafile_new_observation(data);
         if (!obs)
@@ -806,24 +768,11 @@ int create_reduction_file(char *outname)
         free(ret);
     }
 
-    framedata_subtract_bias(frame);
+    if (framedata_calibrate_load(frame, data->dark_template, data->flat_template))
+        error_jump(frameload_error, ret, "Unable to calibrate reference frame");
+
     if (framedata_start_time(frame, &data->reference_time))
         error_jump(frameload_error, ret, "No known time headers found");
-
-    if (data->dark_template)
-    {
-        framedata *dark = framedata_load(data->dark_template);
-        if (!dark)
-            error_jump(frameload_error, ret, "Error loading frame %s", data->dark_template);
-
-        if (framedata_subtract(frame, dark))
-        {
-            framedata_free(dark);
-            error_jump(frameload_error, ret, "Error dark-subtracting frame %s", data->reference_frame);
-        }
-
-        framedata_free(dark);
-    }
 
     if (data->flat_template)
     {
@@ -865,12 +814,6 @@ int create_reduction_file(char *outname)
             char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66", false);
             data->ccd_platescale = strtod(ret, NULL);
             free(ret);
-        }
-
-        if (framedata_divide(frame, flat))
-        {
-            framedata_free(flat);
-            error_jump(frameload_error, ret, "Error flat-fielding frame %s", data->reference_frame);
         }
 
         framedata_free(flat);
@@ -1459,14 +1402,6 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
 {
     int ret = 0;
 
-    framedata *dark = framedata_load(dark_path);
-    if (!dark)
-        error_jump(dark_error, ret, "Error loading frame %s", dark_path);
-
-    framedata *flat = framedata_load(flat_path);
-    if (!flat)
-        error_jump(flat_error, ret, "Error loading frame %s", flat_path);
-
     framedata *frame = framedata_load(frame_path);
     if (!frame)
         error_jump(frame_error, ret, "Error loading frame %s", frame_path);
@@ -1475,21 +1410,11 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     if (!reference)
         error_jump(reference_error, ret, "Error loading frame %s", reference_path);
 
-    framedata_subtract_bias(frame);
-    framedata_subtract_bias(reference);
-
-    // Process frames
-    framedata_subtract_bias(frame);
-    framedata_subtract_bias(reference);
-    if (framedata_subtract(frame, dark))
+    if (framedata_calibrate_load(frame, dark_path, flat_path))
         error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_path);
-    if (framedata_subtract(reference, dark))
-        error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
-    if (framedata_divide(frame, flat))
-        error_jump(process_error, ret, "Error flat-fielding frame %s", frame_path);
-    if (framedata_divide(reference, flat))
-        error_jump(process_error, ret, "Error flat-fielding frame %s", reference_path);
+    if (framedata_calibrate_load(reference, dark_path, flat_path))
+        error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
     int32_t xt, yt;
     if (framedata_estimate_translation(frame, reference, &xt, &yt))
@@ -1502,10 +1427,6 @@ process_error:
 reference_error:
     framedata_free(frame);
 frame_error:
-    framedata_free(flat);
-flat_error:
-    framedata_free(dark);
-dark_error:
     return ret;
 }
 

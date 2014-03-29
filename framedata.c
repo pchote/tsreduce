@@ -490,7 +490,6 @@ int framedata_subtract_normalized(framedata *fd, framedata *other)
     return 0;
 }
 
-
 void framedata_subtract_bias(framedata *fd)
 {
     uint16_t br[4];
@@ -498,6 +497,50 @@ void framedata_subtract_bias(framedata *fd)
     double mean_bias = region_mean(br, fd->data, fd->cols);
     for (size_t i = 0; i < fd->rows*fd->cols; i++)
         fd->data[i] -= mean_bias;
+}
+
+int framedata_calibrate(framedata *frame, framedata *dark, framedata *flat)
+{
+    framedata_subtract_bias(frame);
+
+    if (dark)
+        if (framedata_subtract_normalized(frame, dark))
+            return error("Error dark-subtracting frame");
+
+    if (flat)
+        if (framedata_divide(frame, flat))
+            return error("Error flat-fielding frame");
+
+    return 0;
+}
+
+int framedata_calibrate_load(framedata *frame, const char *dark_path, const char *flat_path)
+{
+    int ret = 0;
+    framedata *dark = NULL;
+    framedata *flat = NULL;
+
+    if (dark_path)
+    {
+        dark = framedata_load(dark_path);
+        if (!dark)
+            error_jump(process_error, ret, "Error loading frame %s", dark_path);
+    }
+
+    if (flat_path)
+    {
+        flat = framedata_load(flat_path);
+        if (!flat)
+            error_jump(process_error, ret, "Error loading frame %s", flat_path);
+    }
+
+    ret = framedata_calibrate(frame, dark, flat);
+
+process_error:
+    framedata_free(flat);
+    framedata_free(dark);
+
+    return ret;
 }
 
 int framedata_divide(framedata *fd, framedata *other)

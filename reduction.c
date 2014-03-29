@@ -254,19 +254,19 @@ insufficient_frames_error:
     return ret;
 }
 
-// Create a darkframe from the frames listed by the command `darkcmd',
-// rejecting `minmax' highest and lowest pixel values.
-// Save the resulting image to the file `outname'
-int create_dark(const char *pattern, size_t minmax, const char *outname)
+int create_bias_dark_internal(const char *pattern, size_t discard_minmax,
+    void (*preprocess)(framedata *, void *), void *preprocess_data,
+    void (*postprocess)(framedata *master, double *data_cube, size_t num_frames, void *), void *postprocess_data,
+    const char *outname)
 {
     int ret = 0;
 
     char **frame_paths;
     size_t num_frames = get_matching_files(pattern, &frame_paths);
 
-    if (num_frames < 2*minmax)
+    if (num_frames < 2*discard_minmax)
         error_jump(insufficient_frames_error, ret,
-            "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
+            "Insufficient frames. %d found, %d will be discarded", num_frames, 2*discard_minmax);
 
     framedata *base = framedata_load(frame_paths[0]);
     if (!base)
@@ -295,7 +295,8 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
                 frame_paths[k], base->rows, base->cols, frame->rows, frame->cols);
         }
 
-        framedata_subtract_bias(frame);
+        preprocess(frame, preprocess_data);
+
         for (size_t j = 0; j < base->rows*base->cols; j++)
             data_cube[num_frames*j + k] = frame->data[j];
 
@@ -309,12 +310,14 @@ int create_dark(const char *pattern, size_t minmax, const char *outname)
 
         // then average the non-rejected pixels into the output array
         base->data[j] = 0;
-        for (int i = minmax; i < num_frames - minmax; i++)
+        for (int i = discard_minmax; i < num_frames - discard_minmax; i++)
             base->data[j] += data_cube[num_frames*j + i];
-        base->data[j] /= (num_frames - 2*minmax);
+        base->data[j] /= (num_frames - 2*discard_minmax);
     }
 
+    postprocess(base, data_cube, num_frames, postprocess_data);
     framedata_save(base, outname);
+
 process_error:
     free(data_cube);
 setup_error:
@@ -322,6 +325,33 @@ setup_error:
 insufficient_frames_error:
     free_2d_array(frame_paths, num_frames);
     return ret;
+}
+
+void preprocess_dark(framedata *frame, void *data)
+{
+    framedata_subtract_bias(frame);
+}
+
+void postprocess_dark(framedata *master, double *data_cube, size_t num_frames, void *data)
+{
+    // No bias frame
+    if (data == NULL)
+        return;
+
+    // Set the overscan region to zero -- bias subtraction is covered by the bias frame
+    uint16_t bias_region[4];
+    framedata_bias_region(master, bias_region);
+    size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
+
+    if (bias_region_px)
+        for (uint16_t j = bias_region[2]; j < bias_region[3]; j++)
+            for (uint16_t i = bias_region[0]; i < bias_region[1]; i++)
+                master->data[j*master->cols + i] = 0;
+}
+
+int create_dark(const char *pattern, size_t discard_minmax, const char *outname)
+{
+    return create_bias_dark_internal(pattern, discard_minmax, preprocess_dark, NULL, postprocess_dark, NULL, outname);
 }
 
 int display_frame(char *data_path, char *frame_name)

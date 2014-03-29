@@ -10,9 +10,9 @@
 
 #include "datafile.h"
 
-int create_flat(const char *pattern, size_t minmax, const char *masterdark, const char *outname);
-int create_bias(const char *pattern, size_t discard_minmax, double bias_fudge, const char *outname);
-int create_dark(const char *pattern, size_t minmax, const char *outname);
+int create_flat(const char *pattern, size_t minmax, const char *masterbias, const char *masterdark, const char *outname);
+int create_bias(const char *pattern, size_t minmax, double bias_fudge, const char *outname);
+int create_dark(const char *pattern, size_t minmax, const char *masterbias, const char *outname);
 int display_frame(char *data_path, char *frame_name);
 int print_frame_metadata(char *frame_path);
 
@@ -23,7 +23,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string);
 int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename);
 
 int display_tracer(char *dataPath);
-int frame_translation(const char *frame, const char *reference, const char *dark_path, const char *flat_path);
+int frame_translation(const char *frame, const char *bias, const char *reference, const char *dark_path, const char *flat_path);
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
 
 #endif

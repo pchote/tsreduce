@@ -47,6 +47,7 @@ typedef struct
     int version;
     char *frame_dir;
     char *frame_pattern;
+    char *bias_template;
     char *dark_template;
     char *flat_template;
     char *reference_frame;

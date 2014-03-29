@@ -57,7 +57,7 @@ double calculate_readnoise(framedata *master, double *data_cube, size_t num_fram
 // Save the resulting image to the file `outname'
 //
 // Also calculates the readnoise and gain if overscan is available
-int create_flat(const char *pattern, size_t minmax, const char *masterdark, const char *outname)
+int create_flat(const char *pattern, size_t minmax, const char *masterbias, const char *masterdark, const char *outname)
 {
     int ret = 0;
 
@@ -70,13 +70,24 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         error_jump(insufficient_frames_error, ret,
             "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
 
-    // Load the master dark frame
-    // Frame geometry for all subsequent frames is assumed to match the master-dark
-    framedata *dark = framedata_load(masterdark);
-    if (!dark)
-        error_jump(dark_error, ret, "Error loading frame %s", masterdark);
+    // Load the master bias and dark frames, plus the first flat frame to use as a reference.
+    // Frame geometry for all subsequent frames is assumed to match the base frame
+    framedata *bias = NULL;
+    framedata *dark = NULL;
+    framedata *base = NULL;
 
-    framedata *base = framedata_load(frame_paths[0]);
+    if (masterbias)
+    {
+        bias = framedata_load(masterbias);
+        if (!bias)
+            error_jump(setup_error, ret, "    Error loading bias frame %s", masterbias);
+    }
+
+    dark = framedata_load(masterdark);
+    if (!dark)
+        error_jump(setup_error, ret, "Error loading frame %s", masterdark);
+
+    base = framedata_load(frame_paths[0]);
     if (!base)
         error_jump(setup_error, ret, "Error loading frame %s", frame_paths[0]);
 
@@ -111,8 +122,8 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
                 frame_paths[k], base->rows, base->cols, frame->rows, frame->cols);
         }
 
-        // Subtract dark, normalized to the flat exposure time
-        if (framedata_calibrate(frame, dark, NULL))
+        // Subtract bias and scaled dark frame
+        if (framedata_calibrate(frame, bias, dark, NULL))
         {
             framedata_free(frame);
             error_jump(processing_error, ret, "Calibration failed for %s", frame_paths[k]);
@@ -122,7 +133,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         for (size_t j = 0; j < base->rows*base->cols; j++)
             data_cube[num_frames*j + k] = frame->data[j];
 
-        // Calculate normalization factor to make the image region 1
+        // Calculate normalization factor to make the mean image intensity unity
         double mean = region_mean(image_region, frame->data, frame->cols);
 
         // Calculate standard deviation
@@ -174,13 +185,24 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
         free(cube_slice);
     }
 
+    // Calculate gain and (if required) readnoise.
     uint16_t bias_region[4];
     framedata_bias_region(base, bias_region);
     size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
 
-    if (bias_region_px)
+    if (bias || bias_region_px)
     {
-        double readnoise = calculate_readnoise(base, data_cube, num_frames, bias_region, false);
+        double readnoise;
+        if (!bias)
+        {
+            readnoise = calculate_readnoise(base, data_cube, num_frames, bias_region, false);
+            printf("Calculated CCD-READ: %f\n", readnoise);
+        }
+        else if (framedata_get_metadata(bias, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
+        {
+            int unused;
+            error_jump(skip_readgain, unused, "Bias does not specify CCD-READ.");
+        }
 
         // Calculate gain from each image
         double *gain = calloc(num_frames, sizeof(double));
@@ -224,13 +246,12 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
             framedata_put_metadata(base, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
             framedata_put_metadata(base, "CCD-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");
 
-            printf("Readnoise: %f\n", readnoise);
-            printf("Gain: %f\n", median_gain);
+            printf("Calculated CCD-GAIN: %f\n", median_gain);
         }
 
         free(gain);
     }
-
+skip_readgain:
     // Replace values outside the image region with 1, so overscan survives flatfielding
     if (image_region_px != base->rows*base->cols)
         for (uint16_t j = 0; j < base->rows; j++)
@@ -244,13 +265,12 @@ processing_error:
     free(frame_mean);
     free(data_cube);
 setup_error:
-    if (base)
-        framedata_free(base);
-dark_error:
-    if (dark)
-        framedata_free(dark);
+    framedata_free(base);
+    framedata_free(dark);
+    framedata_free(bias);
 insufficient_frames_error:
     free_2d_array(frame_paths, num_frames);
+
     return ret;
 }
 
@@ -324,6 +344,7 @@ setup_error:
     framedata_free(base);
 insufficient_frames_error:
     free_2d_array(frame_paths, num_frames);
+
     return ret;
 }
 
@@ -353,7 +374,11 @@ int create_bias(const char *pattern, size_t discard_minmax, double bias_fudge, c
 
 void preprocess_dark(framedata *frame, void *data)
 {
-    framedata_subtract_bias(frame);
+    framedata *bias = data;
+    if (bias)
+        framedata_subtract(frame, bias);
+    else
+        framedata_subtract_bias(frame);
 }
 
 void postprocess_dark(framedata *master, double *data_cube, size_t num_frames, void *data)
@@ -373,9 +398,22 @@ void postprocess_dark(framedata *master, double *data_cube, size_t num_frames, v
                 master->data[j*master->cols + i] = 0;
 }
 
-int create_dark(const char *pattern, size_t discard_minmax, const char *outname)
+int create_dark(const char *pattern, size_t discard_minmax, const char *masterbias, const char *outname)
 {
-    return create_bias_dark_internal(pattern, discard_minmax, preprocess_dark, NULL, postprocess_dark, NULL, outname);
+    int ret = 0;
+    framedata *bias = NULL;
+    if (masterbias)
+    {
+        bias = framedata_load(masterbias);
+        if (!bias)
+            error_jump(bias_error, ret, "Error loading frame %s", masterbias);
+    }
+
+    ret = create_bias_dark_internal(pattern, discard_minmax, preprocess_dark, NULL, postprocess_dark, (void *)masterbias, outname);
+
+    framedata_free(bias);
+bias_error:
+    return ret;
 }
 
 int display_frame(char *data_path, char *frame_name)
@@ -397,7 +435,7 @@ int display_frame(char *data_path, char *frame_name)
     if (!frame)
         error_jump(setup_error, ret, "Error loading frame %s", obs->filename);
 
-    if (framedata_calibrate_load(frame, data->dark_template, data->flat_template))
+    if (framedata_calibrate_load(frame, data->bias_template, data->dark_template, data->flat_template))
         error_jump(process_error, ret, "Error processing frame %s", obs->filename);
 
     if (init_ds9())
@@ -478,6 +516,14 @@ int update_reduction(char *dataPath)
             error_jump(flat_error, ret, "CCD Gain unknown. Define CCDGain in %s.", dataPath);
     }
 
+    framedata *bias = NULL;
+    if (data->bias_template)
+    {
+        bias = framedata_load(data->bias_template);
+        if (!bias)
+            error_jump(bias_error, ret, "Error loading frame %s", data->bias_template);
+    }
+
     framedata *dark = NULL;
     if (data->dark_template)
     {
@@ -490,7 +536,7 @@ int update_reduction(char *dataPath)
     if (!reference)
         error_jump(reference_error, ret, "Error loading reference frame %s", data->reference_frame);
 
-    if (framedata_calibrate(reference, dark, flat))
+    if (framedata_calibrate(reference, bias, dark, flat))
         error_jump(reference_error, ret, "Error calibrating reference frame %s", data->reference_frame);
 
     // Iterate through the files in the directory
@@ -528,7 +574,7 @@ int update_reduction(char *dataPath)
         double midtime = ts_difftime(frame_time, data->reference_time) + exptime / 2;
 
         // Process frame
-        if (framedata_calibrate(frame, dark, flat))
+        if (framedata_calibrate(frame, bias, dark, flat))
             error_jump(process_error, ret, "Error calibrating frame %s", frame_paths[i]);
 
         struct observation *obs = datafile_new_observation(data);
@@ -609,11 +655,11 @@ process_error:
 reference_error:
     framedata_free(reference);
 dark_error:
-    if (dark)
-        framedata_free(dark);
+    framedata_free(dark);
+bias_error:
+    framedata_free(bias);
 flat_error:
-    if (flat)
-        framedata_free(flat);
+    framedata_free(flat);
 data_error:
     datafile_free(data);
     return ret;
@@ -640,6 +686,80 @@ int create_reduction_file(char *outname)
 
     if (use_calibration)
     {
+        char *bias_path;
+        while (true)
+        {
+            char *ret = prompt_user_input("Enter bias path", ".", false);
+            bias_path = canonicalize_path(ret);
+            if (!chdir(bias_path))
+            {
+                free(ret);
+                break;
+            }
+            printf("Invalid frame path: %s\n", ret);
+            free(bias_path);
+            free(ret);
+        }
+
+        char *master_bias = prompt_user_input("Enter output master bias filename", "master-bias.fits.gz", false);
+        size_t bias_size = strlen(master_bias) + strlen(bias_path) + 2;
+        data->bias_template = malloc(bias_size*sizeof(char));
+        snprintf(data->bias_template, bias_size, "%s/%s", bias_path, master_bias);
+        free(master_bias);
+
+        // Create master-bias if necessary
+        if (access(data->bias_template, F_OK) != -1)
+            printf("Skipping master bias creation - file already exists\n");
+        else
+        {
+            char bias_pattern[1039];
+            int num_biases;
+            while (true)
+            {
+                char *ret = prompt_user_input("Enter bias prefix", "bias", false);
+                snprintf(bias_pattern, 1039, filename_fmt, ret);
+                free(ret);
+
+                char **bias_filenames;
+                num_biases = get_matching_files(bias_pattern, &bias_filenames);
+                if (num_biases > 0)
+                {
+                    free_2d_array(bias_filenames, num_biases);
+                    break;
+                }
+
+                printf("No files found matching pattern: %s/%s\n", bias_path, bias_pattern);
+            }
+
+            int minmax = 0;
+            while (true)
+            {
+                char fallback[32];
+                snprintf(fallback, 32, "%d", num_biases/2);
+                char *ret = prompt_user_input("Enter number of biases around median to average", fallback, false);
+                int count = atoi(ret);
+                free(ret);
+
+                if (count > 0 && count <= num_biases)
+                {
+                    minmax = (num_biases - count) / 2;
+                    break;
+                }
+                printf("Number must be between 0 and %d\n", num_biases);
+            }
+
+            int failed = create_bias(bias_pattern, minmax, 0.0, data->bias_template);
+            if (failed)
+            {
+                free(bias_path);
+                error_jump(create_bias_error, ret, "master bias generation failed");
+            }
+        }
+        free(bias_path);
+
+        // Return to data dir
+        chdir(datadir);
+
         char *dark_path;
         while (true)
         {
@@ -702,7 +822,7 @@ int create_reduction_file(char *outname)
                 printf("Number must be between 0 and %d\n", num_darks);
             }
 
-            int failed = create_dark(dark_pattern, minmax, data->dark_template);
+            int failed = create_dark(dark_pattern, minmax, data->bias_template, data->dark_template);
             if (failed)
             {
                 free(dark_path);
@@ -776,7 +896,7 @@ int create_reduction_file(char *outname)
                 printf("Number must be between 0 and %d\n", num_flats);
             }
 
-            int failed = create_flat(flat_pattern, minmax, data->dark_template, data->flat_template);
+            int failed = create_flat(flat_pattern, minmax, data->bias_template, data->dark_template, data->flat_template);
             if (failed)
             {
                 free(flat_path);
@@ -842,7 +962,7 @@ int create_reduction_file(char *outname)
         free(ret);
     }
 
-    if (framedata_calibrate_load(frame, data->dark_template, data->flat_template))
+    if (framedata_calibrate_load(frame, data->bias_template, data->dark_template, data->flat_template))
         error_jump(frameload_error, ret, "Unable to calibrate reference frame");
 
     if (framedata_start_time(frame, &data->reference_time))
@@ -1132,6 +1252,7 @@ frameload_error:
     framedata_free(frame);
 create_flat_error:
 create_dark_error:
+create_bias_error:
     datafile_free(data);
     return ret;
 }
@@ -1472,7 +1593,7 @@ setup_error:
     return ret;
 }
 
-int frame_translation(const char *frame_path, const char *reference_path, const char *dark_path, const char *flat_path)
+int frame_translation(const char *frame_path, const char *reference_path, const char *bias_path, const char *dark_path, const char *flat_path)
 {
     int ret = 0;
 
@@ -1484,10 +1605,10 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     if (!reference)
         error_jump(reference_error, ret, "Error loading frame %s", reference_path);
 
-    if (framedata_calibrate_load(frame, dark_path, flat_path))
+    if (framedata_calibrate_load(frame, bias_path, dark_path, flat_path))
         error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_path);
 
-    if (framedata_calibrate_load(reference, dark_path, flat_path))
+    if (framedata_calibrate_load(reference, bias_path, dark_path, flat_path))
         error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
     int32_t xt, yt;

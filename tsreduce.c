@@ -19,13 +19,27 @@ int verbosity = 0;
 
 int main( int argc, char *argv[] )
 {
-    // `tsreduce create-flat "flat-[0-9]+.fits.gz" 5 master-dark.fits.gz master-flat.fits.gz`
-    if (argc == 6 && strcmp(argv[1], "create-flat") == 0)
-        return create_flat(argv[2], atoi(argv[3]), argv[4], argv[5]);
+    // `tsreduce create-flat "flat-[0-9]+.fits.gz" 5 [master-bias.fits.gz] master-dark.fits.gz master-flat.fits.gz`
+    if ((argc == 6 || argc == 7) && strcmp(argv[1], "create-flat") == 0)
+    {
+        const char *bias = argc == 6 ? NULL : argv[4];
+        size_t b = argc == 6 ? 0 : 1;
+        return create_flat(argv[2], atoi(argv[3]), bias, argv[4+b], argv[5+b]);
+    }
 
-    // `tsreduce create-dark "dark-[0-9]+.fits.gz" 5 master-dark.fits.gz`
-    else if (argc == 5 && strcmp(argv[1], "create-dark") == 0)
-        return create_dark(argv[2], atoi(argv[3]), argv[4]);
+    // `tsreduce create-dark "dark-[0-9]+.fits.gz" 5 [master-bias.fits.gz] master-dark.fits.gz`
+    else if ((argc == 5 || argc == 6) && strcmp(argv[1], "create-dark") == 0)
+    {
+        const char *bias = argc == 5 ? NULL : argv[4];
+        size_t b = argc == 5 ? 0 : 1;
+        return create_dark(argv[2], atoi(argv[3]), bias, argv[4+b]);
+    }
+
+    // `tsreduce create-bias "bias-[0-9]+.fits.gz" 5 0.0 master-bias.fits.gz`
+    else if (argc == 6 && strcmp(argv[1], "create-bias") == 0)
+    {
+        return create_bias(argv[2], atoi(argv[3]), atof(argv[4]), argv[5]);
+    }
 
     // `tsreduce create-bias "bias-[0-9]+.fits.gz" 5 0.0 master-bias.fits.gz`
     else if (argc == 6 && strcmp(argv[1], "create-bias") == 0)
@@ -75,10 +89,16 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "plot-range") == 0)
         return plot_range(argv[2]);
 
-    // `tsreduce translation frame.fits.gz reference.fits.gz master-dark.fits.gz master-flat.fits.gz`
-    else if (argc == 6 && strcmp(argv[1], "translation") == 0)
-        return frame_translation(argv[2], argv[3], argv[4], argv[5]);
-
+    // `tsreduce translation frame.fits.gz reference.fits.gz [master-bias.fits.gz] master-dark.fits.gz master-flat.fits.gz`
+    else if ((argc == 6 || argc == 7) && strcmp(argv[1], "translation") == 0)
+    {
+        const char *frame = argv[2];
+        const char *reference = argv[3];
+        const char *bias = argc == 7 ? argv[4] : NULL;
+        const char *dark = argc == 7 ? argv[5] : argv[4];
+        const char *flat = argc == 7 ? argv[6] : argv[5];
+        return frame_translation(frame, reference, bias, dark, flat);
+    }
     // `tsreduce plot ec04207.dat [ts.ps/cps dft.ps/cps 10]
     else if ((argc == 3 || argc == 6 || argc == 7) && strcmp(argv[1], "plot") == 0)
     {

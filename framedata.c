@@ -499,9 +499,12 @@ void framedata_subtract_bias(framedata *fd)
         fd->data[i] -= mean_bias;
 }
 
-int framedata_calibrate(framedata *frame, framedata *dark, framedata *flat)
+int framedata_calibrate(framedata *frame, framedata *bias, framedata *dark, framedata *flat)
 {
-    framedata_subtract_bias(frame);
+    if (bias)
+        framedata_subtract(frame, bias);
+    else
+        framedata_subtract_bias(frame);
 
     if (dark)
         if (framedata_subtract_normalized(frame, dark))
@@ -514,11 +517,19 @@ int framedata_calibrate(framedata *frame, framedata *dark, framedata *flat)
     return 0;
 }
 
-int framedata_calibrate_load(framedata *frame, const char *dark_path, const char *flat_path)
+int framedata_calibrate_load(framedata *frame, const char *bias_path, const char *dark_path, const char *flat_path)
 {
     int ret = 0;
+    framedata *bias = NULL;
     framedata *dark = NULL;
     framedata *flat = NULL;
+
+    if (bias_path)
+    {
+        bias = framedata_load(bias_path);
+        if (!bias)
+            error_jump(process_error, ret, "Error loading frame %s", bias_path);
+    }
 
     if (dark_path)
     {
@@ -534,7 +545,7 @@ int framedata_calibrate_load(framedata *frame, const char *dark_path, const char
             error_jump(process_error, ret, "Error loading frame %s", flat_path);
     }
 
-    ret = framedata_calibrate(frame, dark, flat);
+    ret = framedata_calibrate(frame, bias, dark, flat);
 
 process_error:
     framedata_free(flat);

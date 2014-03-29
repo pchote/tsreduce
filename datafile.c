@@ -107,6 +107,11 @@ datafile* datafile_load(char *filename)
             sscanf(linebuf, "# FrameDir: %1024s\n", stringbuf);
             dp->frame_dir = strdup(stringbuf);
         }
+        else if (!strncmp(linebuf,"# BiasTemplate:", 15))
+        {
+            sscanf(linebuf, "# BiasTemplate: %1024s\n", stringbuf);
+            dp->bias_template = strdup(stringbuf);
+        }
         else if (!strncmp(linebuf,"# DarkTemplate:", 15))
         {
             sscanf(linebuf, "# DarkTemplate: %1024s\n", stringbuf);
@@ -294,6 +299,7 @@ void datafile_free(datafile *data)
 {
     free(data->frame_dir);
     free(data->frame_pattern);
+    free(data->bias_template);
     free(data->dark_template);
     free(data->flat_template);
     free(data->reference_frame);
@@ -386,6 +392,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# FrameDir: %s\n", data->frame_dir);
     if (data->frame_pattern)
         fprintf(out, "# FramePattern: %s\n", data->frame_pattern);
+    if (data->bias_template)
+        fprintf(out, "# BiasTemplate: %s\n", data->bias_template);
     if (data->dark_template)
         fprintf(out, "# DarkTemplate: %s\n", data->dark_template);
     if (data->flat_template)

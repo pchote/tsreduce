@@ -674,12 +674,12 @@ int init_ds9()
 #else
         const char *ds9_command = "ds9 -title tsreduce&";
 #endif
-        printf("Starting ds9...\n");
+        printf("        Starting ds9...\n");
         ts_exec_write(ds9_command, NULL, 0);
 
         do
         {
-            printf("Waiting...\n");
+            printf("        Waiting...\n");
             millisleep(1000);
             available = ts_exec_write(test_command, NULL, 0);
         } while (!available);

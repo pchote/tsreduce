@@ -13,6 +13,8 @@
 #include "framedata.h"
 #include "helpers.h"
 
+extern int verbosity;
+
 struct frame_metadata
 {
     char *key;
@@ -92,7 +94,7 @@ static void print_fits_error()
 {
     char fitserr[128];
     while (fits_read_errmsg(fitserr))
-        error("%s\n", fitserr);
+        error("        %s\n", fitserr);
 }
 
 framedata *framedata_load(const char *filename)
@@ -113,8 +115,10 @@ framedata *framedata_load(const char *filename)
 
     if (fits_open_image(&input, filename, READONLY, &status))
     {
-        print_fits_error();
-        error_jump(error, ret, "fits_open_image failed with error %d; %s", status, filename);
+        if (verbosity >= 1)
+            print_fits_error();
+
+        error_jump(error, ret, "        fits_open_image failed with error %d; %s", status, filename);
     }
 
     // The FITS specification requires files be an integer number of 2880 blocks.

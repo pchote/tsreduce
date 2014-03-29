@@ -68,7 +68,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     // Ensure there are enough frames to discard the requested number of pixels
     if (num_frames <= 2*minmax)
         error_jump(insufficient_frames_error, ret,
-            "Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
+            "    Insufficient frames. %d found, %d will be discarded", num_frames, 2*minmax);
 
     // Load the master bias and dark frames, plus the first flat frame to use as a reference.
     // Frame geometry for all subsequent frames is assumed to match the base frame
@@ -85,14 +85,14 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
 
     dark = framedata_load(masterdark);
     if (!dark)
-        error_jump(setup_error, ret, "Error loading frame %s", masterdark);
+        error_jump(setup_error, ret, "    Error loading dark frame %s", masterdark);
 
     base = framedata_load(frame_paths[0]);
     if (!base)
-        error_jump(setup_error, ret, "Error loading frame %s", frame_paths[0]);
+        error_jump(setup_error, ret, "    Error loading base frame %s", frame_paths[0]);
 
     if (base->rows != dark->rows || base->cols != dark->cols)
-        error_jump(setup_error, ret, "Dark and flat frame sizes don't match");
+        error_jump(setup_error, ret, "    Dark and flat frame sizes don't match");
 
     uint16_t image_region[4];
     framedata_image_region(base, image_region);
@@ -103,22 +103,22 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     double *data_cube = calloc(num_frames*base->cols*base->rows, sizeof(double));
     double *frame_mean = calloc(num_frames, sizeof(double));
     if (!data_cube || !frame_mean)
-        error_jump(processing_error, ret, "Allocation failed");
+        error_jump(processing_error, ret, "    Allocation failed");
 
     for (size_t k = 0; k < num_frames; k++)
     {
         if (verbosity >= 1)
-            printf("loading `%s`\n", frame_paths[k]);
+            printf("        loading `%s`\n", frame_paths[k]);
 
         framedata *frame = framedata_load(frame_paths[k]);
         if (!frame)
-            error_jump(processing_error, ret, "Error loading frame %s", frame_paths[k]);
+            error_jump(processing_error, ret, "    Error loading frame %s", frame_paths[k]);
 
         if (frame->rows != base->rows || frame->cols != base->cols)
         {
             framedata_free(frame);
             error_jump(processing_error, ret,
-                "Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
+                "    Frame %s dimensions mismatch. Expected (%d,%d), was (%d, %d)",
                 frame_paths[k], base->rows, base->cols, frame->rows, frame->cols);
         }
 
@@ -126,7 +126,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
         if (framedata_calibrate(frame, bias, dark, NULL))
         {
             framedata_free(frame);
-            error_jump(processing_error, ret, "Calibration failed for %s", frame_paths[k]);
+            error_jump(processing_error, ret, "    Calibration failed for %s", frame_paths[k]);
         }
 
         // Store data in cube for processing
@@ -166,7 +166,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     {
         double *cube_slice = calloc(num_frames*base->cols*base->rows, sizeof(double));
         if (!cube_slice)
-            error_jump(processing_error, ret, "cube_slice alloc failed");
+            error_jump(processing_error, ret, "    cube_slice alloc failed");
 
         for (size_t j = 0; j < base->rows*base->cols; j++)
         {
@@ -196,18 +196,18 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
         if (!bias)
         {
             readnoise = calculate_readnoise(base, data_cube, num_frames, bias_region, false);
-            printf("Calculated CCD-READ: %f\n", readnoise);
+            printf("    Calculated CCD-READ: %f\n", readnoise);
         }
         else if (framedata_get_metadata(bias, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
         {
             int unused;
-            error_jump(skip_readgain, unused, "Bias does not specify CCD-READ.");
+            error_jump(skip_readgain, unused, "    Bias does not specify CCD-READ.");
         }
 
         // Calculate gain from each image
         double *gain = calloc(num_frames, sizeof(double));
         if (!gain)
-            error_jump(processing_error, ret, "gain alloc failed");
+            error_jump(processing_error, ret, "    gain alloc failed");
 
         // Calculate mean dark level for gain calculation
         double mean_dark = region_mean(image_region, dark->data, dark->cols);
@@ -232,7 +232,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
             mean_gain += gain[k];
 
             if (verbosity >= 1)
-                printf("%zu var: %f mean: %f dark: %f gain: %f\n", k, var, frame_mean[k], mean_dark, gain[k]);
+                printf("    %zu var: %f mean: %f dark: %f gain: %f\n", k, var, frame_mean[k], mean_dark, gain[k]);
         }
         mean_gain /= num_frames;
 
@@ -246,7 +246,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
             framedata_put_metadata(base, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
             framedata_put_metadata(base, "CCD-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");
 
-            printf("Calculated CCD-GAIN: %f\n", median_gain);
+            printf("    Calculated CCD-GAIN: %f\n", median_gain);
         }
 
         free(gain);
@@ -272,6 +272,11 @@ insufficient_frames_error:
     free_2d_array(frame_paths, num_frames);
 
     return ret;
+}
+
+int calibration_helper_create_flat(datafile *data, const char *pattern, int discard_minmax)
+{
+    return create_flat(pattern, discard_minmax, data->bias_template, data->dark_template, data->flat_template);
 }
 
 int create_bias_dark_internal(const char *pattern, size_t discard_minmax,
@@ -364,12 +369,21 @@ void postprocess_bias(framedata *master, double *data_cube, size_t num_frames, v
     double readnoise = calculate_readnoise(master, data_cube, num_frames, region, true);
 
     framedata_put_metadata(master, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
-    printf("Calculated CCD-READ: %f\n", readnoise);
+    printf("    Calculated CCD-READ: %f\n", readnoise);
 }
 
 int create_bias(const char *pattern, size_t discard_minmax, double bias_fudge, const char *outname)
 {
     return create_bias_dark_internal(pattern, discard_minmax, preprocess_bias, &bias_fudge, postprocess_bias, NULL, outname);
+}
+
+int calibration_helper_create_bias(datafile *data, const char *pattern, int discard_minmax)
+{
+    char *fudge_prompt = prompt_user_input("    Enter bias fudge offset", "0", false);
+    double bias_fudge = atof(fudge_prompt);
+    free(fudge_prompt);
+
+    return create_bias(pattern, discard_minmax, bias_fudge, data->bias_template);
 }
 
 void preprocess_dark(framedata *frame, void *data)
@@ -406,7 +420,7 @@ int create_dark(const char *pattern, size_t discard_minmax, const char *masterbi
     {
         bias = framedata_load(masterbias);
         if (!bias)
-            error_jump(bias_error, ret, "Error loading frame %s", masterbias);
+            error_jump(bias_error, ret, "        Error loading frame %s", masterbias);
     }
 
     ret = create_bias_dark_internal(pattern, discard_minmax, preprocess_dark, NULL, postprocess_dark, (void *)masterbias, outname);
@@ -414,6 +428,11 @@ int create_dark(const char *pattern, size_t discard_minmax, const char *masterbi
     framedata_free(bias);
 bias_error:
     return ret;
+}
+
+int calibration_helper_create_dark(datafile *data, const char *pattern, int discard_minmax)
+{
+    return create_dark(pattern, discard_minmax, data->bias_template, data->dark_template);
 }
 
 int display_frame(char *data_path, char *frame_name)
@@ -665,11 +684,95 @@ data_error:
     return ret;
 }
 
+static char *filename_fmt = "^%s(-|.|_)[0-9]+.(fits.gz|fit.gz|fits|fit|FIT)";
+
+int create_master_calibration_file(char *default_name, char *default_prefix, char **out_template, int (*create_calibration_frame)(datafile *data, const char *pattern, int discard_minmax), datafile *data)
+{
+    char *filename = prompt_user_input("    Enter filename, or ^D to skip", default_name, true);
+    if (!filename)
+    {
+        printf("    Skipping.\n");
+        return 0;
+    }
+
+    char *path = NULL;
+    while (true)
+    {
+        char *ret = prompt_user_input("    Enter frame directory", ".", false);
+        path = canonicalize_path(ret);
+
+        if (!chdir(path))
+        {
+            free(ret);
+            break;
+        }
+
+        printf("        Invalid frame directory: %s\n", ret);
+        free(path);
+        free(ret);
+    }
+
+    size_t path_length = strlen(filename) + strlen(path) + 2;
+    *out_template = malloc(path_length*sizeof(char));
+    snprintf(*out_template, path_length, "%s/%s", path, filename);
+    free(filename);
+
+    if (access(*out_template, F_OK) != -1)
+    {
+        printf("    File exists. Using this file.\n");
+        return 0;
+    }
+
+    char *pattern;
+    int count;
+    while (true)
+    {
+        char *prefix = prompt_user_input("    Enter frame prefix", default_prefix, false);
+        int len = snprintf(NULL, 0, filename_fmt, prefix);
+        pattern = malloc(len + 1);
+        sprintf(pattern, filename_fmt, prefix);
+        free(prefix);
+
+        char **filenames;
+        count = get_matching_files(pattern, &filenames);
+        if (count > 0)
+        {
+            free_2d_array(filenames, count);
+            break;
+        }
+
+        printf("        No files found matching pattern: %s/%s\n", path, pattern);
+        free(pattern);
+    }
+    free(path);
+
+    int minmax = 0;
+    while (true)
+    {
+        char fallback[32];
+        snprintf(fallback, 32, "%d", count / 2);
+        char *ret = prompt_user_input("    Enter number of frames around median to average", fallback, false);
+        int average = atoi(ret);
+        free(ret);
+
+        if (average > 0 && average <= count)
+        {
+            minmax = (count - average) / 2;
+            break;
+        }
+
+        printf("        Number must be between 1 and %d\n", count);
+    }
+
+    int ret = create_calibration_frame(data, pattern, minmax);
+    free(pattern);
+    return ret;
+}
+
 int create_reduction_file(char *outname)
 {
     int ret = 0;
 
-    char *filename_fmt = "^%s(-|.|_)[0-9]+.(fits.gz|fit.gz|fits|fit|FIT)";
     FILE *fileTest = fopen(outname, "w");
     if (fileTest == NULL)
         return error("Unable to create data file: %s. Does it already exist?", outname);
@@ -680,250 +783,36 @@ int create_reduction_file(char *outname)
     // Store the current directory so we can return before saving the data file
     char *datadir = getcwd(NULL, 0);
 
-    char *input = prompt_user_input("Use calibration frames", "y", false);
-    bool use_calibration = !strcmp(input, "y");
-    free(input);
+    printf("Configure master bias frame:\n");
+    if (create_master_calibration_file("master-bias.fits.gz", "bias", &data->bias_template, calibration_helper_create_bias, data))
+        error_jump(create_bias_error, ret, "ERROR: master bias generation failed");
 
-    if (use_calibration)
-    {
-        char *bias_path;
-        while (true)
-        {
-            char *ret = prompt_user_input("Enter bias path", ".", false);
-            bias_path = canonicalize_path(ret);
-            if (!chdir(bias_path))
-            {
-                free(ret);
-                break;
-            }
-            printf("Invalid frame path: %s\n", ret);
-            free(bias_path);
-            free(ret);
-        }
-
-        char *master_bias = prompt_user_input("Enter output master bias filename", "master-bias.fits.gz", false);
-        size_t bias_size = strlen(master_bias) + strlen(bias_path) + 2;
-        data->bias_template = malloc(bias_size*sizeof(char));
-        snprintf(data->bias_template, bias_size, "%s/%s", bias_path, master_bias);
-        free(master_bias);
-
-        // Create master-bias if necessary
-        if (access(data->bias_template, F_OK) != -1)
-            printf("Skipping master bias creation - file already exists\n");
-        else
-        {
-            char bias_pattern[1039];
-            int num_biases;
-            while (true)
-            {
-                char *ret = prompt_user_input("Enter bias prefix", "bias", false);
-                snprintf(bias_pattern, 1039, filename_fmt, ret);
-                free(ret);
-
-                char **bias_filenames;
-                num_biases = get_matching_files(bias_pattern, &bias_filenames);
-                if (num_biases > 0)
-                {
-                    free_2d_array(bias_filenames, num_biases);
-                    break;
-                }
-
-                printf("No files found matching pattern: %s/%s\n", bias_path, bias_pattern);
-            }
-
-            int minmax = 0;
-            while (true)
-            {
-                char fallback[32];
-                snprintf(fallback, 32, "%d", num_biases/2);
-                char *ret = prompt_user_input("Enter number of biases around median to average", fallback, false);
-                int count = atoi(ret);
-                free(ret);
-
-                if (count > 0 && count <= num_biases)
-                {
-                    minmax = (num_biases - count) / 2;
-                    break;
-                }
-                printf("Number must be between 0 and %d\n", num_biases);
-            }
-
-            int failed = create_bias(bias_pattern, minmax, 0.0, data->bias_template);
-            if (failed)
-            {
-                free(bias_path);
-                error_jump(create_bias_error, ret, "master bias generation failed");
-            }
-        }
-        free(bias_path);
-
-        // Return to data dir
-        chdir(datadir);
-
-        char *dark_path;
-        while (true)
-        {
-            char *ret = prompt_user_input("Enter darks path", ".", false);
-            dark_path = canonicalize_path(ret);
-            if (!chdir(dark_path))
-            {
-                free(ret);
-                break;
-            }
-            printf("Invalid frame path: %s\n", ret);
-            free(dark_path);
-            free(ret);
-        }
-
-        char *master_dark = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz", false);
-        size_t dark_size = strlen(master_dark) + strlen(dark_path) + 2;
-        data->dark_template = malloc(dark_size*sizeof(char));
-        snprintf(data->dark_template, dark_size, "%s/%s", dark_path, master_dark);
-        free(master_dark);
-
-        // Create master-dark if necessary
-        if (access(data->dark_template, F_OK) != -1)
-            printf("Skipping master dark creation - file already exists\n");
-        else
-        {
-            char dark_pattern[1039];
-            int num_darks;
-            while (true)
-            {
-                char *ret = prompt_user_input("Enter dark prefix", "dark", false);
-                snprintf(dark_pattern, 1039, filename_fmt, ret);
-                free(ret);
-
-                char **dark_filenames;
-                num_darks = get_matching_files(dark_pattern, &dark_filenames);
-                if (num_darks > 0)
-                {
-                    free_2d_array(dark_filenames, num_darks);
-                    break;
-                }
-
-                printf("No files found matching pattern: %s/%s\n", dark_path, dark_pattern);
-            }
-
-            int minmax = 0;
-            while (true)
-            {
-                char fallback[32];
-                snprintf(fallback, 32, "%d", num_darks/2);
-                char *ret = prompt_user_input("Enter number of darks around median to average", fallback, false);
-                int count = atoi(ret);
-                free(ret);
-
-                if (count > 0 && count <= num_darks)
-                {
-                    minmax = (num_darks - count) / 2;
-                    break;
-                }
-                printf("Number must be between 0 and %d\n", num_darks);
-            }
-
-            int failed = create_dark(dark_pattern, minmax, data->bias_template, data->dark_template);
-            if (failed)
-            {
-                free(dark_path);
-                error_jump(create_dark_error, ret, "master dark generation failed");
-            }
-        }
-        free(dark_path);
-
-        // Return to data dir
-        chdir(datadir);
-
-        char *flat_path;
-        while (true)
-        {
-            char *ret = prompt_user_input("Enter flats path", ".", false);
-            flat_path = canonicalize_path(ret);
-            if (!chdir(flat_path))
-            {
-                free(ret);
-                break;
-            }
-            printf("Invalid frame path: %s\n", ret);
-            free(flat_path);
-            free(ret);
-        }
-
-        char *master_flat = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz", false);
-        size_t flat_size = strlen(master_flat) + strlen(flat_path) + 2;
-        data->flat_template = malloc(flat_size*sizeof(char));
-        snprintf(data->flat_template, flat_size, "%s/%s", flat_path, master_flat);
-        free(master_flat);
-
-        // Create master-flat if necessary
-        if (access(data->flat_template, F_OK) != -1)
-            printf("Skipping master flat creation - file already exists\n");
-        else
-        {
-            char flat_pattern[1039];
-            int num_flats;
-            while (true)
-            {
-                char *ret = prompt_user_input("Enter flat prefix", "flat", false);
-                snprintf(flat_pattern, 1039, filename_fmt, ret);
-                free(ret);
-
-                char **flat_filenames;
-                num_flats = get_matching_files(flat_pattern, &flat_filenames);
-                if (num_flats > 0)
-                {
-                    free_2d_array(flat_filenames, num_flats);
-                    break;
-                }
-
-                printf("No files found matching pattern: %s/%s\n", flat_path, flat_pattern);
-            }
-
-            int minmax = 0;
-            while (true)
-            {
-                char fallback[32];
-                snprintf(fallback, 32, "%d", num_flats/2);
-                char *ret = prompt_user_input("Enter number of flats around median to average", fallback, false);
-                int count = atoi(ret);
-                free(ret);
-
-                if (count > 0 && count <= num_flats)
-                {
-                    minmax = (num_flats - count) / 2;
-                    break;
-                }
-                printf("Number must be between 0 and %d\n", num_flats);
-            }
-
-            int failed = create_flat(flat_pattern, minmax, data->bias_template, data->dark_template, data->flat_template);
-            if (failed)
-            {
-                free(flat_path);
-                error_jump(create_flat_error, ret, "master flat generation failed");
-            }
-        }
-        free(flat_path);
-    }
-    else
-    {
-        data->dark_template = NULL;
-        data->flat_template = NULL;
-    }
-
-    // Return to data dir
     chdir(datadir);
+    printf("Configure master dark frame:\n");
+    if (create_master_calibration_file("master-dark.fits.gz", "dark", &data->dark_template, calibration_helper_create_dark, data))
+        error_jump(create_dark_error, ret, "ERROR: master dark generation failed");
+
+    chdir(datadir);
+    printf("Configure master flat frame:\n");
+    
+    if (!data->dark_template)
+        printf("    Requires master dark. Skipping.\n");
+    else if (create_master_calibration_file("master-flat.fits.gz", "flat", &data->flat_template, calibration_helper_create_flat, data))
+        error_jump(create_flat_error, ret, "ERROR: master flat generation failed");
+
+    chdir(datadir);
+    printf("Configure reduction:\n");
 
     while (true)
     {
-        char *ret = prompt_user_input("Enter frame path", ".", false);
+        char *ret = prompt_user_input("    Enter frame path", ".", false);
         data->frame_dir = canonicalize_path(ret);
         if (!chdir(data->frame_dir))
         {
             free(ret);
             break;
         }
-        printf("Invalid frame path: %s\n", ret);
+        printf("        Invalid frame path: %s\n", ret);
         free(data->frame_dir);
         free(ret);
     }
@@ -933,7 +822,7 @@ int create_reduction_file(char *outname)
     while (true)
     {
         char namebuf[1039];
-        char *ret = prompt_user_input("Enter target prefix", default_prefix, false);
+        char *ret = prompt_user_input("    Enter target prefix", default_prefix, false);
         snprintf(namebuf, 1039, filename_fmt, ret);
         free(ret);
         data->reference_frame = get_first_matching_file(namebuf);
@@ -942,14 +831,14 @@ int create_reduction_file(char *outname)
             data->frame_pattern = strdup(namebuf);
             break;
         }
-        printf("No files found matching pattern: %s/%s\n", data->frame_dir, namebuf);
+        printf("        No files found matching pattern: %s/%s\n", data->frame_dir, namebuf);
     }
     free(default_prefix);
 
     framedata *frame = NULL;
     while (true)
     {
-        char *ret = prompt_user_input("Enter reference frame", data->reference_frame, false);
+        char *ret = prompt_user_input("    Enter reference frame", data->reference_frame, false);
         frame = framedata_load(ret);
         if (frame)
         {
@@ -958,21 +847,21 @@ int create_reduction_file(char *outname)
             break;
         }
 
-        printf("File not found: %s/%s\n", data->frame_dir, ret);
+        printf("        File not found: %s/%s\n", data->frame_dir, ret);
         free(ret);
     }
 
     if (framedata_calibrate_load(frame, data->bias_template, data->dark_template, data->flat_template))
-        error_jump(frameload_error, ret, "Unable to calibrate reference frame");
+        error_jump(frameload_error, ret, "    Unable to calibrate reference frame");
 
     if (framedata_start_time(frame, &data->reference_time))
-        error_jump(frameload_error, ret, "No known time headers found");
+        error_jump(frameload_error, ret, "    No known time headers found");
 
     if (data->flat_template)
     {
         framedata *flat = framedata_load(data->flat_template);
         if (!flat)
-            error_jump(frameload_error, ret, "Error loading frame %s", data->flat_template);
+            error_jump(frameload_error, ret, "    Error loading frame %s", data->flat_template);
 
         if (!framedata_has_metadata(flat, "CCD-READ"))
         {
@@ -984,7 +873,7 @@ int create_reduction_file(char *outname)
                 if (data->ccd_readnoise > 0)
                     break;
 
-                printf("Number must be greater than 0\n");
+                printf("        Number must be greater than 0\n");
             }
         }
 
@@ -992,20 +881,20 @@ int create_reduction_file(char *outname)
         {
             while (true)
             {
-                char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00", false);
+                char *ret = prompt_user_input("    Enter CCD Gain (ADU):", "2.00", false);
                 data->ccd_gain = strtod(ret, NULL);
                 free(ret);
 
                 if (data->ccd_gain > 0)
                     break;
 
-                printf("Number must be greater than 0\n");
+                printf("        Number must be greater than 0\n");
             }
         }
 
         if (framedata_get_metadata(flat, "IM-SCALE", FRAME_METADATA_DOUBLE, &data->ccd_platescale))
         {
-            char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66", false);
+            char *ret = prompt_user_input("    Enter CCD platescale (arcsec/px):", "0.66", false);
             data->ccd_platescale = strtod(ret, NULL);
             free(ret);
         }
@@ -1019,14 +908,13 @@ int create_reduction_file(char *outname)
         double aperture_size = 0;
         while (true)
         {
-            printf("Aperture types are  1: 5sigma,  2: 3FWHM,  3: Manual\n");
-            char *ret = prompt_user_input("Select aperture type:", "1", false);
+            char *ret = prompt_user_input("    Select aperture type (1: 5sigma,  2: 3FWHM,  3: Manual):", "1", false);
             aperture_type = atoi(ret);
             free(ret);
             if (aperture_type >=1 && aperture_type <= 3)
                 break;
 
-            printf("Choice must be between 1 and 3\n");
+            printf("        Choice must be between 1 and 3\n");
         }
 
         if (aperture_type == 3)
@@ -1039,12 +927,12 @@ int create_reduction_file(char *outname)
                 if (aperture_size > 0)
                     break;
 
-                printf("Radius must be greater than 0\n");
+                printf("        Radius must be greater than 0\n");
             }
         }
 
         if (init_ds9())
-            return error("Unable to launch ds9");
+            return error("    Unable to launch ds9");
 
         {
             char command[128];
@@ -1061,13 +949,13 @@ int create_reduction_file(char *outname)
         if (ts_exec_write("xpaset tsreduce regions shape annulus", NULL, 0))
             error_jump(frameload_error, ret, "ds9 command failed");
 
-        printf("Circle the target stars and surrounding sky in ds9\nPress enter in this terminal to continue...");
+        printf("    Circle the target stars and surrounding sky in ds9\n        Press enter in this terminal to continue...");
         getchar();
 
         // Read zoom from ds9
         char *ds9_zoom;
         if (ts_exec_read("xpaget tsreduce zoom", &ds9_zoom))
-            error_jump(frameload_error, ret, "ds9 request zoom failed");
+            error_jump(frameload_error, ret, "        ds9 request zoom failed");
         float zoom = strtod(ds9_zoom, NULL);
         free(ds9_zoom);
 
@@ -1077,7 +965,7 @@ int create_reduction_file(char *outname)
 
         char *ds9buf;
         if (ts_exec_read("xpaget tsreduce regions", &ds9buf))
-            error_jump(frameload_error, ret, "ds9 request regions failed");
+            error_jump(frameload_error, ret, "        ds9 request regions failed");
 
         // Parse the region definitions
         data->target_count = 0;
@@ -1085,7 +973,7 @@ int create_reduction_file(char *outname)
         data->targets = malloc(target_size*sizeof(struct target_data));
         double *sky = malloc(target_size*sizeof(double));
         if (!data->targets || !sky)
-            error_jump(target_error, ret, "Target allocation error");
+            error_jump(target_error, ret, "        Target allocation error");
 
         char *cur = ds9buf;
         double largest_aperture = 0;
@@ -1097,7 +985,7 @@ int create_reduction_file(char *outname)
                 data->targets = realloc(data->targets, target_size*sizeof(struct target_data));
                 sky = realloc(sky, target_size*sizeof(double));
                 if (!data->targets || !sky)
-                    error_jump(target_error, ret, "Target allocation error");
+                    error_jump(target_error, ret, "    Target allocation error");
             }
 
             // Read aperture coords
@@ -1112,12 +1000,12 @@ int create_reduction_file(char *outname)
             a.r = a.s1;
 
             if (verbosity >= 1)
-                printf("Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", a.x, a.y, a.r, a.s1, a.s2);
+                printf("        Initial aperture xy: (%f,%f) r: %f s:(%f,%f)\n", a.x, a.y, a.r, a.s1, a.s2);
 
             double2 xy;
             if (center_aperture(a, frame, &xy))
             {
-                printf("Centering failed to converge. Removing aperture.\n");
+                printf("        Centering failed to converge. Removing aperture.\n");
                 continue;
             }
 
@@ -1127,7 +1015,7 @@ int create_reduction_file(char *outname)
             double sky_intensity, sky_std_dev;
             if (calculate_background(a, frame, &sky_intensity, &sky_std_dev))
             {
-                printf("Background calculation failed. Removing aperture.\n");
+                printf("        Background calculation failed. Removing aperture.\n");
                 continue;
             }
             sky[data->target_count] = sky_intensity;
@@ -1161,7 +1049,7 @@ int create_reduction_file(char *outname)
                     double fwhm = estimate_fwhm(frame, xy, sky_intensity, a.s1);
                     if (fwhm < 0)
                     {
-                        printf("Invalid fwhm. Removing target\n");
+                        printf("        Invalid fwhm. Removing target\n");
                         continue;
                     }
 
@@ -1196,7 +1084,7 @@ int create_reduction_file(char *outname)
         for (size_t i = 0; i < data->target_count; i++)
             data->targets[i].aperture.r = largest_aperture;
 
-        printf("Aperture radius: %.2fpx\n", largest_aperture);
+        printf("        Aperture radius: %.2fpx\n", largest_aperture);
 
         // Display results in ds9 - errors are non-fatal
         ts_exec_write("xpaset tsreduce regions delete all", NULL, 0);
@@ -1226,7 +1114,7 @@ int create_reduction_file(char *outname)
         }
         ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
 
-        char *ret = prompt_user_input("Are the displayed apertures correct?:", "y", false);
+        char *ret = prompt_user_input("    Are the displayed apertures correct?:", "y", false);
         bool done = !strcmp(ret, "y");
         free(ret);
         free(sky);
@@ -1236,11 +1124,11 @@ int create_reduction_file(char *outname)
 
         free(data->targets);
     }
-    printf("Set %zu targets\n", data->target_count);
+    printf("        Set %zu targets\n", data->target_count);
 
     // Save to disk
     if (chdir(datadir))
-        error_jump(frameload_error, ret, "Invalid data path: %s", datadir);
+        error_jump(frameload_error, ret, "    Invalid data path: %s", datadir);
 
     datafile_save(data, outname);
     printf("Saved to %s\n", outname);

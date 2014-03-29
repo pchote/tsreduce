@@ -11,6 +11,7 @@
 #include "datafile.h"
 
 int create_flat(const char *pattern, size_t minmax, const char *masterdark, const char *outname);
+int create_bias(const char *pattern, size_t discard_minmax, double bias_fudge, const char *outname);
 int create_dark(const char *pattern, size_t minmax, const char *outname);
 int display_frame(char *data_path, char *frame_name);
 int print_frame_metadata(char *frame_path);

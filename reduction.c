@@ -327,6 +327,30 @@ insufficient_frames_error:
     return ret;
 }
 
+void preprocess_bias(framedata *frame, void *data)
+{
+    double *fudge = data;
+
+    // Apply bias offset to allow for proper dark scaling
+    for (size_t i = 0; i < frame->cols*frame->rows; i++)
+        frame->data[i] += *fudge;
+}
+
+void postprocess_bias(framedata *master, double *data_cube, size_t num_frames, void *data)
+{
+    // Use the full bias frame to calculate the read noise
+    uint16_t region[4] = {0, master->cols, 0, master->rows};
+    double readnoise = calculate_readnoise(master, data_cube, num_frames, region, true);
+
+    framedata_put_metadata(master, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
+    printf("Calculated CCD-READ: %f\n", readnoise);
+}
+
+int create_bias(const char *pattern, size_t discard_minmax, double bias_fudge, const char *outname)
+{
+    return create_bias_dark_internal(pattern, discard_minmax, preprocess_bias, &bias_fudge, postprocess_bias, NULL, outname);
+}
+
 void preprocess_dark(framedata *frame, void *data)
 {
     framedata_subtract_bias(frame);

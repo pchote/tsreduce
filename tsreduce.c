@@ -27,6 +27,10 @@ int main( int argc, char *argv[] )
     else if (argc == 5 && strcmp(argv[1], "create-dark") == 0)
         return create_dark(argv[2], atoi(argv[3]), argv[4]);
 
+    // `tsreduce create-bias "bias-[0-9]+.fits.gz" 5 0.0 master-bias.fits.gz`
+    else if (argc == 6 && strcmp(argv[1], "create-bias") == 0)
+        return create_bias(argv[2], atoi(argv[3]), atof(argv[4]), argv[5]);
+
     // `tsreduce update ~/data/20110704/gwlib.dat`
     else if (argc == 3 && strcmp(argv[1], "update") == 0)
         return update_reduction(argv[2]);

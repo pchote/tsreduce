@@ -67,7 +67,7 @@ void serialize_time(ts_time t, char buf[24]);
 double ts_time_to_utc_hour(ts_time t);
 long double ts_time_to_bjd(ts_time t, double ra, double dec);
 double ts_difftime(ts_time a, ts_time b);
-char *prompt_user_input(char *message, char *fallback);
+char *prompt_user_input(char *message, char *fallback, bool allow_null);
 
 bool region_contains(uint16_t r[4], size_t x, size_t y);
 double region_mean(uint16_t r[4], double *data, size_t stride);

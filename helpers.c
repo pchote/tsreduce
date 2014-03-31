@@ -687,7 +687,7 @@ int init_ds9()
     return 0;
 }
 
-char *prompt_user_input(char *message, char *fallback)
+char *prompt_user_input(char *message, char *fallback, bool allow_null)
 {
     char *prompt = NULL;
     if (fallback)
@@ -709,14 +709,23 @@ char *prompt_user_input(char *message, char *fallback)
     if (!input)
     {
         printf("\n");
+
+        if (allow_null)
+            return NULL;
+
         return strdup(strdup(fallback ? fallback : ""));
     }
 #else
     char inputbuf[1024];
     printf("%s", prompt);
-    fgets(inputbuf, 1024, stdin);
+    char *input = fgets(inputbuf, 1024, stdin);
+    if (!input && allow_null)
+    {
+        printf("\n");
+        return NULL;
+    }
 
-    char *input = strdup(inputbuf);
+    input = strdup(inputbuf);
 #endif
 
     // Trim whitespace and trailing newline

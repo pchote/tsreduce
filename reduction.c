@@ -598,7 +598,7 @@ int create_reduction_file(char *outname)
     // Store the current directory so we can return before saving the data file
     char *datadir = getcwd(NULL, 0);
 
-    char *input = prompt_user_input("Use calibration frames", "y");
+    char *input = prompt_user_input("Use calibration frames", "y", false);
     bool use_calibration = !strcmp(input, "y");
     free(input);
 
@@ -607,7 +607,7 @@ int create_reduction_file(char *outname)
         char *dark_path;
         while (true)
         {
-            char *ret = prompt_user_input("Enter darks path", ".");
+            char *ret = prompt_user_input("Enter darks path", ".", false);
             dark_path = canonicalize_path(ret);
             if (!chdir(dark_path))
             {
@@ -619,7 +619,7 @@ int create_reduction_file(char *outname)
             free(ret);
         }
 
-        char *master_dark = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz");
+        char *master_dark = prompt_user_input("Enter output master dark filename", "master-dark.fits.gz", false);
         size_t dark_size = strlen(master_dark) + strlen(dark_path) + 2;
         data->dark_template = malloc(dark_size*sizeof(char));
         snprintf(data->dark_template, dark_size, "%s/%s", dark_path, master_dark);
@@ -634,7 +634,7 @@ int create_reduction_file(char *outname)
             int num_darks;
             while (true)
             {
-                char *ret = prompt_user_input("Enter dark prefix", "dark");
+                char *ret = prompt_user_input("Enter dark prefix", "dark", false);
                 snprintf(dark_pattern, 1039, filename_fmt, ret);
                 free(ret);
 
@@ -654,7 +654,7 @@ int create_reduction_file(char *outname)
             {
                 char fallback[32];
                 snprintf(fallback, 32, "%d", num_darks/2);
-                char *ret = prompt_user_input("Enter number of darks around median to average", fallback);
+                char *ret = prompt_user_input("Enter number of darks around median to average", fallback, false);
                 int count = atoi(ret);
                 free(ret);
 
@@ -681,7 +681,7 @@ int create_reduction_file(char *outname)
         char *flat_path;
         while (true)
         {
-            char *ret = prompt_user_input("Enter flats path", ".");
+            char *ret = prompt_user_input("Enter flats path", ".", false);
             flat_path = canonicalize_path(ret);
             if (!chdir(flat_path))
             {
@@ -693,7 +693,7 @@ int create_reduction_file(char *outname)
             free(ret);
         }
 
-        char *master_flat = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz");
+        char *master_flat = prompt_user_input("Enter output master flat filename", "master-flat.fits.gz", false);
         size_t flat_size = strlen(master_flat) + strlen(flat_path) + 2;
         data->flat_template = malloc(flat_size*sizeof(char));
         snprintf(data->flat_template, flat_size, "%s/%s", flat_path, master_flat);
@@ -708,7 +708,7 @@ int create_reduction_file(char *outname)
             int num_flats;
             while (true)
             {
-                char *ret = prompt_user_input("Enter flat prefix", "flat");
+                char *ret = prompt_user_input("Enter flat prefix", "flat", false);
                 snprintf(flat_pattern, 1039, filename_fmt, ret);
                 free(ret);
 
@@ -728,7 +728,7 @@ int create_reduction_file(char *outname)
             {
                 char fallback[32];
                 snprintf(fallback, 32, "%d", num_flats/2);
-                char *ret = prompt_user_input("Enter number of flats around median to average", fallback);
+                char *ret = prompt_user_input("Enter number of flats around median to average", fallback, false);
                 int count = atoi(ret);
                 free(ret);
 
@@ -760,7 +760,7 @@ int create_reduction_file(char *outname)
 
     while (true)
     {
-        char *ret = prompt_user_input("Enter frame path", ".");
+        char *ret = prompt_user_input("Enter frame path", ".", false);
         data->frame_dir = canonicalize_path(ret);
         if (!chdir(data->frame_dir))
         {
@@ -777,7 +777,7 @@ int create_reduction_file(char *outname)
     while (true)
     {
         char namebuf[1039];
-        char *ret = prompt_user_input("Enter target prefix", default_prefix);
+        char *ret = prompt_user_input("Enter target prefix", default_prefix, false);
         snprintf(namebuf, 1039, filename_fmt, ret);
         free(ret);
         data->reference_frame = get_first_matching_file(namebuf);
@@ -793,7 +793,7 @@ int create_reduction_file(char *outname)
     framedata *frame = NULL;
     while (true)
     {
-        char *ret = prompt_user_input("Enter reference frame", data->reference_frame);
+        char *ret = prompt_user_input("Enter reference frame", data->reference_frame, false);
         frame = framedata_load(ret);
         if (frame)
         {
@@ -835,7 +835,7 @@ int create_reduction_file(char *outname)
         {
             while (true)
             {
-                char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32");
+                char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32", false);
                 data->ccd_readnoise = strtod(ret, NULL);
                 free(ret);
                 if (data->ccd_readnoise > 0)
@@ -849,7 +849,7 @@ int create_reduction_file(char *outname)
         {
             while (true)
             {
-                char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00");
+                char *ret = prompt_user_input("Enter CCD Gain (ADU):", "2.00", false);
                 data->ccd_gain = strtod(ret, NULL);
                 free(ret);
 
@@ -862,7 +862,7 @@ int create_reduction_file(char *outname)
 
         if (framedata_get_metadata(flat, "IM-SCALE", FRAME_METADATA_DOUBLE, &data->ccd_platescale))
         {
-            char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66");
+            char *ret = prompt_user_input("Enter CCD platescale (arcsec/px):", "0.66", false);
             data->ccd_platescale = strtod(ret, NULL);
             free(ret);
         }
@@ -883,7 +883,7 @@ int create_reduction_file(char *outname)
         while (true)
         {
             printf("Aperture types are  1: 5sigma,  2: 3FWHM,  3: Manual\n");
-            char *ret = prompt_user_input("Select aperture type:", "1");
+            char *ret = prompt_user_input("Select aperture type:", "1", false);
             aperture_type = atoi(ret);
             free(ret);
             if (aperture_type >=1 && aperture_type <= 3)
@@ -896,7 +896,7 @@ int create_reduction_file(char *outname)
         {
             while (true)
             {
-                char *ret = prompt_user_input("Enter aperture radius (px):", "8");
+                char *ret = prompt_user_input("Enter aperture radius (px):", "8", false);
                 aperture_size = strtod(ret, NULL);
                 free(ret);
                 if (aperture_size > 0)
@@ -1089,7 +1089,7 @@ int create_reduction_file(char *outname)
         }
         ts_exec_write("xpaset -p tsreduce update now", NULL, 0);
 
-        char *ret = prompt_user_input("Are the displayed apertures correct?:", "y");
+        char *ret = prompt_user_input("Are the displayed apertures correct?:", "y", false);
         bool done = !strcmp(ret, "y");
         free(ret);
         free(sky);

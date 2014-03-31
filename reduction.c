@@ -56,20 +56,9 @@ int create_flat(const char *pattern, size_t minmax, const char *masterdark, cons
     if (base->rows != dark->rows || base->cols != dark->cols)
         error_jump(setup_error, ret, "Dark and flat frame sizes don't match");
 
-
-    uint16_t image_region[4] = {0, base->cols, 0, base->rows};
-    uint16_t bias_region[4] = {0, 0, 0, 0};
-
-    {
-        char *str;
-        if (framedata_get_metadata(base, "IMAG-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
-            sscanf(str, "[%hu, %hu, %hu, %hu]", &image_region[0], &image_region[1],
-                                                &image_region[2], &image_region[3]);
-
-        if (framedata_get_metadata(base, "BIAS-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
-            sscanf(str, "[%hu, %hu, %hu, %hu]", &bias_region[0], &bias_region[1],
-                                                &bias_region[2], &bias_region[3]);
-    }
+    uint16_t image_region[4], bias_region[4];
+    framedata_image_region(base, image_region);
+    framedata_bias_region(base, bias_region);
     size_t image_region_px = (image_region[1] - image_region[0])*(image_region[3] - image_region[2]);
     size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
 

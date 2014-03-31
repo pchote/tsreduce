@@ -50,4 +50,7 @@ int framedata_divide(framedata *fd, framedata *other);
 int framedata_start_time(framedata *frame, ts_time *time);
 int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt);
 
+int framedata_image_region(framedata *frame, uint16_t region[4]);
+int framedata_bias_region(framedata *frame, uint16_t region[4]);
+
 #endif

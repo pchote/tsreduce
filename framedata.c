@@ -493,13 +493,8 @@ int framedata_subtract_normalized(framedata *fd, framedata *other)
 
 void framedata_subtract_bias(framedata *fd)
 {
-    struct frame_metadata *m;
-    if (hashmap_get(fd->metadata_map, "BIAS-RGN", (void**)(&m)) == MAP_MISSING)
-        return;
-
-    uint16_t br[4] = {0, 0, 0, 0};
-    sscanf(m->value.s, "[%hu, %hu, %hu, %hu]", &br[0], &br[1], &br[2], &br[3]);
-
+    uint16_t br[4];
+    framedata_bias_region(fd, br);
     double mean_bias = region_mean(br, fd->data, fd->cols);
     for (size_t i = 0; i < fd->rows*fd->cols; i++)
         fd->data[i] -= mean_bias;
@@ -606,6 +601,18 @@ int framedata_image_region(framedata *frame, uint16_t region[4])
     memcpy(region, r, 4*sizeof(uint16_t));
     return 0;
 }
+
+int framedata_bias_region(framedata *frame, uint16_t region[4])
+{
+    uint16_t r[4] = {0, 0, 0, 0};
+    char *str;
+    if (framedata_get_metadata(frame, "BIAS-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
+        sscanf(str, "[%hu, %hu, %hu, %hu]", &r[0], &r[1],
+                                            &r[2], &r[3]);
+    memcpy(region, r, 4*sizeof(uint16_t));
+    return 0;
+}
+
 
 static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, double **y)
 {

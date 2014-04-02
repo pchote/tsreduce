@@ -18,7 +18,7 @@
 #define CUR_DATAFILE_VERSION 7
 #define MIN_DATAFILE_VERSION 7
 
-#define MMA_FILTER_SIGMA_DEFAULT 5
+#define MMI_FILTER_SIGMA_DEFAULT 5
 #define RATIO_FIT_DEGREE_DEFAULT 2
 #define PLOT_MAX_RAW_DEFAULT 0
 #define PLOT_MAX_DFT_DEFAULT 0
@@ -40,7 +40,7 @@ datafile *datafile_alloc()
 {
     datafile *dp = calloc(1, sizeof(datafile));
     dp->version = CUR_DATAFILE_VERSION;
-    dp->mma_filter_sigma = MMA_FILTER_SIGMA_DEFAULT;
+    dp->mmi_filter_sigma = MMI_FILTER_SIGMA_DEFAULT;
     dp->ratio_fit_degree = RATIO_FIT_DEGREE_DEFAULT;
     dp->plot_max_raw = PLOT_MAX_RAW_DEFAULT;
     dp->plot_max_dft = PLOT_MAX_DFT_DEFAULT;
@@ -146,7 +146,7 @@ datafile* datafile_load(char *filename)
             }
         }
         else if (!strncmp(linebuf,"# MMAFilterSigma:", 17))
-            sscanf(linebuf, "# MMAFilterSigma: %hhu\n", &dp->mma_filter_sigma);
+            sscanf(linebuf, "# MMAFilterSigma: %hhu\n", &dp->mmi_filter_sigma);
         else if (!strncmp(linebuf,"# RatioFitDegree:", 17))
             sscanf(linebuf, "# RatioFitDegree: %hhu\n", &dp->ratio_fit_degree);
         else if (!strncmp(linebuf,"# PlotMaxRaw:", 13))
@@ -392,8 +392,8 @@ int datafile_save(datafile *data, char *filename)
         fprintf(out, "# FlatTemplate: %s\n", data->flat_template);
     if (data->reference_frame)
         fprintf(out, "# ReferenceFrame: %s\n", data->reference_frame);
-    if (data->mma_filter_sigma != MMA_FILTER_SIGMA_DEFAULT)
-        fprintf(out, "# MMAFilterSigma: %d\n", data->mma_filter_sigma);
+    if (data->mmi_filter_sigma != MMI_FILTER_SIGMA_DEFAULT)
+        fprintf(out, "# MMIFilterSigma: %d\n", data->mmi_filter_sigma);
     if (data->ratio_fit_degree != RATIO_FIT_DEGREE_DEFAULT)
         fprintf(out, "# RatioFitDegree: %d\n", data->ratio_fit_degree);
     if (data->plot_max_raw != PLOT_MAX_RAW_DEFAULT)
@@ -524,8 +524,8 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     p->ratio = calloc(data->obs_count, sizeof(double));
     p->ratio_noise = calloc(data->obs_count, sizeof(double));
     p->ratio_fit = calloc(data->obs_count, sizeof(double));
-    p->mma = calloc(data->obs_count, sizeof(double));
-    p->mma_noise = calloc(data->obs_count, sizeof(double));
+    p->mmi = calloc(data->obs_count, sizeof(double));
+    p->mmi_noise = calloc(data->obs_count, sizeof(double));
 
     p->fit_coeffs_count = data->ratio_fit_degree + 1;
     p->fit_coeffs = calloc(p->fit_coeffs_count, sizeof(double));
@@ -534,7 +534,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         !p->target_count || !p->target_snr ||
         !p->raw_time || !p->sky || !p->fwhm ||
         !p->time || !p->ratio || !p->ratio_noise ||
-        !p->ratio_fit || !p->mma || !p->mma_noise ||
+        !p->ratio_fit || !p->mmi || !p->mmi_noise ||
         !p->fit_coeffs)
     {
         datafile_free_photometry(p);
@@ -673,13 +673,13 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
     }
 
     //
-    // Calculate mma
+    // Calculate mmi
     //
 
-    p->mma_mean = 0;
+    p->mmi_mean = 0;
     for (size_t i = 0; i < p->filtered_count; i++)
     {
-        // Subtract polynomial fit and convert to mma
+        // Subtract polynomial fit and convert to mmi
         p->ratio_fit[i] = 0;
         double pow = 1;
         for (size_t j = 0; j < p->fit_coeffs_count; j++)
@@ -687,43 +687,43 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
             p->ratio_fit[i] += pow*p->fit_coeffs[j];
             pow *= p->time[i];
         }
-        p->mma[i] = 1000*(p->ratio[i] - p->ratio_fit[i])/p->ratio_fit[i];
+        p->mmi[i] = 1000*(p->ratio[i] - p->ratio_fit[i])/p->ratio_fit[i];
 
         double numer_error = fabs(p->ratio_noise[i]/(p->ratio[i] - p->ratio_fit[i]));
         double denom_error = fabs(p->ratio_noise[i]/p->ratio[i]);
-        p->mma_noise[i] = (numer_error + denom_error)*fabs(p->mma[i]);
+        p->mmi_noise[i] = (numer_error + denom_error)*fabs(p->mmi[i]);
 
-        p->mma_mean += p->mma[i];
+        p->mmi_mean += p->mmi[i];
     }
-    p->mma_mean /= p->filtered_count;
+    p->mmi_mean /= p->filtered_count;
 
-    // mma standard deviation
-    p->mma_std = 0;
+    // mmi standard deviation
+    p->mmi_std = 0;
     for (size_t i = 0; i < p->filtered_count; i++)
-        p->mma_std += (p->mma[i] - p->mma_mean)*(p->mma[i] - p->mma_mean);
-    p->mma_std = sqrt(p->mma_std/p->filtered_count);
+        p->mmi_std += (p->mmi[i] - p->mmi_mean)*(p->mmi[i] - p->mmi_mean);
+    p->mmi_std = sqrt(p->mmi_std/p->filtered_count);
 
-    double mma_corrected_mean = 0;
-    size_t mma_corrected_count = 0;
+    double mmi_corrected_mean = 0;
+    size_t mmi_corrected_count = 0;
 
     // Discard outliers and recalculate mean
     for (size_t i = 0; i < p->filtered_count; i++)
     {
-        if (fabs(p->mma[i] - p->mma_mean) > data->mma_filter_sigma*p->mma_std)
+        if (fabs(p->mmi[i] - p->mmi_mean) > data->mmi_filter_sigma*p->mmi_std)
         {
             if (verbosity >= 1)
                 error("%f is an outlier, setting to 0", p->time[i]);
-            p->mma[i] = 0;
+            p->mmi[i] = 0;
         }
         else
         {
-            mma_corrected_mean += p->mma[i];
-            mma_corrected_count++;
+            mmi_corrected_mean += p->mmi[i];
+            mmi_corrected_count++;
         }
     }
 
-    mma_corrected_mean /= mma_corrected_count;
-    p->mma_mean = mma_corrected_mean;
+    mmi_corrected_mean /= mmi_corrected_count;
+    p->mmi_mean = mmi_corrected_mean;
 
     p->time_offset = 3600*ts_time_to_utc_hour(data->reference_time);
     p->time_min = p->raw_time[0];
@@ -751,8 +751,8 @@ void datafile_free_photometry(struct photometry_data *p)
     free(p->ratio);
     free(p->ratio_noise);
     free(p->ratio_fit);
-    free(p->mma);
-    free(p->mma_noise);
+    free(p->mmi);
+    free(p->mmi_noise);
     free(p->fit_coeffs);
 
     free(p);
@@ -777,7 +777,7 @@ struct dft_data *datafile_generate_dft(datafile *data, struct photometry_data *p
         return NULL;
     }
 
-    calculate_amplitude_spectrum(pd->time, pd->mma, pd->filtered_count,
+    calculate_amplitude_spectrum(pd->time, pd->mmi, pd->filtered_count,
                                  d->min_freq, d->max_freq,
                                  d->freq, d->ampl, d->count);
 

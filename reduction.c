@@ -1390,7 +1390,7 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mma[j], pd->mma_noise[j]);
+            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mmi[j], pd->mmi_noise[j]);
             num_saved++;
         }
 

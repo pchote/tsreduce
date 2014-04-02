@@ -326,51 +326,51 @@ allocation_error:
     return ret;
 }
 
-static int plot_mma_panel(float x1, float x2, float y1, float y2,
+static int plot_mmi_panel(float x1, float x2, float y1, float y2,
                           datafile *data, struct photometry_data *pd)
 {
     int ret = 0;
 
     // PGPLOT requires float arrays
     float *time = malloc(pd->filtered_count*sizeof(float));
-    float *mma = malloc(pd->filtered_count*sizeof(float));
-    float *mma_noise = malloc(pd->filtered_count*sizeof(float));
-    if (!time || !mma || !mma_noise)
+    float *mmi = malloc(pd->filtered_count*sizeof(float));
+    float *mmi_noise = malloc(pd->filtered_count*sizeof(float));
+    if (!time || !mmi || !mmi_noise)
         error_jump(allocation_error, ret, "Allocation error");
 
     for (size_t i = 0; i < pd->filtered_count; i++)
     {
         time[i] = pd->time[i];
-        mma[i] = pd->mma[i];
-        mma_noise[i] = pd->mma_noise[i];
+        mmi[i] = pd->mmi[i];
+        mmi_noise[i] = pd->mmi_noise[i];
     }
 
-    double min_mma = pd->mma_mean - 5*pd->mma_std;
-    double max_mma = pd->mma_mean + 5*pd->mma_std;
+    double min_mmi = pd->mmi_mean - 5*pd->mmi_std;
+    double max_mmi = pd->mmi_mean + 5*pd->mmi_std;
 
     cpgsvp(x1, x2, y1, y2);
 
     cpgsch(1.0);
-    cpgmtxt("l", 2.75, 0.5, 0.5, "mma");
+    cpgmtxt("l", 2.75, 0.5, 0.5, "mmi");
 
     // Plot top axis markers in UTC hour, bottom axis markers in seconds
     cpgsch(0.9);
-    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_mma, max_mma);
+    cpgswin(pd->time_offset + pd->time_min, pd->time_offset + pd->time_max, min_mmi, max_mmi);
     cpgtbox("cstZ", 0, 0, "bcstnv", 0, 0);
-    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_mma, max_mma);
+    cpgswin(pd->time_scale*pd->time_min, pd->time_scale*pd->time_max, min_mmi, max_mmi);
     cpgbox("bst", 0, 0, "0", 0, 0);
     cpgsch(1.0);
 
-    cpgswin(pd->time_min, pd->time_max, min_mma, max_mma);
+    cpgswin(pd->time_min, pd->time_max, min_mmi, max_mmi);
     if (data->plot_error_bars)
-        cpgerrb(6, pd->filtered_count, time, mma, mma_noise, 0.0);
+        cpgerrb(6, pd->filtered_count, time, mmi, mmi_noise, 0.0);
     else
-        cpgpt(pd->filtered_count, time, mma, 229);
+        cpgpt(pd->filtered_count, time, mmi, 229);
 
 allocation_error:
     free(time);
-    free(mma);
-    free(mma_noise);
+    free(mmi);
+    free(mmi_noise);
 
     return ret;
 }
@@ -448,7 +448,7 @@ static int plot_dft_panel(float x1, float x2, float y1, float y2,
     snprintf(label, label_len, "Frequency (%sHz)", unit);
     cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
-    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mma)");
+    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mmi)");
 
     // DFT Window
     float wx1 = x1 + 0.025;
@@ -568,7 +568,7 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     if (plot_ratio_panel(0.065, 0.98, 0.67, 0.79, data, pd))
         error_jump(plot_error, ret, "Error plotting ratio panel");
 
-    if (plot_mma_panel(0.065, 0.98, 0.79, 0.93, data, pd))
+    if (plot_mmi_panel(0.065, 0.98, 0.79, 0.93, data, pd))
         error_jump(plot_error, ret, "Error plotting fwhm panel");
 
     plot_time_axes(0.065, 0.98, 0.075, 0.93, data, pd);

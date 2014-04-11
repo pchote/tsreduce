@@ -5,13 +5,8 @@
 
 USE_READLINE := TRUE
 
-CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE
-LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm
-
-ifeq ($(USE_READLINE),TRUE)
-    LFLAGS += -lreadline
-    CFLAGS += -DUSE_READLINE
-endif
+CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE -DUSE_READLINE
+LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline
 
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
@@ -20,10 +15,8 @@ ifeq ($(shell uname),Darwin)
     LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng -L/usr/local/lib
 
     # Requires newer libreadline than osx provides by default - installed with hombrew
-    ifeq ($(USE_READLINE),TRUE)
-        LFLAGS += -L/usr/local/opt/readline/lib
-        CFLAGS += -I/usr/local/opt/readline/include
-    endif
+    LFLAGS += -L/usr/local/opt/readline/lib
+    CFLAGS += -I/usr/local/opt/readline/include
 else
 	CC = gcc
 	LINKER = gcc

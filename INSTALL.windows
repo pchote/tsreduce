@@ -13,6 +13,22 @@ $ ./configure
 $ make
 $ make install
 
+Readline is required in order for `tsreduce create` to function properly.
+The easiest way to get this library is to extract the files from the following fedora packages:
+
+http://pkgs.org/fedora-20/fedora-i386/mingw64-readline-6.2-3.fc20.noarch.rpm/download/
+http://pkgs.org/fedora-20/fedora-i386/mingw64-termcap-1.3.1-16.fc20.noarch.rpm/download/
+
+Download the binary package, and then extract the files using
+
+rpm2cpio.pl mingw64-readline-6.2-3.fc20.noarch.rpm | cpio -idmv
+rpm2cpio.pl mingw64-termcap-1.3.1-16.fc20.noarch.rpm | cpio -idmv
+
+The rpm2cpio.pl tool can be installed on OSX using homebrew:
+$ brew install rpm2cpio
+
+Merge the contents of the directories inside usr/x86_64-w64-mingw32/sys-root/mingw/ with /c/mingw/msys/local/
+
 Download the original PGPLOT 5.2.2 code from ftp://ftp.astro.caltech.edu/pub/pgplot/pgplot522.tar.gz and extract to ~/pgplot
 
 Download the PGPLOT patch for windows 7 from http://www.ii.uib.no/~avle/pgplot.html
@@ -80,6 +96,6 @@ Return to the home directory and checkout and build the tsreduce code
 $ cd ~
 $ git clone https://github.com/pchote/tsreduce.git
 $ cd tsreduce
-$ make USE_READLINE=false
+$ make
 
 Append `:~/tsreduce` to the PATH definition in ~/.profile to add tsreduce to the system path.

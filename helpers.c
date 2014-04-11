@@ -16,6 +16,7 @@
 #include <math.h>
 #include <float.h>
 #include <time.h>
+#include <signal.h>
 #include <sys/time.h>
 #include <sofa.h>
 #include <sofam.h>
@@ -687,6 +688,12 @@ int init_ds9()
     return 0;
 }
 
+int send_sigint(int a, int b)
+{
+	raise(SIGINT);
+	return 0;
+}
+
 char *prompt_user_input(char *message, char *fallback, bool allow_null)
 {
     char *prompt = NULL;
@@ -702,6 +709,8 @@ char *prompt_user_input(char *message, char *fallback, bool allow_null)
     }
 
 #ifdef USE_READLINE
+    // readline under windows eats SIGINT too, so restore it with an explicit handler.
+    rl_bind_key(3, send_sigint);
     rl_bind_key('\t', rl_complete);
     char *input = readline(prompt);
 

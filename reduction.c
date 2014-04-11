@@ -423,7 +423,7 @@ int create_dark(const char *pattern, size_t discard_minmax, const char *masterbi
             error_jump(bias_error, ret, "        Error loading frame %s", masterbias);
     }
 
-    ret = create_bias_dark_internal(pattern, discard_minmax, preprocess_dark, NULL, postprocess_dark, (void *)masterbias, outname);
+    ret = create_bias_dark_internal(pattern, discard_minmax, preprocess_dark, bias, postprocess_dark, (void *)masterbias, outname);
 
     framedata_free(bias);
 bias_error:

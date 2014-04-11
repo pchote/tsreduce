@@ -727,7 +727,7 @@ int create_master_calibration_file(char *default_name, char *default_prefix, cha
     int count;
     while (true)
     {
-        char *prefix = prompt_user_input("    Enter frame prefix", default_prefix, false);
+        char *prefix = regex_escape_string(prompt_user_input("    Enter frame prefix", default_prefix, false));
         int len = snprintf(NULL, 0, filename_fmt, prefix);
         pattern = malloc(len + 1);
         sprintf(pattern, filename_fmt, prefix);
@@ -822,7 +822,7 @@ int create_reduction_file(char *outname)
     while (true)
     {
         char namebuf[1039];
-        char *ret = prompt_user_input("    Enter target prefix", default_prefix, false);
+        char *ret = regex_escape_string(prompt_user_input("    Enter target prefix", default_prefix, false));
         snprintf(namebuf, 1039, filename_fmt, ret);
         free(ret);
         data->reference_frame = get_first_matching_file(namebuf);

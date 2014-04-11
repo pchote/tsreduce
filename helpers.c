@@ -482,6 +482,43 @@ int ts_versionsort(const struct dirent **a, const struct dirent **b)
     }
 }
 
+char *regex_escape_string(char *prefix)
+{
+    size_t prefix_len = strlen(prefix);
+
+    // Count the number of regex metacharacters in the prefix
+    size_t escape_count = 0;
+    for (size_t i = 0; i < prefix_len; i++)
+        if (strchr(".^$*+?()[{\\|", prefix[i]))
+            escape_count++;
+
+    // Escape metacharacters with '\'
+    if (escape_count > 0)
+    {
+        char *new_prefix = calloc(prefix_len + escape_count + 1, sizeof(char));
+        if (!new_prefix)
+        {
+            printf("         Error allocating memory for escaped prefix.");
+            printf("         Returning unescaped string.");
+            return prefix;
+        }
+
+        size_t i = 0, j = 0;
+        while (i < prefix_len)
+        {
+            if (strchr(".^$*+?()[{\\|", prefix[i]))
+                new_prefix[j++] = '\\';
+
+            new_prefix[j++] = prefix[i++];
+        }
+
+        free(prefix);
+        prefix = new_prefix;
+    }
+
+    return prefix;
+}
+
 // Find files that match the given regex.
 // outList is set to point to an array (which must be later freed by the caller) of filenames
 // Returns the number of files matched or negative on error

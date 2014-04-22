@@ -871,7 +871,7 @@ int create_reduction_file(char *outname)
         {
             while (true)
             {
-                char *ret = prompt_user_input("Enter CCD Readnoise (ADU):", "3.32", false);
+                char *ret = prompt_user_input("    Enter CCD Readnoise (ADU):", "3.32", false);
                 data->ccd_readnoise = strtod(ret, NULL);
                 free(ret);
                 if (data->ccd_readnoise > 0)

@@ -190,6 +190,10 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     framedata_bias_region(base, bias_region);
     size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
 
+    // Remove existing definitions if they exist (CCD-GAIN is reused by the Puoko-nui acquisition software)
+    framedata_remove_metadata(base, "CCD-READ");
+    framedata_remove_metadata(base, "CCD-GAIN");
+
     if (bias || bias_region_px)
     {
         double readnoise;

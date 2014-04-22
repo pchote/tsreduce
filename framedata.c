@@ -377,7 +377,15 @@ int framedata_get_metadata(framedata *fd, const char *key, int type, void *data)
             {
                 case FRAME_METADATA_DOUBLE: *(double *)data = metadata->value.d; break;
                 case FRAME_METADATA_INT: *(double *)data = (double)metadata->value.i; break;
-                case FRAME_METADATA_STRING: *(double *)data = atof(metadata->value.s); break;
+                case FRAME_METADATA_STRING:
+                {
+                    // Empty strings should be treated as a missing key
+                    if (strlen(metadata->value.s) == 0)
+                        return FRAME_METADATA_MISSING;
+
+                    *(double *)data = atof(metadata->value.s);
+                    break;
+                }
             }
 
             return FRAME_METADATA_OK;

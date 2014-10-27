@@ -672,13 +672,30 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         error("Insufficient data for polynomial fit");
         return NULL;
     }
-
+    /*
     if (fit_polynomial(p->time, p->ratio, p->ratio_noise, p->filtered_count, p->fit_coeffs, data->ratio_fit_degree))
     {
         datafile_free_photometry(p);
         error("Polynomial fit failed");
         return NULL;
     }
+    
+    for (uint8_t i = 0; i < p->fit_coeffs_count; i++)
+        printf("%g\n",p->fit_coeffs[i]);
+*/
+
+    if (p->fit_coeffs_count != 6)
+    {
+        error("Hacked config requires degree 5 fit");
+        return NULL;
+    }
+    
+    p->fit_coeffs[0] = 0.105557;
+    p->fit_coeffs[1] = -4.38944e-07;
+    p->fit_coeffs[2] = 1.60796e-10;
+    p->fit_coeffs[3] = -1.26856e-14;
+    p->fit_coeffs[4] = 4.09119e-19;
+    p->fit_coeffs[5] = -4.70098e-24;
 
     //
     // Calculate mmi
@@ -711,6 +728,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         p->mmi_std += (p->mmi[i] - p->mmi_mean)*(p->mmi[i] - p->mmi_mean);
     p->mmi_std = sqrt(p->mmi_std/p->filtered_count);
 
+    p->mmi_mean = 1.39833;
+    p->mmi_std = 49.6704;
+
     double mmi_corrected_mean = 0;
     size_t mmi_corrected_count = 0;
 
@@ -732,6 +752,9 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
 
     mmi_corrected_mean /= mmi_corrected_count;
     p->mmi_mean = mmi_corrected_mean;
+
+    p->mmi_mean = 1.39833;
+    p->mmi_std = 49.6704;
 
     p->time_offset = 3600*ts_time_to_utc_hour(data->reference_time);
     p->time_min = p->raw_time[0];

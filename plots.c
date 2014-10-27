@@ -433,12 +433,13 @@ static int plot_dft_panel(float x1, float x2, float y1, float y2,
     if (max > threshold_ampl)
         max_dft *= max/threshold_ampl;
 
+    max_dft = 50;
     cpgsvp(x1, x2, y1, y2);
     cpgswin(scale*dft->min_freq, scale*dft->max_freq, 0, 1);
     cpgsch(0.9);
     cpgbox("bcstn", 0, 0, "0", 0, 0);
     cpgswin(dft->min_freq, dft->max_freq, 0, max_dft);
-    cpgbox("0", 0, 0, "bcstnv", 0, 0);
+    cpgbox("0", 0, 0, "bcstmv", 0, 0);
     cpgsch(1.0);
 
     cpgsci(2);
@@ -448,13 +449,13 @@ static int plot_dft_panel(float x1, float x2, float y1, float y2,
     snprintf(label, label_len, "Frequency (%sHz)", unit);
     cpgmtxt("b", 2.5, 0.5, 0.5, label);
 
-    cpgmtxt("l", 2.75, 0.5, 0.5, "Amplitude (mmi)");
+    cpgmtxt("r", 2.5, 0.5, 0.5, "Amplitude (mmi)");
 
     // DFT Window
-    float wx1 = x1 + 0.025;
+    float wx1 = x2 - 0.08;
     float wx2 = wx1 + (x2 - x1)/8;
     float wy2 = y2 - 0.04;
-    float wy1 = y2 - (y2 - y1)/3.5;
+    float wy1 = y2 - (y2 - y1)/2;
 
     cpgsvp(wx1, wx2, wy1, wy2);
     cpgswin(window->min_freq, window->max_freq, 0, 1.1);
@@ -471,6 +472,39 @@ allocation_error:
     free(window_ampl);
 
     return ret;
+}
+
+
+static int plot_fits_panel(float x1, float x2, float y1, float y2, datafile *data)
+{
+    chdir(data->frame_dir);
+    
+    struct observation *obs = data->obs_start;
+    for (size_t i = 0; i < data->obs_count - 1; i++)
+        obs = obs->next;
+    
+    framedata *frame = framedata_load(obs->filename);
+    framedata_calibrate_load(frame, data->bias_template, data->dark_template, data->flat_template);
+
+    float *framedata = calloc(sizeof(float), frame->rows * frame->cols);
+    
+    for (size_t i = 0; i < frame->rows * frame->cols; i++)
+        framedata[i] = frame->data[i];
+
+    float tr[] = {-0.5, 1, 0, -0.5, 0, 1};
+    
+    float base_min = 300;
+    float base_max = 100;
+    
+    cpgsvp(x1, x2, y1, y2);
+    cpgswin(0, frame->cols - 24, 0, frame->rows);    
+    cpgimag(framedata, frame->cols, frame->rows, 1, frame->cols, 1, frame->rows, base_min, base_max, tr);
+    framedata_free(frame);
+    free(framedata);
+    
+    cpgbox("bc", 0, 0, "bc", 0, 0);
+    
+    return 0;
 }
 
 int online_focus_plot(char *data_path, const char *device, double size)
@@ -533,7 +567,8 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
 
     if (cpgopen(ts_device) <= 0)
         error_jump(setup_error, ret, "Unable to open PGPLOT window");
-
+    
+    cpgbbuf();
     cpgpap(size, 0.6);
     cpgask(0);
     cpgslw(1);
@@ -543,7 +578,7 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     //
     // Plot blocked ranges
     //
-    cpgsvp(0.065, 0.98, 0.075, 0.93);
+    cpgsvp(0.065, 0.48, 0.075, 0.93);
     cpgswin(pd->time_min, pd->time_max, 0, 1);
     cpgsci(14);
     for (size_t j = 0; j < data->num_blocked_ranges; j++)
@@ -559,20 +594,21 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     char label[64];
     const size_t label_len = 64;
 
-    if (plot_raw_panel(0.065, 0.98, 0.075, 0.55, data, pd))
+    if (plot_raw_panel(0.065, 0.58, 0.075, 0.45, data, pd))
         error_jump(plot_error, ret, "Error plotting raw panel");
 
-    if (plot_fwhm_panel(0.065, 0.98, 0.55, 0.67, data, pd))
+    if (plot_fwhm_panel(0.065, 0.58, 0.45, 0.57, data, pd))
         error_jump(plot_error, ret, "Error plotting fwhm panel");
 
-    if (plot_ratio_panel(0.065, 0.98, 0.67, 0.79, data, pd))
+    if (plot_ratio_panel(0.065, 0.58, 0.57, 0.69, data, pd))
         error_jump(plot_error, ret, "Error plotting ratio panel");
 
-    if (plot_mmi_panel(0.065, 0.98, 0.79, 0.93, data, pd))
+    if (plot_mmi_panel(0.065, 0.58, 0.69, 0.93, data, pd))
         error_jump(plot_error, ret, "Error plotting fwhm panel");
 
-    plot_time_axes(0.065, 0.98, 0.075, 0.93, data, pd);
+    plot_time_axes(0.065, 0.58, 0.075, 0.93, data, pd);
 
+    /*
     cpgend();
 
     //
@@ -586,21 +622,28 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
     cpgslw(1);
     cpgsfs(2);
     cpgscf(1);
-
+*/
     // DFT
-    if (plot_dft_panel(0.065, 0.98, 0.07, 0.97, data, dd, wd))
+    if (plot_dft_panel(0.58, 0.95, 0.075, 0.45, data, dd, wd))
         error_jump(plot_error, ret, "Error plotting dft panel");
 
+    if (plot_fits_panel(0.58, 0.95, 0.45, 0.93, data))
+        error_jump(plot_error, ret, "Error plotting fits image");
+
+    /*
     // Calculate median intensity
     qsort(dd->ampl, dd->count, sizeof(double), compare_double);
 
-    cpgsvp(0.065, 0.98, 0.07, 0.97);
+    cpgsvp(0.48, 0.98, 0.075, 0.55);
     cpgswin(0, 1, 0, 1);
     snprintf(label, label_len, "Mean: %.2f mma", dd->mean_ampl);
     cpgptxt(0.97, 0.94, 0, 1.0, label);
     snprintf(label, label_len, "Median: %.2f mma", dd->ampl[dd->count/2]);
     cpgptxt(0.97, 0.90, 0, 1.0, label);
-
+    */
+    
+    cpgebuf();
+    
 plot_error:
     cpgend();
 setup_error:
@@ -633,14 +676,18 @@ int playback_reduction(char *data_path, int delay, int step, char *ts_device, ch
     if (!data)
         return error("Error opening data file %s", data_path);
 
+    char device_name[1024];
+
     size_t limit = data->obs_count;
     for (size_t i = data->ratio_fit_degree + 1; i < limit; i += step)
     {
         // Limit the data to the first N observations
         data->obs_count = i;
-
+        sprintf(device_name, "anim_%04zu.png/PNG", i);
+        //sprintf(device_name, "8/xw");
+        printf("Frame %s\n", device_name);
         clock_t start = clock();
-        if (plot_internal(data, ts_device, dft_device, size))
+        if (plot_internal(data, device_name, dft_device, size))
             error_jump(plot_error, ret, "Plotting error");
 
         // Attempt to compensate for calculation time

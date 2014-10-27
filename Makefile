@@ -11,6 +11,8 @@ LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
     LINKER = gfortran
+	CC = gcc
+	LINKER = gcc
 	CFLAGS += -D_DARWIN_C_SOURCE -I/usr/local/include/
     LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng -L/usr/local/lib
 

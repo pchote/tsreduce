@@ -14,4 +14,5 @@ int dft_window(char *tsFile, double freq, double minUHz, double maxUHz, double d
 int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz);
 int nonlinear_fit(char *tsFile, char *freqFile);
 int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats);
+int stitch_ts(char *reference_bjd, char **filenames, size_t num_datafiles, char *ts_filename);
 #endif

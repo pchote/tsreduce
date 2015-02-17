@@ -650,3 +650,54 @@ dftfreq_alloc_error:
 load_failed_error:
     return ret;
 }
+
+int stitch_ts(char *reference_bjd, char **filenames, size_t num_datafiles, char *ts_filename)
+{
+    int ret = 0;
+    if (num_datafiles < 1)
+        return error("No datafiles specified");
+
+    struct ts_data **datafiles = (struct ts_data **)malloc(num_datafiles*sizeof(struct ts_data *));
+    if (!datafiles)
+        error_jump(datafile_error, ret, "Error allocating datafiles");
+
+    int a, b;
+    int r = sscanf(reference_bjd, "%d.%d\n", &a, &b);
+	if (r != 2)
+        error_jump(datafile_error, ret, "Invalid time header: `%s`", reference_bjd);
+
+	double ref_bjd = atof (reference_bjd);
+
+    FILE *out = fopen(ts_filename, "w+");
+    if (!out)
+        error_jump(output_error, ret, "Error opening file %s", ts_filename);
+
+    // Print file header
+    fprintf(out, "# tsreduce stitch output file\n");
+    fprintf(out, "# Reference time: 0000-00-00 00:00:00 UTC; %.8Lf BJD\n", (long double)ref_bjd);
+    fprintf(out, "# Files:\n");
+    for (size_t i = 0; i < num_datafiles; i++)
+        fprintf(out, "#   %s\n", filenames[i]);
+
+    for (size_t i = 0; i < num_datafiles; i++)
+    {
+        struct ts_data *datafile = ts_data_load(filenames[i], NULL);
+        if (!datafile)
+        {
+            error("Error loading datafile %s", filenames[i]);
+            continue;
+        }
+
+        double dbjd = datafile->bjd - ref_bjd;
+
+        for (size_t j = 0; j < datafile->obs_count; j++)
+            fprintf(out, "%.8Lf %f %f\n", (long double)(datafile->time[j] / 86400 + dbjd), datafile->mma[j], datafile->err[j]);
+
+        ts_data_free(datafile);
+    }
+
+output_error:
+    fclose(out);
+datafile_error:
+    return ret;
+}

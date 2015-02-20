@@ -11,15 +11,17 @@ LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
     LINKER = gfortran
-	CFLAGS += -D_DARWIN_C_SOURCE -I/usr/local/include/
+    CFLAGS += -D_DARWIN_C_SOURCE -I/usr/local/include/
     LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng -L/usr/local/lib
 
     # Requires newer libreadline than osx provides by default - installed with hombrew
     LFLAGS += -L/usr/local/opt/readline/lib
     CFLAGS += -I/usr/local/opt/readline/include
 else
-	CC = gcc
-	LINKER = gcc
+    CC = gcc
+    LINKER = gcc
+    LFLAGS += -L${HOME}/sw/lib -L/usr/lib64 -lpng -lgfortran -lX11
+    CFLAGS += -I${HOME}/sw/include -I/usr/include/cfitsio
 endif
 
 SRC = tsreduce.c datafile.c framedata.c helpers.c aperture.c fit.c dft_analysis.c reduction.c plots.c random.c hashmap.c

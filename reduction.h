@@ -23,7 +23,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string);
 int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename);
 
 int display_tracer(char *dataPath);
-int frame_translation(const char *frame, const char *bias, const char *reference, const char *dark_path, const char *flat_path);
+int find_pixel_offset(const char *frame, const char *bias, const char *reference, const char *dark_path, const char *flat_path,  int32_t x, int32_t y);
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
 
 #endif

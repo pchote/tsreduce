@@ -609,16 +609,20 @@ int update_reduction(char *dataPath)
 
         // Process frame
         double nan = sqrt(-1);
-
-        // Estimate translation from reference frame
-        int32_t xt, yt;
-        if (framedata_estimate_translation(frame, reference, &xt, &yt))
-            error_jump(process_error, ret, "Error calculating frame translation");
+        
+        
+        // Find offset from reference frame
+        framedata_translation *ft = framedata_init_translation(frame, reference);
+        if (!ft)
+            error_jump(process_error, ret, "Error initializing frame translation");
 
         for (size_t i = 0; i < data->target_count; i++)
         {
             // Offset aperture position by frame offset
             aperture a = data->targets[i].aperture;
+            int32_t xt, yt;
+            framedata_get_translation(ft, a.x, a.y, &xt, &yt);
+
             a.x += xt;
             a.y += yt;
 
@@ -660,6 +664,7 @@ int update_reduction(char *dataPath)
             }
         }
 
+        framedata_free_translation(ft);
         obs->filename = strdup(frame_paths[i]);
 
         datafile_append_observation(data, obs);
@@ -1485,7 +1490,7 @@ setup_error:
     return ret;
 }
 
-int frame_translation(const char *frame_path, const char *reference_path, const char *bias_path, const char *dark_path, const char *flat_path)
+int find_pixel_offset(const char *frame_path, const char *reference_path, const char *bias_path, const char *dark_path, const char *flat_path, int32_t x, int32_t y)
 {
     int ret = 0;
 
@@ -1503,9 +1508,13 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     if (framedata_calibrate_load(reference, bias_path, dark_path, flat_path))
         error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
+    framedata_translation *ft = framedata_init_translation(frame, reference);
+    if (!ft)
+        error_jump(process_error, ret, "Error initializing translation between %s and %s", frame_path, reference_path);
+
     int32_t xt, yt;
-    if (framedata_estimate_translation(frame, reference, &xt, &yt))
-        error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
+    framedata_get_translation(ft, x, y, &xt, &yt);
+    framedata_free_translation(ft);
 
     printf("Translation: %d %d\n", xt, yt);
 

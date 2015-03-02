@@ -744,9 +744,12 @@ int32_t find_max_correlatation(double *a, double *b, uint16_t n)
     return best_idx;
 }
 
-int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt)
+framedata_translation *framedata_init_translation(framedata *frame, framedata *reference)
 {
     int ret = 0;
+    framedata_translation *ft = calloc(1, sizeof(framedata_translation));
+    if (!ft)
+        return NULL;
 
     uint16_t fr[4], rr[4];
     if (framedata_image_region(frame, fr))
@@ -763,12 +766,20 @@ int framedata_estimate_translation(framedata *frame, framedata *reference, int32
     if (sum_into_axes(reference, rr, &rx, &ry))
         error_jump(error, ret, "Summing into axes failed");
 
-    *xt = find_max_correlatation(rx, fx, rr[1] - rr[0]);
-    *yt = find_max_correlatation(ry, fy, rr[3] - rr[2]);
-    return ret;
+    ft->dx = find_max_correlatation(rx, fx, rr[1] - rr[0]);
+    ft->dy = find_max_correlatation(ry, fy, rr[3] - rr[2]);
+    return ft;
 error:
-    *xt = 0;
-    *yt = 0;
-    return ret;
+    return NULL;
 }
 
+void framedata_get_translation(framedata_translation *ft, int32_t x, int32_t y, int32_t *dx, int32_t *dy)
+{
+    *dx = ft->dx;
+    *dy = ft->dy;
+}
+
+void framedata_free_translation(framedata_translation *ft)
+{
+    free(ft);
+}

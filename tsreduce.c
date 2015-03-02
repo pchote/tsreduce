@@ -89,15 +89,18 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "plot-range") == 0)
         return plot_range(argv[2]);
 
-    // `tsreduce translation frame.fits.gz reference.fits.gz [master-bias.fits.gz] master-dark.fits.gz master-flat.fits.gz`
-    else if ((argc == 6 || argc == 7) && strcmp(argv[1], "translation") == 0)
+    // `tsreduce translation frame.fits.gz reference.fits.gz [[master-bias.fits.gz] master-dark.fits.gz master-flat.fits.gz] 100 200`
+    else if ((argc == 6 || argc == 8 || argc == 9) && strcmp(argv[1], "translation") == 0)
     {
         const char *frame = argv[2];
         const char *reference = argv[3];
-        const char *bias = argc == 7 ? argv[4] : NULL;
-        const char *dark = argc == 7 ? argv[5] : argv[4];
-        const char *flat = argc == 7 ? argv[6] : argv[5];
-        return frame_translation(frame, reference, bias, dark, flat);
+        const char *bias = argc == 9 ? argv[4] : NULL;
+        const char *dark = argc == 9 ? argv[5] : argc == 8 ? argv[4] : NULL;
+        const char *flat = argc == 9 ? argv[6] : argc == 8 ? argv[5] : NULL;
+        uint32_t x = argc == 9 ? atoi(argv[7]) : argc == 8 ? atoi(argv[6]) : atoi(argv[4]);
+        uint32_t y = argc == 9 ? atoi(argv[8]) : argc == 8 ? atoi(argv[7]) : atoi(argv[5]);
+        
+        return find_pixel_offset(frame, reference, bias, dark, flat, x, y);
     }
     // `tsreduce plot ec04207.dat [ts.ps/cps dft.ps/cps 10]
     else if ((argc == 3 || argc == 6 || argc == 7) && strcmp(argv[1], "plot") == 0)

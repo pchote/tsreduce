@@ -33,6 +33,12 @@ typedef struct
     map_t metadata_map;
 } framedata;
 
+typedef struct
+{
+    int32_t dx;
+    int32_t dy;
+} framedata_translation;
+
 framedata *framedata_load(const char *filename);
 int framedata_save(framedata *fd, const char *path);
 void framedata_free(framedata *frame);
@@ -50,7 +56,10 @@ int framedata_calibrate(framedata *frame, framedata *bias, framedata *dark, fram
 int framedata_calibrate_load(framedata *frame, const char *bias_path, const char *dark_path, const char *flat_path);
 int framedata_divide(framedata *fd, framedata *other);
 int framedata_start_time(framedata *frame, ts_time *time);
-int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt);
+
+framedata_translation *framedata_init_translation(framedata *frame, framedata *reference);
+void framedata_get_translation(framedata_translation *ft, int32_t x, int32_t y, int32_t *dx, int32_t *dy);
+void framedata_free_translation(framedata_translation *ft);
 
 int framedata_image_region(framedata *frame, uint16_t region[4]);
 int framedata_bias_region(framedata *frame, uint16_t region[4]);

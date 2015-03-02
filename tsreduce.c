@@ -90,13 +90,13 @@ int main( int argc, char *argv[] )
         return plot_range(argv[2]);
 
     // `tsreduce translation frame.fits.gz reference.fits.gz [master-bias.fits.gz] master-dark.fits.gz master-flat.fits.gz`
-    else if ((argc == 6 || argc == 7) && strcmp(argv[1], "translation") == 0)
+    else if ((argc == 4 || argc == 6 || argc == 7) && strcmp(argv[1], "translation") == 0)
     {
         const char *frame = argv[2];
         const char *reference = argv[3];
         const char *bias = argc == 7 ? argv[4] : NULL;
-        const char *dark = argc == 7 ? argv[5] : argv[4];
-        const char *flat = argc == 7 ? argv[6] : argv[5];
+        const char *dark = argc == 7 ? argv[5] : argc == 6 ? argv[4] : NULL;
+        const char *flat = argc == 7 ? argv[6] : argc == 6 ? argv[5] : NULL;
         return frame_translation(frame, reference, bias, dark, flat);
     }
     // `tsreduce plot ec04207.dat [ts.ps/cps dft.ps/cps 10]

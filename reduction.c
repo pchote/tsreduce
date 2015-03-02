@@ -612,15 +612,22 @@ int update_reduction(char *dataPath)
 
         // Estimate translation from reference frame
         int32_t xt, yt;
-        if (framedata_estimate_translation(frame, reference, &xt, &yt))
+        bool rotated;
+        if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
             error_jump(process_error, ret, "Error calculating frame translation");
 
         for (size_t i = 0; i < data->target_count; i++)
         {
             // Offset aperture position by frame offset
             aperture a = data->targets[i].aperture;
+
             a.x += xt;
             a.y += yt;
+            if (rotated)
+            {
+                a.x = frame->cols - a.x - 1;
+                a.y = frame->rows - a.y - 1;
+            }
 
             obs->star[i] = 0;
             obs->noise[i] = 0;
@@ -1504,10 +1511,11 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
         error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
     int32_t xt, yt;
-    if (framedata_estimate_translation(frame, reference, &xt, &yt))
+    bool rotated;
+    if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
         error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
 
-    printf("Translation: %d %d\n", xt, yt);
+    printf("Translation: %d %d%s\n", xt, yt, rotated ? " (after 180 deg rotation)" : "");
 
 process_error:
     framedata_free(reference);

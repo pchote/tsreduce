@@ -680,7 +680,7 @@ int framedata_bias_region(framedata *frame, uint16_t region[4])
 }
 
 
-static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, double **y)
+static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, double **y, bool rotate)
 {
     int ret = 0;
     uint16_t xs = region[1] - region[0];
@@ -693,12 +693,16 @@ static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, doubl
 
     // Sum into x and y axes
     for (uint16_t j = 0; j < ys; j++)
+    {
+        uint16_t jj = rotate ? ys - j - 1 : j;
         for (uint16_t i = 0; i < xs; i++)
         {
-            double px = frame->data[frame->cols*(region[2] + j) + (i + region[0])];
+            uint16_t ii = rotate ? xs - i - 1 : i;
+            double px = frame->data[frame->cols*(region[2] + jj) + (ii + region[0])];
             xa[i] += px;
             ya[j] += px;
         }
+    }
 
     // Subtracting mean level puts the baseline below zero, so clamp at zero
     double xm = mean_exclude_sigma(xa, xs, 1);
@@ -744,7 +748,7 @@ int32_t find_max_correlatation(double *a, double *b, uint16_t n)
     return best_idx;
 }
 
-int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt)
+int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt, bool *rotated)
 {
     int ret = 0;
 
@@ -757,14 +761,30 @@ int framedata_estimate_translation(framedata *frame, framedata *reference, int32
     if (fr[0] != rr[0] || fr[1] != rr[1] || fr[2] != rr[2] || fr[3] != rr[3])
         error_jump(error, ret, "frame sizes don't match");
 
+    // The PROMPT telescopes can rotate their frames during a run
+    double cd11, cd22, refcd11, refcd22;
+    bool checkrotation = !framedata_get_metadata(reference, "CD1_1", FRAME_METADATA_DOUBLE, &refcd11) &&
+        !framedata_get_metadata(reference, "CD2_2", FRAME_METADATA_DOUBLE, &refcd22) &&
+        !framedata_get_metadata(frame, "CD1_1", FRAME_METADATA_DOUBLE, &cd11) &&
+        !framedata_get_metadata(frame, "CD2_2", FRAME_METADATA_DOUBLE, &cd22);
+
+    if (checkrotation && signbit(cd11) != signbit(refcd11) && signbit(cd22) != signbit(refcd22))
+        *rotated = true;
+
     double *fx, *fy, *rx, *ry;
-    if (sum_into_axes(frame, fr, &fx, &fy))
+    if (sum_into_axes(frame, fr, &fx, &fy, *rotated))
         error_jump(error, ret, "Summing into axes failed");
-    if (sum_into_axes(reference, rr, &rx, &ry))
+    if (sum_into_axes(reference, rr, &rx, &ry, false))
         error_jump(error, ret, "Summing into axes failed");
 
     *xt = find_max_correlatation(rx, fx, rr[1] - rr[0]);
     *yt = find_max_correlatation(ry, fy, rr[3] - rr[2]);
+
+    free(fx);
+    free(fy);
+    free(rx);
+    free(ry);
+
     return ret;
 error:
     *xt = 0;

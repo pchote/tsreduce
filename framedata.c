@@ -9,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
+#include <wcslib/getwcstab.h>
 
 #include "framedata.h"
 #include "helpers.h"
@@ -257,6 +258,35 @@ framedata *framedata_load(const char *filename)
             }
         }
     }
+    
+    // Load WCS data
+    char *header;
+    int nkeyrec, nreject;
+
+    if (fits_hdr2str(input, 1, NULL, 0, &header, &nkeyrec, &status))
+    {
+        print_fits_error();
+        error_jump(error, ret, "fits_hdr2str failed");
+    }
+
+    if ((status = wcspih(header, nkeyrec, WCSHDR_all, 2, &nreject, &fd->nwcs, &fd->wcs)))
+    {
+        fprintf(stderr, "wcspih ERROR %d: %s.\n", status, wcshdr_errmsg[status]);
+    }
+
+    if (fits_read_wcstab(input, fd->wcs->nwtb, (wtbarr *)fd->wcs->wtb, &status))
+    {
+        print_fits_error();
+        error_jump(error, ret, "fits_read_wcstab failed");
+    }
+
+    if ((status = wcsset(fd->wcs)))
+    {
+        fprintf(stderr, "wcsset ERROR %d: %s.\n", status, wcs_errmsg[status]);
+        error_jump(error, ret, "wcsset failed");
+    }
+
+    free(header);
 
     fits_close_file(input, &status);
     if (padded_data)
@@ -587,7 +617,8 @@ void framedata_free(framedata *frame)
 
     hashmap_iterate(frame->metadata_map, free_metadata_entry, NULL);
     hashmap_free(frame->metadata_map);
-
+    wcsvfree(&frame->nwcs, &frame->wcs);
+    
     free(frame);
 }
 
@@ -647,7 +678,7 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
         return 0;
     }
 
-    // SBIG CCD-OPS
+    // PROMPT / SBIG CCD-OPS
     if (date && date->type == FRAME_METADATA_STRING)
     {
         *out_time = parse_time_ccdops(date->value.s);
@@ -751,6 +782,12 @@ framedata_translation *framedata_init_translation(framedata *frame, framedata *r
     if (!ft)
         return NULL;
 
+    ft->frame = frame->wcs;
+    ft->reference = reference->wcs;
+    if (frame->wcs && reference->wcs)
+        return ft;
+
+    // No WCS, so fall back to a basic translation correlation
     uint16_t fr[4], rr[4];
     if (framedata_image_region(frame, fr))
         error_jump(error, ret, "Image region failed");
@@ -768,6 +805,7 @@ framedata_translation *framedata_init_translation(framedata *frame, framedata *r
 
     ft->dx = find_max_correlatation(rx, fx, rr[1] - rr[0]);
     ft->dy = find_max_correlatation(ry, fy, rr[3] - rr[2]);
+
     return ft;
 error:
     return NULL;
@@ -775,8 +813,32 @@ error:
 
 void framedata_get_translation(framedata_translation *ft, int32_t x, int32_t y, int32_t *dx, int32_t *dy)
 {
-    *dx = ft->dx;
-    *dy = ft->dy;
+    int ret = 0;
+    if (!ft->reference || !ft->frame)
+    {
+        *dx = ft->dx;
+        *dy = ft->dy;
+        
+        return;
+    }
+
+    double px[2] = {x, y};
+    double img[2];
+    
+    double phi[2], theta[2], world[2];
+
+    int status = 0;
+    if ((status = wcsp2s(ft->reference, 1, 2, px, img, phi, theta, world, &status)))
+        error_jump(error, ret, "failed with error %d", status);
+
+    printf("%d: %f %f %f %f\n", status, px[0], px[1], img[0], img[1]);
+
+    if ((status = wcss2p(ft->frame, 1, 2, world, phi, theta, img, px, &status)))
+        error_jump(error, ret, "failed with error %d", status);
+
+    printf("%d: %f %f %f %f\n", status, px[0], px[1], img[0], img[1]);
+    error:
+    px[0];
 }
 
 void framedata_free_translation(framedata_translation *ft)

@@ -6,7 +6,7 @@
 USE_READLINE := TRUE
 
 CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE -DUSE_READLINE
-LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline
+LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline -lwcs
 
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)

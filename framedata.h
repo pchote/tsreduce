@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <wcslib/wcslib.h>
 #include "helpers.h"
 #include "hashmap.h"
 
@@ -31,6 +32,9 @@ typedef struct
     struct frame_metadata *metadata_start;
     struct frame_metadata *metadata_end;
     map_t metadata_map;
+    
+    int nwcs;
+    struct wcsprm *wcs;
 } framedata;
 
 framedata *framedata_load(const char *filename);

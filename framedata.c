@@ -12,6 +12,7 @@
 
 #include "framedata.h"
 #include "helpers.h"
+#include "fit.h"
 
 extern int verbosity;
 
@@ -686,14 +687,17 @@ static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, doubl
     uint16_t xs = region[1] - region[0];
     uint16_t ys = region[3] - region[2];
 
+    double *xi = calloc(xs, sizeof(double));
     double *xa = calloc(xs, sizeof(double));
+    double *yi = calloc(ys, sizeof(double));
     double *ya = calloc(ys, sizeof(double));
-    if (!xa || !ya)
+    if (!xi || !xa || !yi || !ya)
         error_jump(error, ret, "allocation_failed");
 
     // Sum into x and y axes
     for (uint16_t j = 0; j < ys; j++)
     {
+        yi[j] = j;
         uint16_t jj = rotate ? ys - j - 1 : j;
         for (uint16_t i = 0; i < xs; i++)
         {
@@ -704,21 +708,45 @@ static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, doubl
         }
     }
 
-    // Subtracting mean level puts the baseline below zero, so clamp at zero
-    double xm = mean_exclude_sigma(xa, xs, 1);
     for (uint16_t i = 0; i < xs; i++)
-        xa[i] = fmax(xa[i] - xm, 0);
+        xi[i] = i;
 
-    double ym = mean_exclude_sigma(ya, ys, 1);
-    for (uint16_t j = 0; j < ys; j++)
-        ya[j] = fmax(ya[j] - ym, 0);
+    // Subtract a linear fit of the mean background level then clamp to zero
+    // This (in theory) leaves just the star images to correlate
+    double x_coeffs[2], y_coeffs[2];
+    if (fit_polynomial(xi, xa, NULL, xs, x_coeffs, 1))
+    {
+        // Fit failed, so fall back to the mean intensity
+        double xm = mean_exclude_sigma(xa, xs, 1);
+        for (uint16_t i = 0; i < xs; i++)
+            xa[i] = fmax(xa[i] - xm, 0);
+    }
+    else
+        for (uint16_t i = 0; i < xs; i++)
+            xa[i] = fmax(xa[i] - (x_coeffs[1] * xi[i] + x_coeffs[0]), 0);
+    
+    if (fit_polynomial(yi, ya, NULL, ys, y_coeffs, 1))
+    {
+        // Fit failed, so fall back to the mean intensity
+        double ym = mean_exclude_sigma(ya, ys, 1);
+        for (uint16_t j = 0; j < ys; j++)
+            ya[j] = fmax(ya[j] - ym, 0);
+    }
+    else
+        for (uint16_t j = 0; j < ys; j++)
+            ya[j] = fmax(ya[j] - (y_coeffs[1] * yi[j] + y_coeffs[0]), 0);
 
     *x = xa;
     *y = ya;
 
+    free(xi);
+    free(yi);
+
     return 0;
 error:
+    free(xi);
     free(xa);
+    free(yi);
     free(ya);
     x = NULL;
     y = NULL;

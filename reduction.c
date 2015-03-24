@@ -245,7 +245,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
         double median_gain = gain[num_frames/2];
 
         // Set header keys for readout noise and gain
-        if (bias_region_px)
+        if (bias || bias_region_px)
         {
             framedata_put_metadata(base, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
             framedata_put_metadata(base, "CCD-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");

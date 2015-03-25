@@ -27,6 +27,14 @@ typedef struct
 {
     double x;
     double y;
+    double z;
+} double3;
+
+
+typedef struct
+{
+    double x;
+    double y;
     double r;
     double s1;
     double s2;

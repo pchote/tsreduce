@@ -553,6 +553,15 @@ static int plot_internal(datafile *data, const char *ts_device, const char *dft_
         cpgmove(data->blocked_ranges[j].y, 0);
         cpgdraw(data->blocked_ranges[j].y, 1);
     }
+
+    cpgsci(2);
+    for (size_t j = 0; j < data->num_ratio_offsets; j++)
+    {
+        cpgmove(data->ratio_offsets[j].x, 0);
+        cpgdraw(data->ratio_offsets[j].x, 1);
+        cpgmove(data->ratio_offsets[j].y, 0);
+        cpgdraw(data->ratio_offsets[j].y, 1);
+    }
     cpgsci(1);
 
     // Generic label buffer for passing data to pgplot

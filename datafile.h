@@ -79,6 +79,9 @@ typedef struct
 
     double2 *blocked_ranges;
     int num_blocked_ranges;
+
+    double3 *ratio_offsets;
+    int num_ratio_offsets;
 } datafile;
 
 struct photometry_data

@@ -75,17 +75,23 @@ datafile* datafile_load(char *filename)
     // Count number of targets and blocked ranges
     size_t target_count = 0;
     size_t block_count = 0;
+    size_t ratio_offset_count = 0;
+
     while (fgets(linebuf, 1024, input) != NULL)
     {
         if (!strncmp(linebuf,"# Target:", 9))
             target_count++;
         else if (!strncmp(linebuf,"# BlockRange:", 13))
             block_count++;
+        else if (!strncmp(linebuf,"# RatioOffset:", 14))
+            ratio_offset_count++;
+        
     }
 
     dp->targets = malloc(target_count*sizeof(struct target_data));
     dp->blocked_ranges = malloc(block_count*sizeof(double2));
-    if (!dp->targets || !dp->blocked_ranges)
+    dp->ratio_offsets = malloc(ratio_offset_count*sizeof(double3));
+    if (!dp->targets || !dp->blocked_ranges || !dp->ratio_offsets)
     {
         fclose(input);
         return NULL;
@@ -195,6 +201,15 @@ datafile* datafile_load(char *filename)
                    &dp->blocked_ranges[dp->num_blocked_ranges].x,
                    &dp->blocked_ranges[dp->num_blocked_ranges].y);
             dp->num_blocked_ranges++;
+        }
+        else if (!strncmp(linebuf,"# RatioOffset:", 14) &&
+                 dp->num_ratio_offsets < ratio_offset_count)
+        {
+            sscanf(linebuf, "# RatioOffset: (%lf, %lf, %lf)\n",
+                   &dp->ratio_offsets[dp->num_ratio_offsets].x,
+                   &dp->ratio_offsets[dp->num_ratio_offsets].y,
+                   &dp->ratio_offsets[dp->num_ratio_offsets].z);
+            dp->num_ratio_offsets++;
         }
 
         // Skip header / comment lines
@@ -314,6 +329,7 @@ void datafile_free(datafile *data)
     free(data->targets);
 
     free(data->blocked_ranges);
+    free(data->ratio_offsets);
     free(data);
 }
 
@@ -448,6 +464,11 @@ int datafile_save(datafile *data, char *filename)
     for (size_t i = 0; i < data->num_blocked_ranges; i++)
         fprintf(out, "# BlockRange: (%g, %g)\n",
                 data->blocked_ranges[i].x, data->blocked_ranges[i].y);
+    if (data->num_ratio_offsets > 0)
+        fprintf(out, "### (Start (s), End (s), offset)\n");
+    for (size_t i = 0; i < data->num_ratio_offsets; i++)
+        fprintf(out, "# RatioOffset: (%g, %g, %g)\n",
+                data->ratio_offsets[i].x, data->ratio_offsets[i].y, data->ratio_offsets[i].z);
 
     if (data->obs_start)
     {
@@ -641,6 +662,15 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
             p->ratio[p->filtered_count] = obs->star[0];
             p->ratio_noise[p->filtered_count] = obs->noise[0];
         }
+
+        // Adjust ratio
+        for (size_t j = 0; j < data->num_ratio_offsets; j++)
+            if (obs->time >= data->ratio_offsets[j].x && obs->time <= data->ratio_offsets[j].y)
+            {
+                p->ratio[p->filtered_count] += data->ratio_offsets[j].z;
+                break;
+            }
+
         p->ratio_mean += p->ratio[p->filtered_count];
         p->time[p->filtered_count] = obs->time;
 

@@ -903,7 +903,7 @@ int create_reduction_file(char *outname)
             }
         }
 
-        if (framedata_get_metadata(flat, "IM-SCALE", FRAME_METADATA_DOUBLE, &data->ccd_platescale))
+        if (framedata_get_metadata(flat, "IM-SCALE", FRAME_METADATA_DOUBLE, &data->ccd_platescale) && framedata_get_metadata(flat, "SECPIX", FRAME_METADATA_DOUBLE, &data->ccd_platescale))
         {
             char *ret = prompt_user_input("    Enter CCD platescale (arcsec/px):", "0.66", false);
             data->ccd_platescale = strtod(ret, NULL);

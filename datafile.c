@@ -667,7 +667,7 @@ struct photometry_data *datafile_generate_photometry(datafile *data)
         for (size_t j = 0; j < data->num_ratio_offsets; j++)
             if (obs->time >= data->ratio_offsets[j].x && obs->time <= data->ratio_offsets[j].y)
             {
-                p->ratio[p->filtered_count] += data->ratio_offsets[j].z;
+                p->ratio[p->filtered_count] *= data->ratio_offsets[j].z;
                 break;
             }
 

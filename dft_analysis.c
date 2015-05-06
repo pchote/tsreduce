@@ -1138,19 +1138,14 @@ int colorplot(const char *ts_path)
     if (load_tsfile(ts_path, data))
         error_jump(load_failed_error, ret, "Error loading timeseries data");
 
-    double freq_min = 500;
-    double freq_max = 4000;
-    size_t freq_steps = 70;
-    size_t time_steps = 50;
+    double freq_min = 0;
+    double freq_max = 5000;
+    size_t freq_steps = 500;
+    size_t time_steps = 500;
     double window_extent = 6840;
-
-    freq_min = 750;
-    freq_max = 1050;
-    freq_steps = 100;
-    time_steps = 400;
     
-    double time_min = data->time[0] + window_extent;
-    double time_max = data->time[data->obs_count - 1] - window_extent;
+    double time_min = data->time[0];
+    double time_max = data->time[data->obs_count - 1];
 
     double *mmi_windowed = (double *)malloc(data->obs_count*sizeof(double));
     if (!mmi_windowed)
@@ -1175,7 +1170,7 @@ int colorplot(const char *ts_path)
 	float tr[] = {time_min-x_scale, x_scale, 0, freq_min-y_scale, 0, y_scale};
 
 	float min_amplitude = 0;
-	float max_amplitude = 50;
+	float max_amplitude = 30;
 	float *amplitude = calloc(time_steps*freq_steps, sizeof(float));
     if (!amplitude)
         error_jump(amplitude_alloc_error, ret, "Error allocating amplitude");
@@ -1201,18 +1196,22 @@ int colorplot(const char *ts_path)
 	set_color_table();
 
     double n = 0.12;
-    double o = 0.20;
+    double o = 3*0.20;
 
-    double q[] = {0.1, 0.5};
-    double r[] = {0.49, 0.89};
-
-    for (size_t k = 4; k >= 1; k--)
+    for (size_t k = 2; k >= 1; k--)
     {
         double freq_diff = freq_max - freq_min;
         double mid_freq = k * (freq_max + freq_min) / 2;
         double local_freq_min = mid_freq - freq_diff/2;
-        double local_freq_max =  mid_freq + freq_diff/2;
+        double local_freq_max = mid_freq + freq_diff/2;
         
+        if (k == 2)
+        {
+            mid_freq = 3000;
+            local_freq_min = mid_freq-750;
+            local_freq_max = mid_freq+750;
+        }
+
     	for (size_t i = 0; i < time_steps; i++)
     	{
             double mid_time = time_min + i*dt;
@@ -1227,12 +1226,16 @@ int colorplot(const char *ts_path)
                 }
             }
 
+            // Require the window to be at least half full
+            if (n < window_extent / 30)
+                continue;
+
             // Window function
-            if (k == 4)
+            if (k == 2)
             {
                 // Generate sinusoid
             	for (size_t j = 0; j < n; j++)
-                    temp_mmi[j] = max_amplitude * sin(2*M_PI*k*(freq_max + freq_min) / 2*1e-6*temp_time[j]);
+                    temp_mmi[j] = max_amplitude * sin(2*M_PI*mid_freq*1e-6*temp_time[j]);
             }
 
             calculate_amplitude_spectrum(temp_time, temp_mmi, n, local_freq_min*1e-6, local_freq_max*1e-6, temp_freq, temp_ampl, freq_steps);
@@ -1241,32 +1244,37 @@ int colorplot(const char *ts_path)
                 amplitude[j*time_steps + i] = temp_ampl[j];
     	}
 
-        for (size_t v = 0; v < 2; v++)
+        size_t l = k;//5 - k;
+        double m = (k == 2 ? -0.02 : 0);
+        if (k == 2)
         {
-            size_t l = k;//5 - k;
-            double m = (k == 4 ? -0.02 : 0);
-            cpgsvp(q[v], r[v], n + (l-1)*o - m, n + l*o - m);
-
-        	//cpgsitf(2); // Use a sqrt mapping between value and colour
-            cpgswin(time_min, time_max, freq_min, freq_max);
-        	cpgimag(amplitude, time_steps, freq_steps, 1, time_steps, 1, freq_steps, min_amplitude, max_amplitude, tr);
-        
-            if (k == 4)
-            {
-                local_freq_max = (freq_max - freq_min) / 2;
-                local_freq_min = -local_freq_max;
-            }
-
-            cpgswin(6 + time_min / 3600, 6 + time_max / 3600, local_freq_min, local_freq_max);
-            cpgbox("bcst", 1, 4, v == 0 ? "bcstnv" : "bcst", 100, 4);
-            
+            cpgsvp(0.1, 0.89, 0.77, 0.97);
+            cpgmtxt("l", 4, 0.5, 0.5, "Window");
         }
+        else
+        {
+            cpgsvp(0.1, 0.89, 0.12, 0.76);
+            cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
+        }
+    	//cpgsitf(2); // Use a sqrt mapping between value and colour
+        cpgswin(time_min, time_max, freq_min, freq_max);
+    	cpgimag(amplitude, time_steps, freq_steps, 1, time_steps, 1, freq_steps, min_amplitude, max_amplitude, tr);
+
+        float label_stride = 1000;
+        if (k == 2)
+        {
+            local_freq_min = -750;
+            local_freq_max = 750;
+            label_stride = 500;
+        }
+
+        cpgswin(time_min / 86400, time_max / 86400, local_freq_min, local_freq_max);
+        cpgbox("bcst", 1, 4, "bcstnv", label_stride, 4);   
     }
     
 
-    cpgsvp(0.1, 0.88, n, n + 3*o);
-    cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
-    cpgmtxt("B", 2.5, 0.5, 0.5, "UTC Hour");
+    cpgsvp(0.1, 0.88, 0.12, 0.97);
+    cpgmtxt("B", 2.5, 0.5, 0.5, "Time (days)");
 
 
     cpgsvp(0.1, 0.88, n + 0.02 + 3*o, n + 0.02 + 4*o);
@@ -1274,20 +1282,20 @@ int colorplot(const char *ts_path)
   
     for (size_t v = 0; v < 2; v++)
     {
-        size_t k = 4;
+        size_t k = 2;
         size_t l = k;//5 - k;
-        double m = (k == 4 ? -0.02 : 0);
-        cpgsvp(q[v], r[v], n + (l-1)*o - m, n + l*o - m);
+        double m = (k == 2 ? -0.02 : 0);
+        cpgsvp(0.1, 0.89, n + (l-1)*o - m, n + l*o - m);
 
         char buf[1024]; strcpy(buf, ts_path);
         buf[strlen(buf)-3] = '\0';
         cpgmtxt("t", 0.5, 0.5, 0.5, buf);
         
-        cpgsvp(q[v], r[v], n, n + 3*o);
-        cpgswin(6 + time_min / 3600, 6 + time_max / 3600, freq_min, freq_max);
+        cpgsvp(0.1, 0.89, n, n + 3*o);
+        cpgswin(time_min / 86400, time_max / 86400, freq_min, freq_max);
         cpgbox("bstn", 1, 4, "0", 0, 0);
     }
-    cpgsvp(0.90, 0.92,  n, n + 4*o + 0.02);
+    cpgsvp(0.90, 0.92,  n, 0.97);
 
     size_t amplitude_steps = 50;
     float *ampl_scale_data = calloc(amplitude_steps, sizeof(float));

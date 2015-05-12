@@ -1347,9 +1347,13 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string)
 /*
  * Create a timeseries file from a list of datafiles.
  * Times are converted to BJD after the specified reference
+ *
+ * If comparison_magnitude != 0 then output absolute magnitudes (relative to comparison)
+ * instead of mmi, and the polynomial subtraction is not done.
  */
-int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename)
+int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename, float comparison_magnitude)
 {
+    bool output_mag = comparison_magnitude != 0.0;
     int ret = 0;
     if (num_datafiles < 1)
         return error("No datafiles specified");
@@ -1391,7 +1395,13 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
         error_jump(output_error, ret, "Error opening file %s", ts_filename);
 
     // Print file header
-    fprintf(out, "# tsreduce create-ts output file\n");
+    if (output_mag)
+    {
+        fprintf(out, "# tsreduce create-mag output file\n");
+        fprintf(out, "# Comparison Magnitude: %.3f\n", comparison_magnitude);        
+    }
+    else
+        fprintf(out, "# tsreduce create-ts output file\n");
     fprintf(out, "# Reference time: %s %s UTC; %.8f BJD\n", reference_date, reference_time, reference_bjd);
     fprintf(out, "# Files:\n");
     for (size_t i = 0; i < num_datafiles; i++)
@@ -1416,7 +1426,11 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, pd->mmi[j], pd->mmi_noise[j]);
+            
+            double intensity = output_mag ? comparison_magnitude - 2.5 * log10(pd->ratio[j]) : pd->mmi[j];
+            double error = output_mag ? 2.5 / log(10) * pd->ratio_noise[j] / pd->ratio[j] : pd->mmi_noise[j];
+            
+            fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, intensity, error);
             num_saved++;
         }
 

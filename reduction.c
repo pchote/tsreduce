@@ -1351,7 +1351,7 @@ int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string)
  * If comparison_magnitude != 0 then output absolute magnitudes (relative to comparison)
  * instead of mmi, and the polynomial subtraction is not done.
  */
-int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename, float comparison_magnitude)
+int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename, bool use_ratio, float comparison_magnitude)
 {
     bool output_mag = comparison_magnitude != 0.0;
     int ret = 0;
@@ -1395,13 +1395,19 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
         error_jump(output_error, ret, "Error opening file %s", ts_filename);
 
     // Print file header
-    if (output_mag)
+    if (use_ratio)
     {
-        fprintf(out, "# tsreduce create-mag output file\n");
-        fprintf(out, "# Comparison Magnitude: %.3f\n", comparison_magnitude);        
+        if (output_mag)
+        {
+            fprintf(out, "# tsreduce create-mag output file\n");
+            fprintf(out, "# Comparison Magnitude: %.3f\n", comparison_magnitude);        
+        }
+        else
+            fprintf(out, "# tsreduce create-ratio output file\n");
     }
     else
         fprintf(out, "# tsreduce create-ts output file\n");
+
     fprintf(out, "# Reference time: %s %s UTC; %.8f BJD\n", reference_date, reference_time, reference_bjd);
     fprintf(out, "# Files:\n");
     for (size_t i = 0; i < num_datafiles; i++)
@@ -1426,9 +1432,14 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            
-            double intensity = output_mag ? comparison_magnitude - 2.5 * log10(pd->ratio[j]) : pd->mmi[j];
-            double error = output_mag ? 2.5 / log(10) * pd->ratio_noise[j] / pd->ratio[j] : pd->mmi_noise[j];
+
+            double intensity = use_ratio ? pd->ratio[j] : pd->mmi[j];
+            double error = use_ratio ? pd->ratio_noise[j] : pd->mmi_noise[j];            
+            if (output_mag && use_ratio)
+            {
+                intensity = comparison_magnitude - 2.5 * log10(intensity);
+                error = 2.5 / log(10) * error / intensity;
+            }
             
             fprintf(out, "%.8Lf %f %f\n", ts_time_to_bjd(obstime, ra, dec) - reference_bjd, intensity, error);
             num_saved++;

@@ -163,9 +163,11 @@ int main( int argc, char *argv[] )
 
     // `tsreduce create-ts 2011-07-27 13:00:00 20110727.dat [...] july2011_run2_rereduce.ts`
     else if (argc >= 3 && strcmp(argv[1], "create-ts") == 0)
-        return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1], 0);
+        return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1], false, 0);
+    else if (argc >= 3 && strcmp(argv[1], "create-ratio") == 0)
+        return create_ts(argv[2], argv[3], &argv[4], argc - 5, argv[argc - 1], true, 0);
     else if (argc >= 4 && strcmp(argv[1], "create-mag") == 0)
-        return create_ts(argv[2], argv[3], &argv[5], argc - 6, argv[argc - 1], atof(argv[4]));
+        return create_ts(argv[2], argv[3], &argv[5], argc - 6, argv[argc - 1], true, atof(argv[4]));
 
     // `tsreduce shuffle-dft july2011_run2_rereduce.ts july2011_run2_rereduce_paperfreqs.dat 100 10000 1 rereduce.ran 1000`
     else if (argc == 9 && strncmp(argv[1], "shuffle-dft", 11) == 0)

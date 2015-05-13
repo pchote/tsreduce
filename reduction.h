@@ -20,7 +20,7 @@ int update_reduction(char *dataPath);
 int create_reduction_file(char *filePath);
 int update_preview(char *preview_filename, char *ds9_title, char *autoguide_output);
 int calculate_bjd(char *date, char *time, char *ra_string, char *dec_string);
-int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename, float comparison_magnitude);
+int create_ts(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ts_filename, bool use_ratio, float comparison_magnitude);
 
 int display_tracer(char *dataPath);
 int frame_translation(const char *frame, const char *bias, const char *reference, const char *dark_path, const char *flat_path);

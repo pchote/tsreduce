@@ -638,6 +638,16 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
         return 0;
     }
 
+    // PROMPT
+    hashmap_get(fd->metadata_map, "DATE", (void **)(&date));
+    hashmap_get(fd->metadata_map, "TIME-OBS", (void **)(&time));
+    if (date && date->type == FRAME_METADATA_STRING &&
+        time && time->type == FRAME_METADATA_STRING)
+    {
+        *out_time = parse_date_time(date->value.s, time->value.s);
+        return 0;
+    }
+
     // Quilt
     hashmap_get(fd->metadata_map, "DATE-OBS", (void **)(&date));
     hashmap_get(fd->metadata_map, "UTC", (void **)(&time));

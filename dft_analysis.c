@@ -1127,6 +1127,20 @@ static void set_color_table()
     cpgctab(l, r, g, b, 4, 1.0, 0.5);
 }
 
+static void plot_subrun(double start, double end, const char *label)
+{
+    double y = -80;
+    double texty = -280;
+    double mid = (start + end) / 2;
+    
+    cpgsch(1.0);
+    cpgarro(mid * 86400, y, start * 86400, y);
+    cpgarro(mid * 86400, y, end * 86400, y);
+    cpgsch(1.2);
+    cpgptxt(mid * 86400, texty, 0, 0.5f, label);
+    cpgsch(1.6);
+}
+
 int colorplot(const char *ts_path)
 {
     int ret = 0;
@@ -1139,10 +1153,10 @@ int colorplot(const char *ts_path)
         error_jump(load_failed_error, ret, "Error loading timeseries data");
 
     double freq_min = 0;
-    double freq_max = 5000;
+    double freq_max = 4250;
     size_t freq_steps = 500;
     size_t time_steps = 500;
-    double window_extent = 6840;
+    double window_extent = 3600 * 1.5;
     
     double time_min = data->time[0];
     double time_max = data->time[data->obs_count - 1];
@@ -1156,7 +1170,7 @@ int colorplot(const char *ts_path)
         error_jump(pgplot_open_error, ret, "Unable to open PGPLOT window");
 
     // 800 x 480
-    cpgpap(6.5, 0.45);
+    cpgpap(6, 0.3);
     cpgask(0);
     cpgslw(1);
     cpgsfs(2);
@@ -1170,7 +1184,7 @@ int colorplot(const char *ts_path)
 	float tr[] = {time_min-x_scale, x_scale, 0, freq_min-y_scale, 0, y_scale};
 
 	float min_amplitude = 0;
-	float max_amplitude = 30;
+	float max_amplitude = 50;
 	float *amplitude = calloc(time_steps*freq_steps, sizeof(float));
     if (!amplitude)
         error_jump(amplitude_alloc_error, ret, "Error allocating amplitude");
@@ -1208,8 +1222,8 @@ int colorplot(const char *ts_path)
         if (k == 2)
         {
             mid_freq = 3000;
-            local_freq_min = mid_freq-750;
-            local_freq_max = mid_freq+750;
+            local_freq_min = mid_freq-500;
+            local_freq_max = mid_freq+500;
         }
 
     	for (size_t i = 0; i < time_steps; i++)
@@ -1227,7 +1241,7 @@ int colorplot(const char *ts_path)
             }
 
             // Require the window to be at least half full
-            if (n < window_extent / 40)
+            if (n < window_extent / 30)
                 continue;
 
             // Window function
@@ -1246,28 +1260,54 @@ int colorplot(const char *ts_path)
 
         if (k == 2)
         {
-            cpgsvp(0.1, 0.89, 0.75, 0.95);
+            cpgsvp(0.1, 0.89, 0.8, 0.95);
             cpgmtxt("l", 4, 0.5, 0.5, "Window");
-            cpgmtxt("t", 0.5, 0.5, 0.5, ts_path);
+//            cpgmtxt("t", 0.5, 0.5, 0.5, ts_path);
+            cpgswin(time_min, time_max, freq_min, freq_max);
+            
         }
         else
         {
-            cpgsvp(0.1, 0.89, 0.10, 0.74);
+            cpgsvp(0.1, 0.89, 0.10, 0.79);
             cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
+            cpgswin(time_min, time_max, freq_min-400, freq_max);
+            
+            plot_subrun(0.036805, 0.249999, "1a");
+            plot_subrun(0.249999, 0.504165, "1b");
+            
+            plot_subrun(1.030555, 1.124652, "2a");
+            plot_subrun(1.124999, 1.207985, "2b");
+            plot_subrun(1.208332, 1.494789, "2c");
+
+            plot_subrun(2.022917, 2.249998, "3a");
+            plot_subrun(2.250346, 2.496177, "3b");
+            
+            plot_subrun(3.106944, 3.212845, "4a");
+            plot_subrun(3.381941, 3.504162, "4b");
+
+            plot_subrun(4.063541, 4.290935, "5a");
+            plot_subrun(4.291282, 4.490030, "5b");
+            
+            plot_subrun(5.019791, 5.166318, "6a");
+            plot_subrun(5.166665, 5.332982, "6b");
+            plot_subrun(5.333329, 5.502425, "6c");
         }
+
     	//cpgsitf(2); // Use a sqrt mapping between value and colour
-        cpgswin(time_min, time_max, freq_min, freq_max);
     	cpgimag(amplitude, time_steps, freq_steps, 1, time_steps, 1, freq_steps, min_amplitude, max_amplitude, tr);
 
         float label_stride = 1000;
         if (k == 2)
         {
-            local_freq_min = -750;
-            local_freq_max = 750;
+            local_freq_min = -500;
+            local_freq_max = 500;
             label_stride = 500;
         }
 
-        cpgswin(time_min / 86400, time_max / 86400, local_freq_min, local_freq_max);
+        if (k == 2)
+            cpgswin(time_min / 86400, time_max / 86400, local_freq_min, local_freq_max);
+        else
+            cpgswin(time_min / 86400, time_max / 86400, local_freq_min-400, local_freq_max);
         cpgbox("bcst", 0, 0, "bcstnv", label_stride, 4);   
     }
     
@@ -1304,7 +1344,7 @@ int colorplot(const char *ts_path)
     cpgimag(ampl_scale_data, 1, amplitude_steps, 1, 1, 1, amplitude_steps, min_amplitude, max_amplitude, atr);
 
     cpgbox("bc", 0, 0, "bcsmv", 0, 0);
-    cpgmtxt("r", 3.2, 0.5, 0.5, "Intensity (mma)");
+    cpgmtxt("r", 3.2, 0.5, 0.5, "Amplitude (mma)");
 
     free(temp_mmi);
 temp_mmi_alloc_error:

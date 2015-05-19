@@ -1409,6 +1409,97 @@ datafile_error:
     return ret;
 }
 
+int concat_ts(double hour_spacing, char **filenames, size_t num_datafiles, char *ts_filename)
+{
+    int ret = 0;
+    if (num_datafiles < 1)
+        return error("No datafiles specified");
+
+    datafile **datafiles = (datafile **)malloc(num_datafiles*sizeof(datafile *));
+    if (!datafiles)
+        error_jump(datafile_error, ret, "Error allocating datafiles");
+
+    for (size_t i = 0; i < num_datafiles; i++)
+    {
+        datafiles[i] = datafile_load(filenames[i]);
+        if (!datafiles[i])
+        {
+            for (int j = 0; j < i; j++)
+                datafile_free(datafiles[j]);
+            free(datafiles);
+            error_jump(datafile_error, ret, "Error loading datafile %s", filenames[i]);
+        }
+    }
+    printf("Loaded %zu datafiles\n", num_datafiles);
+
+    if (!datafiles[0]->coord_ra || !datafiles[0]->coord_dec)
+        error_jump(coord_error, ret, "Datafile %s doesn't specify star coordinates", filenames[0]);
+
+    // Convert ra from HH:MM:SS to radians
+    double a,b,c;
+    sscanf(datafiles[0]->coord_ra, "%lf:%lf:%lf", &a, &b, &c);
+    double ra = (a + b/60 + c/3600)*M_PI/12;
+
+    // Convert dec from DD:'':"" to radians
+    sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
+    double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
+
+    FILE *out = fopen(ts_filename, "w+");
+    if (!out)
+        error_jump(output_error, ret, "Error opening file %s", ts_filename);
+
+    // Print file header
+    fprintf(out, "# tsreduce concat-ts output file\n");
+    fprintf(out, "# hour spacing: %.2f\n", hour_spacing);
+    fprintf(out, "# Files:\n");
+    for (size_t i = 0; i < num_datafiles; i++)
+        fprintf(out, "#   %s\n", filenames[i]);
+
+    // Convert data to BJD relative to the reference time
+    size_t num_saved = 0;
+    double bjd_offset = 0;
+    for (size_t i = 0; i < num_datafiles; i++)
+    {
+        long double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec);
+
+        // Calculate precessed RA and DEC at the start of each night
+        // This is already far more accurate than we need
+        printf("%s start BJD: %Lf\n", filenames[i], start_bjd);
+
+        struct photometry_data *pd = datafile_generate_photometry(datafiles[i]);
+        if (!pd)
+            error_jump(processing_error, ret, "Error generating photometry data for data %s", filenames[i]);
+
+        double last_obs = 0;
+        for (size_t j = 0; j < pd->filtered_count; j++)
+        {
+            ts_time obstime = datafiles[i]->reference_time;
+            obstime.time += (time_t)(pd->time[j]);
+            obstime.ms += round(1000*fmod(pd->time[j], 1));
+            last_obs = ts_time_to_bjd(obstime, ra, dec) - start_bjd;
+            fprintf(out, "%.8f %f %f\n", last_obs + bjd_offset, pd->mma[j], pd->mma_noise[j]);
+            num_saved++;
+        }
+
+        datafile_free_photometry(pd);
+        
+        printf("plot_subrun(%.6f, %.6f, \"%s\");  ", bjd_offset - 2700.0 / 86400, last_obs + bjd_offset+ 2700.0 / 86400, filenames[i]);
+        
+        bjd_offset = last_obs + bjd_offset + hour_spacing / 24;
+    }
+    printf("Converted %zu observations\n", num_saved);
+
+processing_error:
+    fclose(out);
+output_error:
+coord_error:
+    for (size_t i = 0; i < num_datafiles; i++)
+        datafile_free(datafiles[i]);
+    free(datafiles);
+datafile_error:
+    return ret;
+}
+
 int display_tracer(char *dataPath)
 {
     int ret = 0;

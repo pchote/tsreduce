@@ -1127,17 +1127,16 @@ static void set_color_table()
     cpgctab(l, r, g, b, 4, 1.0, 0.5);
 }
 
-static void plot_subrun(double start, double end, const char *label)
+static void plot_subrun(double start, double end, const char *label, const char *label2)
 {
     double y = -80;
     double texty = -280;
+    texty = -250;
     double mid = (start + end) / 2;
     
-    cpgsch(1.0);
-    cpgarro(mid * 86400, y, start * 86400, y);
-    cpgarro(mid * 86400, y, end * 86400, y);
     cpgsch(1.2);
     cpgptxt(mid * 86400, texty, 0, 0.5f, label);
+    cpgptxt(mid * 86400, texty - 250, 0, 0.5f, label2);
     cpgsch(1.6);
 }
 
@@ -1270,8 +1269,8 @@ int colorplot(const char *ts_path)
         {
             cpgsvp(0.1, 0.89, 0.10, 0.79);
             cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
-            cpgswin(time_min, time_max, freq_min-400, freq_max);
-            
+            cpgswin(time_min, time_max, freq_min-700, freq_max);
+            /*
             plot_subrun(0.036805, 0.249999, "1a");
             plot_subrun(0.249999, 0.504165, "1b");
             
@@ -1291,6 +1290,20 @@ int colorplot(const char *ts_path)
             plot_subrun(5.019791, 5.166318, "6a");
             plot_subrun(5.166665, 5.332982, "6b");
             plot_subrun(5.333329, 5.502425, "6c");
+            */
+            
+            plot_subrun(-0.031250, 0.206961,"2 March", "2011");
+            plot_subrun(0.269461, 0.405001, "4 March", "2011");
+            plot_subrun(0.467501, 0.741213, "1 July ", "2011");
+            plot_subrun(0.803713, 1.058433, "2 July ", "2011");
+            plot_subrun(1.120933, 1.493017, "4 July ", "2011");
+            plot_subrun(1.555517, 1.738032, "6 July ", "2011");
+            plot_subrun(1.800532, 2.111979, "27 July ", "2011");
+            plot_subrun(2.174479, 2.474109, "1 Aug", "2011");
+            plot_subrun(2.536609, 2.744235, "2 Aug", "2011");
+            plot_subrun(2.806735, 2.972541, "24 March", "2012");
+            plot_subrun(3.035041, 3.317176, "25 March", "2012");
+            plot_subrun(3.379676, 3.735184, "23 April", "2012");            
         }
 
     	//cpgsitf(2); // Use a sqrt mapping between value and colour
@@ -1307,7 +1320,7 @@ int colorplot(const char *ts_path)
         if (k == 2)
             cpgswin(time_min / 86400, time_max / 86400, local_freq_min, local_freq_max);
         else
-            cpgswin(time_min / 86400, time_max / 86400, local_freq_min-400, local_freq_max);
+            cpgswin(time_min / 86400, time_max / 86400, local_freq_min-700, local_freq_max);
         cpgbox("bcst", 0, 0, "bcstnv", label_stride, 4);   
     }
     

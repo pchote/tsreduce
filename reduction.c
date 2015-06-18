@@ -465,7 +465,7 @@ int display_frame(char *data_path, char *frame_name)
         error_jump(setup_error, ret, "Unable to launch ds9");
 
     char command[1024];
-    snprintf(command, 1024, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+    snprintf(command, 1024, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64,endian=little]", frame->cols, frame->rows);
     if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
         error_jump(process_error, ret, "ds9 command failed: %s", command);
 
@@ -947,7 +947,7 @@ int create_reduction_file(char *outname)
 
         {
             char command[128];
-            snprintf(command, 128, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64]", frame->cols, frame->rows);
+            snprintf(command, 128, "xpaset tsreduce array [xdim=%d,ydim=%d,bitpix=-64,endian=little]", frame->cols, frame->rows);
             if (ts_exec_write(command, frame->data, frame->rows*frame->cols*sizeof(double)))
                 error_jump(frameload_error, ret, "ds9 command failed: %s", command);
         }

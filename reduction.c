@@ -960,6 +960,10 @@ int create_reduction_file(char *outname)
         if (ts_exec_write("xpaset tsreduce regions shape annulus", NULL, 0))
             error_jump(frameload_error, ret, "ds9 command failed");
 
+        // Set region edit mode
+        if (ts_exec_write("xpaset tsreduce mode region", NULL, 0))
+            error_jump(frameload_error, ret, "ds9 command failed");
+
         printf("    Circle the target stars and surrounding sky in ds9\n        Press enter in this terminal to continue...");
         getchar();
 
@@ -1107,9 +1111,9 @@ int create_reduction_file(char *outname)
             double y = t->y + 1;
 
             char command[1024];
-            snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", x, y, t->r);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{circle(%f,%f,%f) #color=red select=0}'", x, y, t->r);
             ts_exec_write(command, NULL, 0);
-            snprintf(command, 1024, "xpaset tsreduce regions command '{annulus %f %f %f %f #background select=0}'", x, y, t->s1, t->s2);
+            snprintf(command, 1024, "xpaset tsreduce regions command '{annulus(%f,%f,%f,%f) #select=0}'", x, y, t->s1, t->s2);
             ts_exec_write(command, NULL, 0);
 
             double intensity = frame->data[frame->cols*((size_t)t->y) + (size_t)t->x] - sky[i];

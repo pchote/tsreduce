@@ -474,7 +474,6 @@ int display_frame(char *data_path, char *frame_name)
 
     for (size_t i = 0; i < data->target_count; i++)
     {
-
         double2 xy = obs->pos[i];
         aperture *a = &data->targets[i].aperture;
         snprintf(command, 1024, "xpaset tsreduce regions command '{circle %f %f %f #color=red select=0}'", xy.x + 1, xy.y + 1, a->r);
@@ -963,6 +962,21 @@ int create_reduction_file(char *outname)
         // Set region edit mode
         if (ts_exec_write("xpaset tsreduce mode region", NULL, 0))
             error_jump(frameload_error, ret, "ds9 command failed");
+
+        // Set WCS data
+        char wcs_data[1024];
+        wcs_data[0] = '\0';
+
+        char *wcs_headers[] = { "CTYPE1", "CTYPE2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CD1_1", "CD1_2", "CD2_1", "CD2_2" };
+        for (size_t i = 0; i < 10; i++)
+        {
+            char *str;
+            char *fmt = i < 2 ? "%s = '%s'\n" : "%s = %s\n";
+            if (framedata_get_metadata(frame, wcs_headers[i], FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
+                sprintf(wcs_data + strlen(wcs_data), fmt, wcs_headers[i], str);
+        }
+
+        ts_exec_write("xpaset tsreduce wcs append", wcs_data, strlen(wcs_data));
 
         printf("    Circle the target stars and surrounding sky in ds9\n        Press enter in this terminal to continue...");
         getchar();

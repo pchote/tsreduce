@@ -1127,17 +1127,26 @@ static void set_color_table()
     cpgctab(l, r, g, b, 4, 1.0, 0.5);
 }
 
-static void plot_subrun(double start, double end, const char *label, const char *label2)
+static void plot_subrun(double start, double end, const char *label)
 {
     double y = -80;
-    double texty = -280;
-    texty = -250;
+    double texty = -290;
     double mid = (start + end) / 2;
-    
+
+    cpgsch(1.0);
+    cpgarro(mid * 86400, y, start * 86400, y);
+    cpgarro(mid * 86400, y, end * 86400, y);
+        
     cpgsch(1.2);
     cpgptxt(mid * 86400, texty, 0, 0.5f, label);
-    cpgptxt(mid * 86400, texty - 250, 0, 0.5f, label2);
-    cpgsch(1.6);
+    cpgsch(1.5);
+}
+
+static void plot_tick(double y, const char *label, double min, double max)
+{
+    cpgmove(0.9925, y);
+    cpgdraw(1, y);
+    cpgmtxt("RV", 0.5, (y - min) / (max - min), 0, label);
 }
 
 int colorplot(const char *ts_path)
@@ -1157,8 +1166,8 @@ int colorplot(const char *ts_path)
     size_t time_steps = 500;
     double window_extent = 3600 * 1.5;
     
-    double time_min = data->time[0];
-    double time_max = data->time[data->obs_count - 1];
+    double time_min = data->time[0] - 2*3600;
+    double time_max = data->time[data->obs_count - 1] + 2*3600;
 
     double *mmi_windowed = (double *)malloc(data->obs_count*sizeof(double));
     if (!mmi_windowed)
@@ -1174,7 +1183,8 @@ int colorplot(const char *ts_path)
     cpgslw(1);
     cpgsfs(2);
     cpgscf(2);
-    cpgsch(1.6);
+    cpgsch(1.5);
+    
 
     printf("%zu\n", data->obs_count);
 
@@ -1207,9 +1217,6 @@ int colorplot(const char *ts_path)
     double dt = (time_max - time_min)/time_steps;
 
 	set_color_table();
-
-    double n = 0.10;
-    double o = 3*0.20;
 
     for (size_t k = 2; k >= 1; k--)
     {
@@ -1259,7 +1266,7 @@ int colorplot(const char *ts_path)
 
         if (k == 2)
         {
-            cpgsvp(0.1, 0.89, 0.8, 0.95);
+            cpgsvp(0.1, 0.85, 0.8, 0.95);
             cpgmtxt("l", 4, 0.5, 0.5, "Window");
 //            cpgmtxt("t", 0.5, 0.5, 0.5, ts_path);
             cpgswin(time_min, time_max, freq_min, freq_max);
@@ -1267,10 +1274,10 @@ int colorplot(const char *ts_path)
         }
         else
         {
-            cpgsvp(0.1, 0.89, 0.10, 0.79);
+            cpgsvp(0.1, 0.85, 0.11, 0.79);
             cpgmtxt("l", 4, 0.5, 0.5, "Frequency (\\gmHz)");
-            cpgswin(time_min, time_max, freq_min-700, freq_max);
-            /*
+            cpgswin(time_min, time_max, freq_min-400, freq_max);
+
             plot_subrun(0.036805, 0.249999, "1a");
             plot_subrun(0.249999, 0.504165, "1b");
             
@@ -1290,8 +1297,8 @@ int colorplot(const char *ts_path)
             plot_subrun(5.019791, 5.166318, "6a");
             plot_subrun(5.166665, 5.332982, "6b");
             plot_subrun(5.333329, 5.502425, "6c");
-            */
-            
+
+/*            
             plot_subrun(-0.031250, 0.206961,"2 March", "2011");
             plot_subrun(0.269461, 0.405001, "4 March", "2011");
             plot_subrun(0.467501, 0.741213, "1 July ", "2011");
@@ -1303,7 +1310,8 @@ int colorplot(const char *ts_path)
             plot_subrun(2.536609, 2.744235, "2 Aug", "2011");
             plot_subrun(2.806735, 2.972541, "24 March", "2012");
             plot_subrun(3.035041, 3.317176, "25 March", "2012");
-            plot_subrun(3.379676, 3.735184, "23 April", "2012");            
+            plot_subrun(3.379676, 3.735184, "23 April", "2012"); 
+*/           
         }
 
     	//cpgsitf(2); // Use a sqrt mapping between value and colour
@@ -1317,17 +1325,36 @@ int colorplot(const char *ts_path)
             label_stride = 500;
         }
 
+        double offset = (2456064.75658279 - 2456047.50638806) * 86400;
+        printf("Times: %f %f\n", time_min + offset, time_max + offset);
         if (k == 2)
-            cpgswin(time_min / 86400, time_max / 86400, local_freq_min, local_freq_max);
+            cpgswin(time_min + offset, time_max + offset, local_freq_min, local_freq_max);
         else
-            cpgswin(time_min / 86400, time_max / 86400, local_freq_min-700, local_freq_max);
-        cpgbox("bcst", 0, 0, "bcstnv", label_stride, 4);   
+            cpgswin(time_min + offset, time_max + offset, local_freq_min-400, local_freq_max);
+        
+        cpgtbox("bcstnZH", 12*3600, 4, "bstnv", label_stride, 4);
+        cpgbox("0", 0, 0, "c", 0, 0);
+
+        if (k != 2)
+        {
+            cpgswin(0, 1, local_freq_min-400, local_freq_max);
+            plot_tick(4000, "250", local_freq_min - 400, local_freq_max);
+            plot_tick(3333, "300", local_freq_min - 400, local_freq_max);
+            plot_tick(2500, "400", local_freq_min - 400, local_freq_max);
+            plot_tick(2000, "500", local_freq_min - 400, local_freq_max);
+            plot_tick(1666, "600", local_freq_min - 400, local_freq_max);
+            plot_tick(1000, "1000", local_freq_min - 400, local_freq_max);
+            plot_tick(500,  "2000", local_freq_min - 400, local_freq_max);
+            plot_tick(100, "10000", local_freq_min - 400, local_freq_max);
+            
+            cpgmtxt("r", 4, 0.5, 0.5, "Period (s)");
+        }
     }
     
 
-    cpgsvp(0.1, 0.88, 0.10, 0.95);
-    cpgmtxt("B", 2.3, 0.5, 0.5, "Time (days)");
-  
+    cpgsvp(0.1, 0.85, 0.11, 0.95);
+    cpgmtxt("B", 2.5, 0.5, 0.5, "UTC Date (May 2012)");
+    /*
     for (size_t v = 0; v < 2; v++)
     {
         size_t k = 2;
@@ -1343,8 +1370,8 @@ int colorplot(const char *ts_path)
         cpgswin(time_min / 86400, time_max / 86400, freq_min, freq_max);
         cpgbox("bstn", 0, 0, "0", 0, 0);
     }
-    
-    cpgsvp(0.90, 0.92,  n, 0.95);
+    */
+    cpgsvp(0.91, 0.92, 0.11, 0.95);
 
     size_t amplitude_steps = 50;
     float *ampl_scale_data = calloc(amplitude_steps, sizeof(float));

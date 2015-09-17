@@ -14,6 +14,8 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
 int create_bias(const char *pattern, size_t minmax, double bias_fudge, const char *outname);
 int create_dark(const char *pattern, size_t minmax, const char *masterbias, const char *outname);
 int display_frame(char *data_path, char *frame_name);
+int calculate_proper_motion(const char *object_name, const char *ra_string, const char *dec_string, double ra_pm_initial, double dec_pm_initial, char **frames, size_t num_frames);
+int refine_position(const char *object_name, const char *ra_string, const char *dec_string, double ra_pm_initial, double dec_pm_initial, char **frames, size_t num_frames);
 int print_frame_metadata(char *frame_path);
 
 int update_reduction(char *dataPath);

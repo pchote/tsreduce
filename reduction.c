@@ -14,6 +14,9 @@
 #include <regex.h>
 #include <stdbool.h>
 #include <inttypes.h>
+#include <cpgplot.h>
+#include <float.h>
+#include <libgen.h>
 
 #include "datafile.h"
 #include "framedata.h"
@@ -488,6 +491,610 @@ process_error:
     framedata_free(frame);
 setup_error:
     datafile_free(data);
+    return ret;
+}
+
+int calculate_proper_motion(const char *object_name, const char *ra_string, const char *dec_string, double ra_pm_initial, double dec_pm_initial, char **frames, size_t num_frames)
+{
+    int ret = 0;
+
+    double aperture_sky_inner_radius = 7;
+    double aperture_sky_outer_radius = 9;
+    uint16_t poster_frame_percent = 15;
+
+    // Convert ra from HH:MM:SS to decimal degrees
+    double input_ra_h, input_ra_m, input_ra_s;
+    sscanf(ra_string, "%lf:%lf:%lf", &input_ra_h, &input_ra_m, &input_ra_s);
+    double ra_initial_j2000 = (input_ra_h + input_ra_m/60 + input_ra_s/3600)*15;
+
+    // Convert dec from DD:'':"" to decimal degrees
+    double input_dec_d, input_dec_am, input_dec_as;
+    sscanf(dec_string, "%lf:%lf:%lf", &input_dec_d, &input_dec_am, &input_dec_as);
+    double dec_initial_j2000 = copysign((fabs(input_dec_d) + input_dec_am/60 + input_dec_as/3600), input_dec_d);
+
+    double *year = calloc(num_frames, sizeof(double));
+    double *ra = calloc(num_frames, sizeof(double));
+    double *dec = calloc(num_frames, sizeof(double));
+    double *ra_uncert = calloc(num_frames, sizeof(double));
+    double *dec_uncert = calloc(num_frames, sizeof(double));
+    if (!year || !ra || !dec || !ra_uncert || !dec_uncert)
+        error_jump(setup_error, ret, "error allocating arrays");
+
+    ts_time j2000 = parse_date_time("2000-01-01", "12:00:00");
+
+    char device_buf[128];
+    snprintf(device_buf, 128, "%s.ps/vcps", object_name);
+    float size = 9.0;
+    float aspect = 1.0;
+    float poster_x[] = { 0.08, 0.29, 0.51, 0.72, 0.08, 0.29, 0.51, 0.72 };
+
+    float poster_y_top = 0.66;
+    float poster_y_bottom = 0.42;
+    float poster_y[] = { poster_y_top, poster_y_top, poster_y_top, poster_y_top, poster_y_bottom, poster_y_bottom, poster_y_bottom, poster_y_bottom };
+    float poster_size = 0.2;
+
+    if (cpgopen(device_buf) <= 0)
+        error_jump(setup_error, ret, "Unable to open PGPLOT window");
+
+    cpgpap(size, aspect);
+    cpgask(0);
+    cpgslw(1);
+    cpgsfs(2);
+    cpgscf(1);
+    cpgsch(0.6);
+
+    double time_min = DBL_MAX, time_max = -DBL_MAX, ra_min = DBL_MAX, ra_max = -DBL_MAX, dec_min = DBL_MAX, dec_max = -DBL_MAX;
+
+    size_t num_measurements = 0;
+    for (size_t j = 0; j < num_frames; j++)
+    {
+        framedata *frame = framedata_load(frames[j]);
+        if (!frame)
+        {
+            fprintf(stderr, "Error loading frame %s\n", frames[j]);
+            continue;
+        }
+
+        ts_time start_time;
+        if (framedata_start_time(frame, &start_time))
+        {
+            fprintf(stderr, "No time headers found for %s\n", frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        double platescale;
+        if (framedata_arcsec_per_px(frame, &platescale))
+        {
+            fprintf(stderr, "No plate scale headers found for %s\n", frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        double delta_years = ts_difftime(start_time, j2000) / 86400 / 365.2564;
+        double ra_estimated_target = ra_initial_j2000 + ra_pm_initial / cos(dec_initial_j2000 * M_PI / 180) * delta_years / 3600000;
+        double dec_estimated_target = dec_initial_j2000 + dec_pm_initial * delta_years / 3600000;
+
+        double world[2], pix[2], img[2];
+        double phi, theta;
+        int status = 0;
+
+        // Convert J2000 coords to pixels
+        world[frame->wcs->lng] = ra_estimated_target;
+        world[frame->wcs->lat] = dec_estimated_target;
+        if ((status = wcss2p(frame->wcs, 1, 2, world, &phi, &theta, img, pix, &status)))
+        {
+            fprintf(stderr, "wcs failed with status %d for %s\n", status, frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        // Center aperture on target
+        aperture ap;
+        ap.x = pix[0] - 0.5;
+        ap.y = pix[1] - 0.5;
+        ap.r = aperture_sky_inner_radius / platescale;
+        ap.s1 = aperture_sky_inner_radius / platescale;
+        ap.s2 = aperture_sky_outer_radius / platescale;
+
+        double2 aperture_center;
+        if (center_aperture(ap, frame, &aperture_center))
+        {
+            fprintf(stderr, "centering failed to converge for %s\n", frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        pix[0] = aperture_center.x + 0.5;
+        pix[1] = aperture_center.y + 0.5;
+
+        // Convert back to J2000 coords
+        if ((status = wcsp2s(frame->wcs, 1, 2, pix, img, &phi, &theta, world, &status)))
+        {
+            fprintf(stderr, "wcs failed with status %d for %s\n", status, frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        double final_ra = world[frame->wcs->lng];
+        double final_dec = world[frame->wcs->lat];
+        if (final_ra < 0)
+            final_ra += 360;
+
+        year[num_measurements] = delta_years;
+        ra[num_measurements] = final_ra;
+        dec[num_measurements] = final_dec;
+
+        double bg = 0;
+        calculate_background(ap, frame, &bg, NULL);
+        double fwhm = estimate_fwhm(frame, aperture_center, bg, ap.r) * platescale / 3600;
+
+        ra_uncert[num_measurements] = fwhm;
+        dec_uncert[num_measurements] = fwhm;
+
+        time_min = fmin(time_min, delta_years);
+        time_max = fmax(time_max, delta_years);
+        ra_min = fmin(ra_min, final_ra);
+        ra_max = fmax(ra_max, final_ra);
+        dec_min = fmin(dec_min, final_dec);
+        dec_max = fmax(dec_max, final_dec);
+
+        if (num_measurements < 8)
+        {
+            uint16_t poster_px_size = frame->cols * poster_frame_percent / 100;
+            uint16_t frame_x_min = (int)fmax(aperture_center.x - poster_px_size, 0);
+            uint16_t frame_x_max = (int)fmin(aperture_center.x + poster_px_size, frame->cols);
+            uint16_t frame_y_min = (int)fmax(aperture_center.y - poster_px_size, 0);
+            uint16_t frame_y_max = (int)fmin(aperture_center.y + poster_px_size, frame->rows);
+
+            uint16_t frame_width = frame_x_max - frame_x_min;
+            uint16_t frame_height = frame_y_max - frame_y_min;
+
+            float frame_aperture_center_x = aperture_center.x - frame_x_min;
+            float frame_aperture_center_y = aperture_center.y - frame_y_min;
+            float frame_initial_center_x = ap.x - frame_x_min;
+            float frame_initial_center_y = ap.y - frame_y_min;
+
+            float *plot_frame = calloc(frame_width * frame_height, sizeof(float));
+            double intensity_mean = 0;
+            for (uint16_t y = frame_y_min; y < frame_y_max; y++)
+            {
+                for (uint16_t x = frame_x_min; x < frame_x_max; x++)
+                {
+                    plot_frame[(y - frame_y_min)*frame_width + (x - frame_x_min)] = frame->data[y*frame->cols + x];
+                    intensity_mean += frame->data[y*frame->cols + x];
+                }
+            }
+
+            intensity_mean /= frame_width * frame_height;
+
+            double intensity_std = 0;
+            for (size_t i = 0; i < frame_width * frame_height; i++)
+                intensity_std += (plot_frame[i] - intensity_mean)*(plot_frame[i] - intensity_mean);
+            intensity_std = sqrt(intensity_std / frame_width * frame_height);
+            float tr[] = { -1, 1, 0, -1, 0, 1 };
+
+            cpgsvp(poster_x[num_measurements], poster_x[num_measurements] + poster_size, poster_y[num_measurements], poster_y[num_measurements] + poster_size/aspect);
+            cpgswin(0, frame_width, 0, frame_height);
+            cpggray(plot_frame, frame_width, frame_height, 1, frame_width, 1, frame_height, 0, 2*intensity_mean, tr);
+            cpgsci(2);
+            cpgpt1(frame_aperture_center_x, frame_aperture_center_y, 2);
+            cpgsci(8);
+            cpgpt1(frame_initial_center_x, frame_initial_center_y, 2);
+            cpgsci(3);
+            cpgcirc(frame_aperture_center_x, frame_aperture_center_y, ap.s1);
+            cpgcirc(frame_aperture_center_x, frame_aperture_center_y, ap.s2);
+
+            cpgsch(0.4);
+            cpgmove(0.9*frame_width, 0.9*frame_height);
+            cpgdraw(0.9*frame_width - 5.0 / platescale, 0.9*frame_height);
+            cpgptxt(0.9*frame_width - 2.5 / platescale, 0.92*frame_height, 0, 0.5, "5\"");
+
+            cpgptxt(0.5*frame_width, 0.02*frame_height, 0, 0.5, basename(frames[j]));
+            cpgsch(0.6);
+            cpgsci(1);
+            char timebuf[24];
+            serialize_time(start_time, timebuf);
+            timebuf[10] = '\0';
+            cpgmtxt("t", 0.25, 0.5, 0.5, timebuf);
+        }
+
+        framedata_free(frame);
+        num_measurements++;
+    }
+
+    double ra_fit[2], dec_fit[2];
+
+    if (fit_polynomial(year, ra, ra_uncert, num_measurements, ra_fit, 1))
+    {
+        printf("calculation-failed\n");
+        error_jump(setup_error, ret, "ra fit failed!");
+    }
+
+    if (fit_polynomial(year, dec, dec_uncert, num_measurements, dec_fit, 1))
+    {
+        printf("calculation-failed\n");
+        error_jump(setup_error, ret, "ra fit failed!");
+    }
+
+    // Convert RA from degrees to hours and find components
+    double ra_temp = ra_fit[0] / 15;
+
+    int ra_hour = (int)ra_temp;
+    ra_temp = (ra_temp - ra_hour) * 60;
+    int ra_minutes = (int)ra_temp;
+    ra_temp = (ra_temp - ra_minutes) * 60;
+    double ra_seconds = ra_temp;
+    double ra_pm = round(ra_fit[1] * 3600 * 1000);
+
+    // Dec components
+    double dec_temp = dec_fit[0];
+    int dec_deg = (int)dec_temp;
+    dec_temp = (dec_temp - dec_deg) * 60;
+    int dec_arcmin = (int)dec_temp;
+    dec_temp = (dec_temp - dec_arcmin) * 60;
+    double dec_arcsec = dec_temp;
+    double dec_pm = round(dec_fit[1] * 3600 * 1000);
+
+    // Fix sign of arcmin/sec
+    dec_arcmin /= copysign(1.0, dec_deg);
+    dec_arcsec /= copysign(1.0, dec_deg);
+
+    // Plots
+    double plot_time_min = (time_max + time_min) / 2 - 0.6 * (time_max - time_min);
+    double plot_time_max = (time_max + time_min) / 2 + 0.6 * (time_max - time_min);
+
+    // Require at least a 3 arcsec height
+    double plot_ra_scale = fmax((ra_max - ra_min) / 2, 1.5/3600);
+    double plot_ra_min = (ra_max + ra_min) / 2 - 1.1 * plot_ra_scale;
+    double plot_ra_max = (ra_max + ra_min) / 2 + 1.1 * plot_ra_scale;
+    float plot_ra_fit_min = ra_fit[1] * plot_time_min + ra_fit[0];
+    float plot_ra_fit_max = ra_fit[1] * plot_time_max + ra_fit[0];
+    float plot_ra_initial_min = ra_pm_initial / 3600 / 1000 * plot_time_min / cos(dec_initial_j2000 * M_PI / 180)+ ra_initial_j2000;
+    float plot_ra_initial_max = ra_pm_initial / 3600 / 1000 * plot_time_max / cos(dec_initial_j2000 * M_PI / 180)+ ra_initial_j2000;
+    double plot_dec_scale = fmax((dec_max - dec_min) / 2, 1.5/3600);
+    double plot_dec_min = (dec_max + dec_min) / 2 - 1.1 * plot_dec_scale;
+    double plot_dec_max = (dec_max + dec_min) / 2 + 1.1 * plot_dec_scale;
+    float plot_dec_fit_min = dec_fit[1] * plot_time_min + dec_fit[0];
+    float plot_dec_fit_max = dec_fit[1] * plot_time_max + dec_fit[0];
+    float plot_dec_initial_min = dec_pm_initial / 3600 / 1000 * plot_time_min + dec_initial_j2000;
+    float plot_dec_initial_max = dec_pm_initial / 3600 / 1000 * plot_time_max + dec_initial_j2000;
+
+    int flag = 0;
+    double max_deviation = -DBL_MAX;
+
+    float *plot_time = malloc(num_measurements*sizeof(float));
+    float *plot_ra = malloc(num_measurements*sizeof(float));
+    float *plot_dec = malloc(num_measurements*sizeof(float));
+    float *plot_ra_uncert = malloc(num_measurements*sizeof(float));
+    float *plot_dec_uncert = malloc(num_measurements*sizeof(float));
+    if (!plot_time || !plot_ra || !plot_dec || !plot_ra_uncert || !plot_dec_uncert)
+    {
+        printf("calculation-failed\n");
+        error_jump(plot_setup_error, ret, "Allocation error");
+    }
+
+    for (size_t i = 0; i < num_measurements; i++)
+    {
+        plot_time[i] = year[i];
+        plot_ra[i] = ra[i];
+        plot_dec[i] = dec[i];
+        plot_ra_uncert[i] = ra_uncert[i] / 20;
+        plot_dec_uncert[i] = dec_uncert[i] / 20;
+
+        // Set warning flag if any frames have the target > 1 arcsec away from the best fit
+        double fit_ra = ra_fit[1] * plot_time[i] + ra_fit[0];
+        double fit_dec = dec_fit[1] * plot_time[i] + dec_fit[0];
+        double dra = fit_ra - plot_ra[i];
+        double ddec = fit_dec - plot_dec[i];
+        max_deviation = fmax(max_deviation, sqrt(dra*dra + ddec*ddec));
+        if (max_deviation > 1.0 / 3600)
+            flag = 1;
+    }
+
+    cpgsvp(0.1, 0.49, 0.075, 0.4);
+    cpgswin(plot_time_min, plot_time_max, plot_ra_min, plot_ra_max);
+    cpgsci(4);
+    cpgpt(num_measurements, plot_time, plot_ra, 16);
+    cpgerrb(6, num_measurements, plot_time, plot_ra, plot_ra_uncert, 0);
+
+    // Initial parameters
+    cpgsci(3);
+    cpgmove(plot_time_min, plot_ra_initial_min);
+    cpgdraw(plot_time_max, plot_ra_initial_max);
+
+    // Center line
+    cpgsci(2);
+    cpgmove(plot_time_min, plot_ra_fit_min);
+    cpgdraw(plot_time_max, plot_ra_fit_max);
+
+    // Plus 1 arcsec
+    cpgsci(8);
+    cpgmove(plot_time_min, plot_ra_fit_min + 1.0 / 3600);
+    cpgdraw(plot_time_max, plot_ra_fit_max + 1.0 / 3600);
+
+    // Minus 1 arcsec
+    cpgmove(plot_time_min, plot_ra_fit_min - 1.0 / 3600);
+    cpgdraw(plot_time_max, plot_ra_fit_max - 1.0 / 3600);
+
+    cpgsci(1);
+    cpgbox("bcstn", 0, 0, "bcstnv", 0, 0);
+    cpgswin(0, 1, 0, 1);
+    cpgsci(3);
+    cpgptxt(0.03, 0.15, 0, 0, "Input guess");
+    cpgsci(2);
+    cpgptxt(0.03, 0.11, 0, 0, "Best Fit");
+    cpgsci(8);
+    cpgptxt(0.03, 0.07, 0, 0, "\\(2233)1 arcsec");
+    cpgsci(4);
+    cpgptxt(0.03, 0.03, 0, 0, "errorbar = FWHM / 20");
+    cpgsci(1);
+    cpgmtxt("b", 2.5, 0.5, 0.5, "Years since J2000");
+    cpgmtxt("l", 6, 0.5, 0.5, "RA (Deg)");
+
+    cpgsvp(0.51, 0.90, 0.075, 0.4);
+    cpgswin(plot_time_min, plot_time_max, plot_dec_min, plot_dec_max);
+    cpgsci(4);
+    cpgpt(num_measurements, plot_time, plot_dec, 16);
+    cpgerrb(6, num_measurements, plot_time, plot_dec, plot_dec_uncert, 0);
+
+    // Initial parameters
+    cpgsci(3);
+    cpgmove(plot_time_min, plot_dec_initial_min);
+    cpgdraw(plot_time_max, plot_dec_initial_max);
+
+    // Center line
+    cpgsci(2);
+    cpgmove(plot_time_min, plot_dec_fit_min);
+    cpgdraw(plot_time_max, plot_dec_fit_max);
+    // Plus 1 arcsec
+    cpgsci(8);
+    cpgmove(plot_time_min, plot_dec_fit_min + 1.0 / 3600);
+    cpgdraw(plot_time_max, plot_dec_fit_max + 1.0 / 3600);
+    // Minus 1 arcsec
+    cpgmove(plot_time_min, plot_dec_fit_min - 1.0 / 3600);
+    cpgdraw(plot_time_max, plot_dec_fit_max - 1.0 / 3600);
+
+    cpgsci(1);
+    cpgbox("bcstn", 0, 0, "bcstmv", 0, 0);
+    cpgswin(0, 1, 0, 1);
+    cpgsci(3);
+    cpgptxt(0.03, 0.11, 0, 0, "Input guess");
+    cpgsci(2);
+    cpgptxt(0.03, 0.07, 0, 0, "Best Fit");
+    cpgsci(8);
+    cpgptxt(0.03, 0.03, 0, 0, "\\(2233)1 arcsec");
+    cpgsci(1);
+    cpgmtxt("b", 2.5, 0.5, 0.5, "Years since J2000");
+    cpgmtxt("r", 6, 0.5, 0.5, "Dec (Deg)");
+
+    cpgsvp(0.1, 0.90, 0.9, 0.91);
+
+    char buf[128];
+
+    snprintf(buf, 128,"RA: %02.0f:%02.0f:%06.3f   %+.0f mas/yr * cos(\\gd)", input_ra_h, input_ra_m, input_ra_s, ra_pm_initial);
+    cpgmtxt("t", 2.7, 0.01, 0.0, buf);
+
+    snprintf(buf, 128,"Dec: %02.0f:%02.0f:%06.3f   %+.0f mas/yr", input_dec_d, input_dec_am, input_dec_as, dec_pm_initial);
+    cpgmtxt("t", 2.7, 0.625, 0.0, buf);
+
+    cpgmtxt("t", 2.7, 0.5, 0.5, "INPUT J2000");
+
+    snprintf(buf, 128,"RA: %02d:%02d:%06.3f   %+.0f mas/yr * cos(\\gd)", ra_hour, ra_minutes, ra_seconds, ra_pm * cos(dec_fit[0] * M_PI / 180));
+    cpgmtxt("t", 1.4, 0.01, 0.0, buf);
+
+    snprintf(buf, 128,"Dec: %02d:%02d:%06.3f   %+.0f mas/yr", dec_deg, dec_arcmin, dec_arcsec, dec_pm);
+    cpgmtxt("t", 1.4, 0.625, 0.0, buf);
+
+    cpgmtxt("t", 1.4, 0.5, 0.5, "OUTPUT J2000");
+
+
+    double ra_input_j2016 = ra_initial_j2000 + ra_pm_initial * 16 / 3600000;
+    double ra_input_j2016_temp = ra_input_j2016 / 15;
+
+    int ra_input_j2016_hour = (int)ra_input_j2016_temp;
+    ra_input_j2016_temp = (ra_input_j2016_temp - ra_input_j2016_hour) * 60;
+    int ra_input_j2016_minutes = (int)ra_input_j2016_temp;
+    ra_input_j2016_temp = (ra_input_j2016_temp - ra_input_j2016_minutes) * 60;
+    double ra_input_j2016_seconds = ra_input_j2016_temp;
+
+    // Dec components
+    double dec_input_j2016 = dec_initial_j2000 + dec_pm_initial * 16 / 3600000;
+    double dec_input_j2016_temp = dec_input_j2016;
+    int dec_input_j2016_deg = (int)dec_input_j2016_temp;
+    dec_input_j2016_temp = (dec_input_j2016_temp - dec_input_j2016_deg) * 60;
+    int dec_input_j2016_arcmin = (int)dec_input_j2016_temp;
+    dec_input_j2016_temp = (dec_input_j2016_temp - dec_input_j2016_arcmin) * 60;
+    double dec_input_j2016_arcsec = dec_input_j2016_temp;
+    dec_input_j2016_arcmin /= copysign(1.0, dec_input_j2016_deg);
+    dec_input_j2016_arcsec /= copysign(1.0, dec_input_j2016_deg);
+
+    cpgmtxt("t", 0.1, 0.5, 0.5, "INPUT J2016");
+    snprintf(buf, 128,"RA: %02d:%02d:%06.3f", ra_input_j2016_hour, ra_input_j2016_minutes, ra_input_j2016_seconds);
+    cpgmtxt("t", 0.1, 0.01, 0.0, buf);
+
+    snprintf(buf, 128,"Dec: %02d:%02d:%06.3f            ", dec_input_j2016_deg, dec_input_j2016_arcmin, dec_input_j2016_arcsec);
+    cpgmtxt("t", 0.1, 0.625, 0.0, buf);
+
+    double ra_output_j2016 = ra_fit[0] + ra_pm * 16 / 3600000;
+    double ra_output_j2016_temp = ra_output_j2016 / 15;
+
+    int ra_output_j2016_hour = (int)ra_output_j2016_temp;
+    ra_output_j2016_temp = (ra_output_j2016_temp - ra_output_j2016_hour) * 60;
+    int ra_output_j2016_minutes = (int)ra_output_j2016_temp;
+    ra_output_j2016_temp = (ra_output_j2016_temp - ra_output_j2016_minutes) * 60;
+    double ra_output_j2016_seconds = ra_output_j2016_temp;
+
+    // Dec components
+    double dec_output_j2016 = dec_fit[0] + dec_pm * 16 / 3600000;
+    double dec_output_j2016_temp = dec_output_j2016;
+    int dec_output_j2016_deg = (int)dec_output_j2016_temp;
+    dec_output_j2016_temp = (dec_output_j2016_temp - dec_output_j2016_deg) * 60;
+    int dec_output_j2016_arcmin = (int)dec_output_j2016_temp;
+    dec_output_j2016_temp = (dec_output_j2016_temp - dec_output_j2016_arcmin) * 60;
+    double dec_output_j2016_arcsec = dec_output_j2016_temp;
+    dec_output_j2016_arcmin /= copysign(1.0, dec_output_j2016_deg);
+    dec_output_j2016_arcsec /= copysign(1.0, dec_output_j2016_deg);
+
+    cpgmtxt("t", -1.2, 0.5, 0.5, "OUTPUT J2016");
+    snprintf(buf, 128,"RA: %02d:%02d:%06.3f", ra_output_j2016_hour, ra_output_j2016_minutes, ra_output_j2016_seconds);
+    cpgmtxt("t",-1.2, 0.01, 0.0, buf);
+
+    snprintf(buf, 128,"Dec: %02d:%02d:%06.3f", dec_output_j2016_deg, dec_output_j2016_arcmin, dec_output_j2016_arcsec);
+    cpgmtxt("t",-1.2, 0.625, 0.0, buf);
+
+    cpgsch(1.0);
+    snprintf(buf, 128,"%s (J2000)", object_name);
+    cpgmtxt("t", 2.5, 0.5, 0.5, buf);
+
+plot_setup_error:
+    free(plot_time);
+    free(plot_ra);
+    free(plot_dec);
+    free(plot_ra_uncert);
+    free(plot_dec_uncert);
+    cpgend();
+    printf("%s %02d:%02d:%05.2f %02d:%02d:%05.2f %.0f %.0f %.3f %d\n", object_name, ra_hour, ra_minutes, ra_seconds, dec_deg, dec_arcmin, dec_arcsec, ra_pm * cos(dec_fit[0] * M_PI / 180), dec_pm, max_deviation * 3600, flag);
+setup_error:
+    free(year);
+    free(ra);
+    free(dec);
+    free(ra_uncert);
+    free(dec_uncert);
+
+    return ret;
+}
+
+int refine_position(const char *object_name, const char *ra_string, const char *dec_string, double ra_pm_initial, double dec_pm_initial, char **frames, size_t num_frames)
+{
+    int ret = 0;
+
+    double aperture_sky_inner_radius = 6;
+    double aperture_sky_outer_radius = 8;
+
+    // Convert ra from HH:MM:SS to decimal degrees
+    double input_ra_h, input_ra_m, input_ra_s;
+    sscanf(ra_string, "%lf:%lf:%lf", &input_ra_h, &input_ra_m, &input_ra_s);
+    double ra_initial_j2000 = (input_ra_h + input_ra_m/60 + input_ra_s/3600)*15;
+
+    // Convert dec from DD:'':"" to decimal degrees
+    double input_dec_d, input_dec_am, input_dec_as;
+    sscanf(dec_string, "%lf:%lf:%lf", &input_dec_d, &input_dec_am, &input_dec_as);
+    double dec_initial_j2000 = copysign((fabs(input_dec_d) + input_dec_am/60 + input_dec_as/3600), input_dec_d);
+
+    ts_time j2000 = parse_date_time("2000-01-01", "12:00:00");
+    double mean_year = 0;
+    double mean_ra = 0;
+    double mean_dec = 0;
+
+    for (size_t j = 0; j < num_frames; j++)
+    {
+        //printf("loading %s\n", frames[j]);
+        framedata *frame = framedata_load(frames[j]);
+        if (!frame)
+            error_jump(setup_error, ret, "Error loading frame %s\n", frames[j]);
+
+        ts_time start_time;
+        if (framedata_start_time(frame, &start_time))
+        {
+            framedata_free(frame);
+            error_jump(setup_error, ret, "No time headers found for %s\n", frames[j]);
+        }
+
+        double platescale;
+        if (framedata_arcsec_per_px(frame, &platescale))
+        {
+            framedata_free(frame);
+            error_jump(setup_error, ret, "No plate scale headers found for %s\n", frames[j]);
+        }
+
+        double delta_years = ts_difftime(start_time, j2000) / 86400 / 365.2564;
+        double ra_estimated_target = ra_initial_j2000 + ra_pm_initial / cos(dec_initial_j2000 * M_PI / 180) * delta_years / 3600000;
+        double dec_estimated_target = dec_initial_j2000 + dec_pm_initial * delta_years / 3600000;
+
+        double world[2], pix[2], img[2];
+        double phi, theta;
+        int status = 0;
+
+        // Convert J2000 coords to pixels
+        world[frame->wcs->lng] = ra_estimated_target;
+        world[frame->wcs->lat] = dec_estimated_target;
+        if ((status = wcss2p(frame->wcs, 1, 2, world, &phi, &theta, img, pix, &status)))
+        {
+            framedata_free(frame);
+            error_jump(setup_error, ret, "wcs failed with status %d for %s\n", status, frames[j]);
+        }
+
+        // Center aperture on target
+        aperture ap;
+        ap.x = pix[0] - 0.5;
+        ap.y = pix[1] - 0.5;
+        ap.r = aperture_sky_inner_radius / platescale;
+        ap.s1 = aperture_sky_inner_radius / platescale;
+        ap.s2 = aperture_sky_outer_radius / platescale;
+
+        double2 aperture_center;
+        if (center_aperture(ap, frame, &aperture_center))
+        {
+            fprintf(stderr, "centering failed to converge for %s\n", frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        pix[0] = aperture_center.x + 0.5;
+        pix[1] = aperture_center.y + 0.5;
+
+        // Convert back to J2000 coords
+        if ((status = wcsp2s(frame->wcs, 1, 2, pix, img, &phi, &theta, world, &status)))
+        {
+            fprintf(stderr, "wcs failed with status %d for %s\n", status, frames[j]);
+            framedata_free(frame);
+            continue;
+        }
+
+        double final_ra = world[frame->wcs->lng];
+        double final_dec = world[frame->wcs->lat];
+        if (final_ra < 0)
+            final_ra += 360;
+
+        mean_year += delta_years;
+        mean_ra += final_ra;
+        mean_dec += final_dec;
+
+        framedata_free(frame);
+    }
+
+    mean_year /= num_frames;
+    mean_ra /= num_frames;
+    mean_dec /= num_frames;
+
+    double ra_estimated_target = ra_initial_j2000 + ra_pm_initial / cos(dec_initial_j2000 * M_PI / 180) * mean_year / 3600000;
+    double dec_estimated_target = dec_initial_j2000 + dec_pm_initial * mean_year / 3600000;
+    double delta_ra_arcsec = (mean_ra - ra_estimated_target) * 3600;
+    double delta_dec_arcsec = (mean_dec - dec_estimated_target) * 3600;
+    double arcsec_shift = sqrt(delta_ra_arcsec * delta_ra_arcsec + delta_dec_arcsec * delta_dec_arcsec);
+
+    double ra_temp = mean_ra / 15;
+    int ra_hour = (int)ra_temp;
+    ra_temp = (ra_temp - ra_hour) * 60;
+    int ra_minutes = (int)ra_temp;
+    ra_temp = (ra_temp - ra_minutes) * 60;
+    double ra_seconds = ra_temp;
+
+    // Dec components
+    double dec_temp = mean_dec;
+    int dec_deg = (int)dec_temp;
+    dec_temp = (dec_temp - dec_deg) * 60;
+    int dec_arcmin = (int)dec_temp;
+    dec_temp = (dec_temp - dec_arcmin) * 60;
+    double dec_arcsec = dec_temp;
+
+    // Fix sign of arcmin/sec
+    dec_arcmin /= copysign(1.0, dec_deg);
+    dec_arcsec /= copysign(1.0, dec_deg);
+
+    printf("%s J%.2f %02d:%02d:%05.2f %02d:%02d:%05.2f %.3f\n", object_name, 2000 + mean_year, ra_hour, ra_minutes, ra_seconds, dec_deg, dec_arcmin, dec_arcsec, arcsec_shift);
+setup_error:
     return ret;
 }
 
@@ -1559,13 +2166,14 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     if (framedata_calibrate_load(reference, bias_path, dark_path, flat_path))
         error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
+
     int32_t xt = 0;
     int32_t yt = 0;
     bool rotated = false;
     if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
         error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
 
-    printf("Translation: %d %d%s\n", xt, yt, rotated ? " (after 180 deg rotation)" : "");
+    printf("%s %d %d\n", frame_path, xt, yt);
 
 process_error:
     framedata_free(reference);

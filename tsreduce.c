@@ -57,6 +57,12 @@ int main( int argc, char *argv[] )
     else if (argc == 4 && strcmp(argv[1], "display") == 0)
         return display_frame(argv[2], argv[3]);
 
+    //`tsreduce display <frame> <ra in J2000> <dec in J2000> <RA PM in mas/yr> <dec PM in mas/yr>
+    else if (argc > 6 && strcmp(argv[1], "pm") == 0)
+        return calculate_proper_motion(argv[2], argv[3], argv[4], atof(argv[5]), atof(argv[6]), &argv[7], argc - 7);
+    else if (argc > 6 && strcmp(argv[1], "position") == 0)
+        return refine_position(argv[2], argv[3], argv[4], atof(argv[5]), atof(argv[6]), &argv[7], argc - 7);
+
     // `tsreduce display test.dat l19-2-0660.fits.gz`
     else if (argc == 3 && strcmp(argv[1], "metadata") == 0)
         return print_frame_metadata(argv[2]);

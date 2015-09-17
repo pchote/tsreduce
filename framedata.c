@@ -699,6 +699,33 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
     return 1;
 }
 
+int framedata_arcsec_per_px(framedata *frame, double *arcsec)
+{
+    double tempa, tempb;
+    if (framedata_get_metadata(frame, "PIXSCALE", FRAME_METADATA_DOUBLE, &tempa) == FRAME_METADATA_OK)
+    {
+        *arcsec = tempa;
+        return 0;
+    }
+
+    if (framedata_get_metadata(frame, "PLTSCALE", FRAME_METADATA_DOUBLE, &tempa) == FRAME_METADATA_OK &&
+        framedata_get_metadata(frame, "XPIXELSZ", FRAME_METADATA_DOUBLE, &tempb) == FRAME_METADATA_OK)
+    {
+        *arcsec = tempa * tempb / 1000;
+        return 0;
+    }
+
+    if (framedata_get_metadata(frame, "CD1_2", FRAME_METADATA_DOUBLE, &tempa) == FRAME_METADATA_OK &&
+        framedata_get_metadata(frame, "CD2_1", FRAME_METADATA_DOUBLE, &tempb) == FRAME_METADATA_OK)
+    {
+        *arcsec = (tempa + tempb) * 1800;
+        return 0;
+    }
+
+
+    return 1;
+}
+
 int framedata_image_region(framedata *frame, uint16_t region[4])
 {
     uint16_t r[4] = {0, frame->cols, 0, frame->rows};

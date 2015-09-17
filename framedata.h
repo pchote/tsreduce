@@ -59,4 +59,5 @@ int framedata_estimate_translation(framedata *frame, framedata *reference, int32
 int framedata_image_region(framedata *frame, uint16_t region[4]);
 int framedata_bias_region(framedata *frame, uint16_t region[4]);
 
+int framedata_arcsec_per_px(framedata *frame, double *arcsec);
 #endif

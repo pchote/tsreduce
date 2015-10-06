@@ -177,6 +177,9 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "create") == 0)
         return create_reduction_file(argv[2]);
 
+    else if (argc == 5 && strcmp(argv[1], "background") == 0)
+        return generate_background_map(argv[2], atoi(argv[3]), argv[4]);
+
     else if ((argc == 4 || argc == 5) && strcmp(argv[1], "preview") == 0)
         return update_preview(argv[2], argv[3], argc == 5 ? argv[4] : NULL);
 

@@ -51,7 +51,8 @@ int framedata_calibrate_load(framedata *frame, const char *bias_path, const char
 int framedata_divide(framedata *fd, framedata *other);
 int framedata_start_time(framedata *frame, ts_time *time);
 int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt, bool *rotated);
-
+int framedata_calculate_background_map(framedata *frame, uint16_t min_tile_size, double *background_map);
+int framedata_subtract_background_map(framedata *frame, uint16_t min_tile_size);
 int framedata_image_region(framedata *frame, uint16_t region[4]);
 int framedata_bias_region(framedata *frame, uint16_t region[4]);
 

@@ -1602,3 +1602,32 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     datafile_free(data);
     return ret;
 }
+
+int generate_background_map(const char *frame_path, int tile_size, const char *out_frame_path)
+{
+    int ret = 0;
+
+    framedata *frame = framedata_load(frame_path);
+    if (!frame)
+        error_jump(frame_error, ret, "Error loading frame %s", frame_path);
+
+    double *background_map = calloc(frame->cols * frame->rows, sizeof(double));
+    if (!background_map)
+        error_jump(process_error, ret, "Error allocating array");
+
+    if (framedata_subtract_background_map(frame, tile_size))
+        error_jump(process_error, ret, "Error calculating background map");
+/*
+    if (framedata_calculate_background_map(frame, tile_size, background_map))
+        error_jump(process_error, ret, "Error calculating background map");
+
+    frame->data = background_map;
+*/
+    if (framedata_save(frame, out_frame_path))
+        error_jump(process_error, ret, "Error saving frame %s", out_frame_path);
+
+process_error:
+    framedata_free(frame);
+frame_error:
+    return ret;
+}

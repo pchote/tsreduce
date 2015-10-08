@@ -610,8 +610,8 @@ int update_reduction(char *dataPath)
         double nan = sqrt(-1);
 
         // Estimate translation from reference frame
-        int32_t xt, yt;
-        bool rotated;
+        int32_t xt = 0, yt = 0;
+        bool rotated = false;
         if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
             error_jump(process_error, ret, "Error calculating frame translation");
 
@@ -1548,13 +1548,20 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
         error_jump(reference_error, ret, "Error loading frame %s", reference_path);
 
     if (framedata_calibrate_load(frame, bias_path, dark_path, flat_path))
-        error_jump(process_error, ret, "Error dark-subtracting frame %s", frame_path);
+        error_jump(process_error, ret, "Error calibrating frame %s", frame_path);
 
     if (framedata_calibrate_load(reference, bias_path, dark_path, flat_path))
-        error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
+        error_jump(process_error, ret, "Error calibrating frame %s", reference_path);
 
-    int32_t xt, yt;
-    bool rotated;
+    uint16_t tile_size = 64;
+    if (framedata_subtract_background_map(frame, tile_size))
+        error_jump(process_error, ret, "Error sky-subtracting frame %s", frame_path);
+
+    if (framedata_subtract_background_map(reference, tile_size))
+        error_jump(process_error, ret, "Error sky-subtracting frame %s", reference_path);
+
+    int32_t xt = 0, yt = 0;
+    bool rotated = false;
     if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
         error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
 

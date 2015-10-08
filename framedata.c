@@ -817,7 +817,6 @@ int framedata_bias_region(framedata *frame, uint16_t region[4])
     return 0;
 }
 
-
 static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, double **y, bool rotate)
 {
     int ret = 0;
@@ -848,30 +847,15 @@ static int sum_into_axes(framedata *frame, uint16_t region[4], double **x, doubl
     for (uint16_t i = 0; i < xs; i++)
         xi[i] = i;
 
-    // Subtract a linear fit of the mean background level then clamp to zero
-    // This (in theory) leaves just the star images to correlate
-    double x_coeffs[2], y_coeffs[2];
-    if (fit_polynomial(xi, xa, NULL, xs, x_coeffs, 1))
-    {
-        // Fit failed, so fall back to the mean intensity
-        double xm = mean_exclude_sigma(xa, xs, 1);
-        for (uint16_t i = 0; i < xs; i++)
-            xa[i] = fmax(xa[i] - xm, 0);
-    }
-    else
-        for (uint16_t i = 0; i < xs; i++)
-            xa[i] = fmax(xa[i] - (x_coeffs[1] * xi[i] + x_coeffs[0]), 0);
-    
-    if (fit_polynomial(yi, ya, NULL, ys, y_coeffs, 1))
-    {
-        // Fit failed, so fall back to the mean intensity
-        double ym = mean_exclude_sigma(ya, ys, 1);
-        for (uint16_t j = 0; j < ys; j++)
-            ya[j] = fmax(ya[j] - ym, 0);
-    }
-    else
-        for (uint16_t j = 0; j < ys; j++)
-            ya[j] = fmax(ya[j] - (y_coeffs[1] * yi[j] + y_coeffs[0]), 0);
+    // Subtract the mean background level then clamp to zero to
+    // discard the majority of the sky background
+    double xm = mean_exclude_sigma(xa, xs, 1);
+    for (uint16_t i = 0; i < xs; i++)
+        xa[i] = fmax(xa[i] - xm, 0);
+
+    double ym = mean_exclude_sigma(ya, ys, 1);
+    for (uint16_t j = 0; j < ys; j++)
+        ya[j] = fmax(ya[j] - ym, 0);
 
     *x = xa;
     *y = ya;

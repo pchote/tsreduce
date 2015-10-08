@@ -1631,3 +1631,18 @@ process_error:
 frame_error:
     return ret;
 }
+
+int calibrate_frame(const char *frame, const char *bias, const char *dark, const char *flat, const char *outname)
+{
+    int ret = 0;
+    framedata *reference = framedata_load(frame);
+    if (!reference)
+        error_jump(reference_error, ret, "Error loading reference frame %s", frame);
+
+    if (framedata_calibrate_load(reference, bias, dark, flat))
+        error_jump(reference_error, ret, "Error calibrating reference frame %s", frame);
+
+    framedata_save(reference, outname);
+    reference_error:
+    return ret;
+}

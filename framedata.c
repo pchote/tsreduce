@@ -874,7 +874,7 @@ error:
     return ret;
 }
 
-int32_t find_max_correlatation(double *a, double *b, uint16_t n)
+double find_max_correlatation(double *a, double *b, uint16_t n)
 {
     int32_t best_idx = 0;
     double best = -1;
@@ -894,10 +894,33 @@ int32_t find_max_correlatation(double *a, double *b, uint16_t n)
             best_idx = j;
         }
     }
-    return best_idx;
+
+    // Best fit is at the edge of the correlation.
+    // Can't improve our estimate!
+    if (best_idx == -n || best_idx == n - 1)
+        return best_idx;
+    
+    // Improve estimate by doing a quadratic fit of
+    // the three points around the peak
+    double offset[3] = { -1, 0, 1 };
+    double corr[3] = { 0, 1, 0 };
+    double p[3];
+    for (uint16_t i = 0; i < n; i++)
+    {
+        corr[0] += a[i]*b[i + best_idx - 1];
+        corr[2] += a[i]*b[i + best_idx + 1];
+    }
+
+    corr[0] /= best;
+    corr[2] /= best;
+
+    if (fit_polynomial(offset, corr, NULL, 3, p, 2))
+        return best_idx;
+
+    return best_idx - p[1] / (2 * p[2]);
 }
 
-int framedata_estimate_translation(framedata *frame, framedata *reference, int32_t *xt, int32_t *yt, bool *rotated)
+int framedata_estimate_translation(framedata *frame, framedata *reference, double *xt, double *yt, bool *rotated)
 {
     int ret = 0;
 

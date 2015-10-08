@@ -610,7 +610,7 @@ int update_reduction(char *dataPath)
         double nan = sqrt(-1);
 
         // Estimate translation from reference frame
-        int32_t xt = 0, yt = 0;
+        double xt = 0, yt = 0;
         bool rotated = false;
         if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
             error_jump(process_error, ret, "Error calculating frame translation");
@@ -1560,12 +1560,12 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     if (framedata_subtract_background_map(reference, tile_size))
         error_jump(process_error, ret, "Error sky-subtracting frame %s", reference_path);
 
-    int32_t xt = 0, yt = 0;
+    double xt = 0, yt = 0;
     bool rotated = false;
     if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
         error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
 
-    printf("Translation: %d %d%s\n", xt, yt, rotated ? " (after 180 deg rotation)" : "");
+    printf("Translation: %.2f %.2f%s\n", xt, yt, rotated ? " (after 180 deg rotation)" : "");
 
 process_error:
     framedata_free(reference);

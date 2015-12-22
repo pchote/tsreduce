@@ -258,7 +258,7 @@ static ts_time ts_timegm(struct tm *t, uint16_t ms)
 // Like ISO 8601 without the timezone offset
 ts_time parse_time_ccdops(const char *string)
 {
-    struct tm t;
+    struct tm t = {0};
     unsigned int ms = 0;
     sscanf(string, "%d-%d-%dT%d:%d:%d.%u", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec, &ms);
     t.tm_year -= 1900;
@@ -269,7 +269,7 @@ ts_time parse_time_ccdops(const char *string)
 
 ts_time parse_time(const char *string)
 {
-    struct tm t;
+    struct tm t = {0};
     unsigned int ms = 0;
     sscanf(string, "%d-%d-%d %d:%d:%d.%u", &t.tm_year, &t.tm_mon, &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec, &ms);
     t.tm_year -= 1900;
@@ -292,7 +292,7 @@ ts_time parse_date_time(const char *date, const char *time)
 
 void serialize_time(ts_time t, char buf[24])
 {
-    struct tm time;
+    struct tm time = {0};
     ts_gmtime(t, &time);
     strftime(buf, 24, "%Y-%m-%d %H:%M:%S", &time);
     if (t.ms)
@@ -301,7 +301,7 @@ void serialize_time(ts_time t, char buf[24])
 
 double ts_time_to_utc_hour(ts_time t)
 {
-    struct tm st;
+    struct tm st = {0};
     ts_gmtime(t, &st);
     return st.tm_hour + st.tm_min / 60.0 + st.tm_sec / 3600.0 + t.ms / 3600000.0;
 }
@@ -317,7 +317,7 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
 {
     *tdb1 = *tdb2 = 0;
 
-    struct tm tt;
+    struct tm tt = {0};
     ts_gmtime(t, &tt);
 
     // Convert ts_time -> sofa internal format in UTC

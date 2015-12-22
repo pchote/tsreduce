@@ -610,8 +610,9 @@ int update_reduction(char *dataPath)
         double nan = sqrt(-1);
 
         // Estimate translation from reference frame
-        int32_t xt, yt;
-        bool rotated;
+        int32_t xt = 0;
+        int32_t yt = 0;
+        bool rotated = false;
         if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
             error_jump(process_error, ret, "Error calculating frame translation");
 
@@ -1558,8 +1559,9 @@ int frame_translation(const char *frame_path, const char *reference_path, const 
     if (framedata_calibrate_load(reference, bias_path, dark_path, flat_path))
         error_jump(process_error, ret, "Error dark-subtracting frame %s", reference_path);
 
-    int32_t xt, yt;
-    bool rotated;
+    int32_t xt = 0;
+    int32_t yt = 0;
+    bool rotated = false;
     if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
         error_jump(process_error, ret, "Error calculating translation between %s and %s", frame_path, reference_path);
 

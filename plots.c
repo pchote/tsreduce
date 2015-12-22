@@ -723,3 +723,91 @@ endLoop:
     return 0;
 }
 
+int plot_focus_curve(char *data_path, char *ts_device, double size)
+{
+    int ret = 0;
+    datafile *data = datafile_load(data_path);
+    if (!data)
+        return error("Error opening data file %s", data_path);
+
+    if (chdir(data->frame_dir))
+        error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
+
+    float *focus = calloc(data->obs_count, sizeof(float));
+    float *fwhm = calloc(data->obs_count, sizeof(float));
+    if (!focus || !fwhm)
+        error_jump(process_error, ret, "Allocation error");
+
+    struct observation *obs = data->obs_start;
+    for (size_t i = 0; obs && i < data->obs_count; obs = obs->next, i++)
+    {
+        framedata *frame = framedata_load(obs->filename);
+        if (!frame)
+            error_jump(process_error, ret, "Error loading frame %s", obs->filename);
+
+        double f = 0;
+        if (framedata_get_metadata(frame, "FOCUSPOS", FRAME_METADATA_DOUBLE, &f))
+        {
+            framedata_free(frame);
+            error_jump(process_error, ret, "Error reading FOCUSPOS from frame %s", obs->filename);
+        }
+        focus[i] = (float)f;
+        framedata_free(frame);
+        
+        fwhm[i] = 0;
+        size_t target_count = 0;
+        for (size_t j = 0; j < data->target_count; j++)
+        {
+            if (isnan(obs->fwhm[j]))
+                continue;
+            
+            fwhm[i] += obs->fwhm[j];
+            target_count++;
+        }
+        
+        fwhm[i] /= target_count;
+    }
+    
+    if (cpgopen(ts_device) <= 0)
+        error_jump(setup_error, ret, "Unable to open PGPLOT window");
+
+    cpgpap(size, 0.6);
+    cpgask(0);
+    cpgslw(1);
+    cpgsfs(2);
+    cpgscf(1);
+    
+    float min_focus = 999999999;
+    float max_focus = 0;
+    float max_fwhm = 0;
+    float min_fwhm = 999999999;
+    float min_fwhm_focus = 0;
+    for (size_t i = 0; i < data->obs_count; i++)
+    {
+        if (fwhm[i] < min_fwhm)
+            min_fwhm_focus = focus[i];
+
+        min_focus = fmin(min_focus, focus[i]);
+        max_focus = fmax(max_focus, focus[i]);
+        min_fwhm = fmin(min_fwhm, fwhm[i]);
+        max_fwhm = fmax(max_fwhm, fwhm[i]);
+    }
+
+    printf("Minimum pointwise focus: %f\n", min_fwhm_focus);
+
+    cpgsvp(0.1, 0.9, 0.1, 0.9);
+
+    // Plot top axis markers in UTC hour, bottom axis markers in seconds
+    cpgsch(0.9);
+    cpgswin(min_focus, max_focus, 0, max_fwhm);
+    cpgbox("bcstn", 0, 0, "bcstnv", 0, 0);
+    cpgpt(data->obs_count, focus, fwhm, 229);
+    
+    cpgend();
+process_error:
+    free(fwhm);
+    free(focus);
+setup_error:
+    datafile_free(data);
+    return ret;
+}

@@ -1450,6 +1450,11 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
+            while (obstime.ms > 1000)
+            {
+                obstime.time += 1;
+                obstime.ms -= 1000;
+            }
 
             double intensity = use_ratio ? pd->ratio[j] : pd->mmi[j];
             double error = use_ratio ? pd->ratio_noise[j] : pd->mmi_noise[j];            

@@ -733,8 +733,8 @@ int plot_focus_curve(char *data_path, char *ts_device, double size)
     if (chdir(data->frame_dir))
         error_jump(setup_error, ret, "Invalid frame path: %s", data->frame_dir);
 
-    float *focus = calloc(data->obs_count, sizeof(float));
-    float *fwhm = calloc(data->obs_count, sizeof(float));
+    double *focus = calloc(data->obs_count, sizeof(double));
+    double *fwhm = calloc(data->obs_count, sizeof(double));
     if (!focus || !fwhm)
         error_jump(process_error, ret, "Allocation error");
 
@@ -745,13 +745,11 @@ int plot_focus_curve(char *data_path, char *ts_device, double size)
         if (!frame)
             error_jump(process_error, ret, "Error loading frame %s", obs->filename);
 
-        double f = 0;
-        if (framedata_get_metadata(frame, "FOCUSPOS", FRAME_METADATA_DOUBLE, &f))
+        if (framedata_get_metadata(frame, "FOCUSPOS", FRAME_METADATA_DOUBLE, &focus[i]))
         {
             framedata_free(frame);
             error_jump(process_error, ret, "Error reading FOCUSPOS from frame %s", obs->filename);
         }
-        focus[i] = (float)f;
         framedata_free(frame);
         
         fwhm[i] = 0;
@@ -768,6 +766,14 @@ int plot_focus_curve(char *data_path, char *ts_device, double size)
         fwhm[i] /= target_count;
     }
     
+    double fit_coeffs[3] = {0};
+    bool plot_fit = true;
+    if (fit_polynomial(focus, fwhm, NULL, data->obs_count, fit_coeffs, 2))
+    {
+        plot_fit = false;
+        error("Polynomial fit failed");
+    }
+
     if (cpgopen(ts_device) <= 0)
         error_jump(setup_error, ret, "Unable to open PGPLOT window");
 
@@ -778,12 +784,16 @@ int plot_focus_curve(char *data_path, char *ts_device, double size)
     cpgscf(1);
     
     float min_focus = 999999999;
-    float max_focus = 0;
-    float max_fwhm = 0;
+    float max_focus = -999999999;
+    float max_fwhm = -999999999;
     float min_fwhm = 999999999;
     float min_fwhm_focus = 0;
+    float *pg_focus = calloc(data->obs_count, sizeof(float));
+    float *pg_fwhm = calloc(data->obs_count, sizeof(float));
     for (size_t i = 0; i < data->obs_count; i++)
     {
+        pg_focus[i] = focus[i];
+        pg_fwhm[i] = fwhm[i];
         if (fwhm[i] < min_fwhm)
             min_fwhm_focus = focus[i];
 
@@ -792,7 +802,7 @@ int plot_focus_curve(char *data_path, char *ts_device, double size)
         min_fwhm = fmin(min_fwhm, fwhm[i]);
         max_fwhm = fmax(max_fwhm, fwhm[i]);
     }
-
+    
     printf("Minimum pointwise focus: %f\n", min_fwhm_focus);
 
     cpgsvp(0.1, 0.9, 0.1, 0.9);
@@ -801,7 +811,36 @@ int plot_focus_curve(char *data_path, char *ts_device, double size)
     cpgsch(0.9);
     cpgswin(min_focus, max_focus, 0, max_fwhm);
     cpgbox("bcstn", 0, 0, "bcstnv", 0, 0);
-    cpgpt(data->obs_count, focus, fwhm, 229);
+    cpgsci(2);
+    cpgpt(data->obs_count, pg_focus, pg_fwhm, 229);
+
+    if (plot_fit)
+    {
+        printf("%f %f %f\n", fit_coeffs[0], fit_coeffs[1], fit_coeffs[2]);
+        size_t fit_count = (size_t)(max_focus - min_focus) / 5;
+        double fit_step = (max_focus - min_focus) / (fit_count - 1);
+        printf("%zu %f\n", fit_count, fit_step);
+        float *fit_focus = calloc(fit_count, sizeof(float));
+        float *fit_fwhm = calloc(fit_count, sizeof(float));
+
+        for (size_t i = 0; i < fit_count; i++)
+        {
+            fit_focus[i] = min_focus + i * fit_step;
+            fit_fwhm[i] = 0;
+            double pow = 1;
+            for (size_t j = 0; j < 3; j++)
+            {
+                fit_fwhm[i] += pow*fit_coeffs[j];
+                pow *= fit_focus[i];
+            }
+            
+            printf("%f %f\n", fit_focus[i], fit_fwhm[i]);
+        }
+        cpgsci(4);
+        cpgline(fit_count, fit_focus, fit_fwhm);
+        free(fit_fwhm);
+        free(fit_focus);
+    }
     
     cpgend();
 process_error:

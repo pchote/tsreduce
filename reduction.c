@@ -1302,17 +1302,12 @@ int update_preview(char *preview_filename, char *ds9_title, char *autoguide_outp
 
     // Display frame time
     double frame_exp = 0;
-    char *frame_end = NULL;
     char *frame_date = NULL;
     char *frame_object = NULL;
 
     // Ignore errors
-    if (framedata_get_metadata(frame, "UTC-END", FRAME_METADATA_STRING, &frame_end))
-        frame_end = strdup("Unknown");
-    if (framedata_get_metadata(frame, "UTC-DATE", FRAME_METADATA_STRING, &frame_date))
-        frame_date = strdup("Unknown");
-    if (framedata_get_metadata(frame, "OBJECT", FRAME_METADATA_STRING, &frame_object))
-        frame_object = strdup("Unknown");
+    framedata_get_metadata(frame, "DATE-OBS", FRAME_METADATA_STRING, &frame_date);
+    framedata_get_metadata(frame, "OBJECT", FRAME_METADATA_STRING, &frame_object);
     framedata_get_metadata(frame, "EXPTIME", FRAME_METADATA_DOUBLE, &frame_exp);
 
     if (frame_object)
@@ -1323,17 +1318,16 @@ int update_preview(char *preview_filename, char *ds9_title, char *autoguide_outp
         ts_exec_write(ds9_command_buf, NULL, 0);
     }
 
-    if (frame_date && frame_end)
+    if (frame_date)
     {
         snprintf(ds9_command_buf, 1024,
-                 "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"Ending: %s %s\"}'",
-                 ds9_title, frame->cols/2.0, frame->rows + 10/zoom, frame_date, frame_end);
+                 "xpaset -p %s regions command '{text %f %f #color=green select=0 font=\"helvetica 12 bold roman\" text=\"%s\"}'",
+                 ds9_title, frame->cols/2.0, frame->rows + 10/zoom, frame_date);
         ts_exec_write(ds9_command_buf, NULL, 0);
     }
 
     free(frame_object);
     free(frame_date);
-    free(frame_end);
 
     // Force the display to update
     snprintf(ds9_command_buf, 1024, "xpaset -p %s update now", ds9_title);

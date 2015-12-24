@@ -1484,6 +1484,111 @@ datafile_error:
     return ret;
 }
 
+int create_jdratio(char *reference_date, char *reference_time, char **filenames, size_t num_datafiles, char *ratio_filename)
+{
+    int ret = 0;
+    if (num_datafiles < 1)
+        return error("No datafiles specified");
+
+    datafile **datafiles = (datafile **)malloc(num_datafiles*sizeof(datafile *));
+    if (!datafiles)
+        error_jump(datafile_error, ret, "Error allocating datafiles");
+
+    for (size_t i = 0; i < num_datafiles; i++)
+    {
+        datafiles[i] = datafile_load(filenames[i]);
+        if (!datafiles[i])
+        {
+            for (int j = 0; j < i; j++)
+                datafile_free(datafiles[j]);
+            free(datafiles);
+            error_jump(datafile_error, ret, "Error loading datafile %s", filenames[i]);
+        }
+    }
+    printf("Loaded %zu datafiles\n", num_datafiles);
+
+    if (!datafiles[0]->coord_ra || !datafiles[0]->coord_dec)
+        error_jump(coord_error, ret, "Datafile %s doesn't specify star coordinates", filenames[0]);
+
+    // Convert ra from HH:MM:SS to radians
+    double a,b,c;
+    sscanf(datafiles[0]->coord_ra, "%lf:%lf:%lf", &a, &b, &c);
+    double ra = (a + b/60 + c/3600)*M_PI/12;
+
+    // Convert dec from DD:'':"" to radians
+    sscanf(datafiles[0]->coord_dec, "%lf:%lf:%lf", &a, &b, &c);
+    double dec = copysign((fabs(a) + b/60 + c/3600)*M_PI/180, a);
+
+    double reference_jd = ts_time_to_jdutc(parse_date_time(reference_date, reference_time));
+    printf("Reference JD(UTC): %f\n", reference_jd);
+
+    double reference_bjd = ts_time_to_bjd(parse_date_time(reference_date, reference_time), ra, dec);
+    printf("Reference BJD: %f\n", reference_bjd);
+
+    FILE *out = fopen(ratio_filename, "w+");
+    if (!out)
+        error_jump(output_error, ret, "Error opening file %s", ratio_filename);
+
+    // Print file header
+    fprintf(out, "# tsreduce create-jdratio output file\n");
+
+    fprintf(out, "#      Reference UTC: %s %s\n", reference_date, reference_time);
+    fprintf(out, "#  Reference JD(UTC): %.8f\n", reference_jd);
+    fprintf(out, "# Reference BJD(TDB): %.8f\n", reference_bjd);
+    
+    fprintf(out, "# Files:\n");
+    for (size_t i = 0; i < num_datafiles; i++)
+        fprintf(out, "#   %s\n", filenames[i]);
+
+    fprintf(out, "# JD (UTC)  BJD (TDB)     Ratio      Error\n");
+
+    // Convert data to BJD relative to the reference time
+    size_t num_saved = 0;
+    for (size_t i = 0; i < num_datafiles; i++)
+    {
+        long double start_bjd = ts_time_to_bjd(datafiles[i]->reference_time, ra, dec);
+
+        // Calculate precessed RA and DEC at the start of each night
+        // This is already far more accurate than we need
+        printf("%s start BJD: %Lf\n", filenames[i], start_bjd);
+
+        struct photometry_data *pd = datafile_generate_photometry(datafiles[i]);
+        if (!pd)
+            error_jump(processing_error, ret, "Error generating photometry data for data %s", filenames[i]);
+
+        for (size_t j = 0; j < pd->filtered_count; j++)
+        {
+            ts_time obstime = datafiles[i]->reference_time;
+            obstime.time += (time_t)(pd->time[j]);
+            obstime.ms += round(1000*fmod(pd->time[j], 1));
+            while (obstime.ms > 1000)
+            {
+                obstime.time += 1;
+                obstime.ms -= 1000;
+            }
+
+            long double djd = ts_time_to_jdutc(obstime) - reference_jd;
+            long double dbjd = ts_time_to_bjd(obstime, ra, dec) - reference_bjd;
+            fprintf(out, "%.8Lf %.8Lf %e %e\n", djd, dbjd, pd->ratio[j], pd->ratio_noise[j]);
+            num_saved++;
+        }
+
+        datafile_free_photometry(pd);
+    }
+    printf("Converted %zu observations\n", num_saved);
+
+processing_error:
+    fclose(out);
+output_error:
+coord_error:
+    for (size_t i = 0; i < num_datafiles; i++)
+        datafile_free(datafiles[i]);
+    free(datafiles);
+datafile_error:
+    return ret;
+}
+
+
 int display_tracer(char *dataPath)
 {
     int ret = 0;

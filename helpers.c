@@ -384,6 +384,28 @@ long double ts_time_to_bjd(ts_time t, double ra, double dec)
     return (long double)tdb1 + (long double)tdb2 + 0.005775518331089534*offset;
 }
 
+// Convert a time to jd in utc time
+long double ts_time_to_jdutc(ts_time t)
+{
+    struct tm tt = {0};
+    double jd1, jd2, jd3;
+
+    ts_gmtime(t, &tt);
+    int iy = tt.tm_year + 1900;
+    int imo = tt.tm_mon + 1;
+    int id = tt.tm_mday;
+    int ih = tt.tm_hour;
+    int im = tt.tm_min;
+    double sec = tt.tm_sec + t.ms / 1000.0;
+    if (iauCal2jd(iy, imo, id, &jd1, &jd2))
+        return 0;
+
+    if (iauTf2d('+', ih, im, sec, &jd3))
+        return 0;
+
+    return (long double)jd1 + jd2 + jd3;
+}
+
 // Helper function to free a 2d char array allocated using malloc etc.
 void free_2d_array(char **array, size_t len)
 {

@@ -182,6 +182,8 @@ int main( int argc, char *argv[] )
 
     else if (argc == 6 && strcmp(argv[1], "bjd") == 0)
         return calculate_bjd(argv[2], argv[3], argv[4], argv[5]);
+    else if (argc == 3 && strncmp(argv[1], "color", 5) == 0)
+        return colorplot(argv[2]);
     else
         error("Invalid args");
     return 0;

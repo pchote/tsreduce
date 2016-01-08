@@ -14,4 +14,5 @@ int dft_window(char *tsFile, double freq, double minUHz, double maxUHz, double d
 int find_max_freq(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz);
 int nonlinear_fit(char *tsFile, char *freqFile);
 int shuffle_dft(char *tsFile, char *freqFile, double minUHz, double maxUHz, double dUHz, char *outFile, size_t repeats);
+int dft_slidewindow(char *path, double freq_min, double freq_max, double freq_step, int column);
 #endif

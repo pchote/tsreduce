@@ -1594,7 +1594,7 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
 
         size_t filename_len = strlen(prefix) + 11;
         char *filename = malloc(filename_len*sizeof(char));
-        snprintf(filename, filename_len, "%s-%0.2f.dat", prefix, radius);
+        snprintf(filename, filename_len, "%s-%05.2f.dat", prefix, radius);
 
         chdir(dir);
         // Errors are non-fatal -> proceeed to the next file

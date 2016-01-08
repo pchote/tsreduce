@@ -164,102 +164,116 @@ framedata *framedata_load(const char *filename)
     if (fits_read_pix(input, TDOUBLE, (long []){1, 1}, fd->cols*fd->rows, 0, fd->data, NULL, &status))
         error_jump(error, ret, "fits_read_pix failed");
 
-    // Load header keys
-    int keyword_count = 0;
-    if (fits_get_hdrspace(input, &keyword_count, NULL, &status))
+    // Merge multiple headers together
+    int hdu_count = 0;
+    if (fits_get_num_hdus(input, &hdu_count, &status))
+        error_jump(error, ret, "fits_get_num_hdus failed");
+
+    for (int i = 1; i <= hdu_count; i++)
     {
-        print_fits_error();
-        error_jump(error, ret, "fits_get_hdrspace failed");
+        int hdu_type = 0;
+	    if (fits_movabs_hdu(input, i, &hdu_type, &status))
+		    continue;
+
+	    if (hdu_type != IMAGE_HDU)
+		    continue;
+
+        // Load header keys
+        int keyword_count = 0;
+        if (fits_get_hdrspace(input, &keyword_count, NULL, &status))
+        {
+            print_fits_error();
+            error_jump(error, ret, "fits_get_hdrspace failed");
+        }
+
+        for (size_t i = 0; i < keyword_count; i++)
+        {
+            char card[FLEN_CARD];
+            char key[FLEN_KEYWORD];
+            char value[FLEN_VALUE];
+            char comment[FLEN_COMMENT];
+
+            // We're only interested in user keys
+            if (fits_read_record(input, i + 1, card, &status))
+            {
+                print_fits_error();
+                error_jump(error, ret, "Error reading card %zu", i);
+            }
+
+            // Ignore keywords we aren't interested in
+            int class = fits_get_keyclass(card);
+            if (class < TYP_WCS_KEY || class == TYP_COMM_KEY)
+                continue;
+
+            if (fits_read_keyn(input, i + 1, key, value, comment, &status))
+            {
+                print_fits_error();
+                error_jump(error, ret, "Error reading key %zu", i);
+            }
+
+            // Parse value
+            char type;
+            if (fits_get_keytype(value, &type, &status))
+            {
+                print_fits_error();
+                error("Unable to determine type for key '%s' - skipping.", key);
+                continue;
+            }
+
+            switch (type)
+            {
+                case 'I':
+                {
+                    LONGLONG val;
+                    if (ffc2jj(value, &val, &status))
+                    {
+                        print_fits_error();
+                        error_jump(error, ret, "Error parsing '%s' as integer", value);
+                    }
+
+                    framedata_put_metadata(fd, key, FRAME_METADATA_INT, &(int64_t){val}, comment);
+                    break;
+                }
+                case 'F':
+                {
+                    double val;
+                    if (ffc2dd(value, &val, &status))
+                    {
+                        print_fits_error();
+                        error_jump(error, ret, "Error parsing '%s' as double", value);
+                    }
+
+                    framedata_put_metadata(fd, key, FRAME_METADATA_DOUBLE, &val, comment);
+                    break;
+                }
+                case 'L':
+                {
+                    int val;
+                    if (ffc2ll(value, &val, &status))
+                    {
+                        print_fits_error();
+                        error_jump(error, ret, "Error parsing '%s' as boolean", value);
+                    }
+
+                    framedata_put_metadata(fd, key, FRAME_METADATA_BOOL, &(bool){val}, comment);
+                    break;
+                }
+                default:
+                {
+                    char val[FLEN_VALUE];
+                    if (ffc2s(value, val, &status))
+                    {
+                        print_fits_error();
+                        error_jump(error, ret, "Error parsing '%s' as type '%c'", value, type);
+                    }
+
+                    framedata_put_metadata(fd, key, FRAME_METADATA_STRING, val, comment);
+                    break;
+                }
+            }
+        }
     }
 
-    for (size_t i = 0; i < keyword_count; i++)
-    {
-        char card[FLEN_CARD];
-        char key[FLEN_KEYWORD];
-        char value[FLEN_VALUE];
-        char comment[FLEN_COMMENT];
-
-        // We're only interested in user keys
-        if (fits_read_record(input, i + 1, card, &status))
-        {
-            print_fits_error();
-            error_jump(error, ret, "Error reading card %zu", i);
-        }
-
-        // Ignore keywords we aren't interested in
-        int class = fits_get_keyclass(card);
-        if (class < TYP_WCS_KEY || class == TYP_COMM_KEY)
-            continue;
-
-        if (fits_read_keyn(input, i + 1, key, value, comment, &status))
-        {
-            print_fits_error();
-            error_jump(error, ret, "Error reading key %zu", i);
-        }
-
-        // Parse value
-        char type;
-        if (fits_get_keytype(value, &type, &status))
-        {
-            print_fits_error();
-            error("Unable to determine type for key '%s' - skipping.", key);
-            continue;
-        }
-
-        switch (type)
-        {
-            case 'I':
-            {
-                LONGLONG val;
-                if (ffc2jj(value, &val, &status))
-                {
-                    print_fits_error();
-                    error_jump(error, ret, "Error parsing '%s' as integer", value);
-                }
-
-                framedata_put_metadata(fd, key, FRAME_METADATA_INT, &(int64_t){val}, comment);
-                break;
-            }
-            case 'F':
-            {
-                double val;
-                if (ffc2dd(value, &val, &status))
-                {
-                    print_fits_error();
-                    error_jump(error, ret, "Error parsing '%s' as double", value);
-                }
-
-                framedata_put_metadata(fd, key, FRAME_METADATA_DOUBLE, &val, comment);
-                break;
-            }
-            case 'L':
-            {
-                int val;
-                if (ffc2ll(value, &val, &status))
-                {
-                    print_fits_error();
-                    error_jump(error, ret, "Error parsing '%s' as boolean", value);
-                }
-
-                framedata_put_metadata(fd, key, FRAME_METADATA_BOOL, &(bool){val}, comment);
-                break;
-            }
-            default:
-            {
-                char val[FLEN_VALUE];
-                if (ffc2s(value, val, &status))
-                {
-                    print_fits_error();
-                    error_jump(error, ret, "Error parsing '%s' as type '%c'", value, type);
-                }
-
-                framedata_put_metadata(fd, key, FRAME_METADATA_STRING, val, comment);
-                break;
-            }
-        }
-    }
-
-    fits_close_file(input, &status);
     if (padded_data)
         free(padded_data);
 
@@ -619,7 +633,7 @@ void framedata_print_metadata(framedata *fd)
 int framedata_start_time(framedata *fd, ts_time *out_time)
 {
     struct frame_metadata *date, *time;
-
+/*
     // Puoko-nui
     hashmap_get(fd->metadata_map, "UTC-DATE", (void **)(&date));
     hashmap_get(fd->metadata_map, "UTC-BEG", (void **)(&time));
@@ -662,6 +676,17 @@ int framedata_start_time(framedata *fd, ts_time *out_time)
     if (date && date->type == FRAME_METADATA_STRING)
     {
         *out_time = parse_time_ccdops(date->value.s);
+        return 0;
+    }
+*/
+    // INT
+    hashmap_get(fd->metadata_map, "DATE-OBS", (void **)(&date));
+    hashmap_get(fd->metadata_map, "UTSTART", (void **)(&time));
+    if (date && date->type == FRAME_METADATA_STRING &&
+        time && time->type == FRAME_METADATA_STRING)
+    {
+        printf("%s %s\n", date->value.s, time->value.s);
+        *out_time = parse_date_time(date->value.s, time->value.s);
         return 0;
     }
 

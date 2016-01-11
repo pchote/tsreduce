@@ -15,7 +15,7 @@
 #include "reduction.h"
 #include "plots.h"
 
-int verbosity = 0;
+int verbosity = 1;
 
 int main( int argc, char *argv[] )
 {

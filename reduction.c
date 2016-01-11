@@ -76,6 +76,9 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     framedata *dark = NULL;
     framedata *base = NULL;
 
+    if (!masterbias && !dark)
+        error_jump(setup_error, ret, "    Flat fielding requires either bias or dark");
+
     if (masterbias)
     {
         bias = framedata_load(masterbias);
@@ -83,16 +86,21 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
             error_jump(setup_error, ret, "    Error loading bias frame %s", masterbias);
     }
 
-    dark = framedata_load(masterdark);
-    if (!dark)
-        error_jump(setup_error, ret, "    Error loading dark frame %s", masterdark);
+    if (masterdark)
+    {
+        dark = framedata_load(masterdark);
+        if (!dark)
+            error_jump(setup_error, ret, "    Error loading dark frame %s", masterdark);
+    }
 
     base = framedata_load(frame_paths[0]);
     if (!base)
         error_jump(setup_error, ret, "    Error loading base frame %s", frame_paths[0]);
 
-    if (base->rows != dark->rows || base->cols != dark->cols)
-        error_jump(setup_error, ret, "    Dark and flat frame sizes don't match");
+    framedata *check = dark ? dark : bias;
+    const char *check_name = dark ? "Dark" : "Bias";
+    if (base->rows != check->rows || base->cols != check->cols)
+        error_jump(setup_error, ret, "    %s and flat frame sizes don't match", check_name);
 
     uint16_t image_region[4];
     framedata_image_region(base, image_region);
@@ -128,6 +136,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
             framedata_free(frame);
             error_jump(processing_error, ret, "    Calibration failed for %s", frame_paths[k]);
         }
+
 
         // Store data in cube for processing
         for (size_t j = 0; j < base->rows*base->cols; j++)
@@ -191,8 +200,8 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     size_t bias_region_px = (bias_region[1] - bias_region[0])*(bias_region[3] - bias_region[2]);
 
     // Remove existing definitions if they exist (CCD-GAIN is reused by the Puoko-nui acquisition software)
-    framedata_remove_metadata(base, "CCD-READ");
-    framedata_remove_metadata(base, "CCD-GAIN");
+    framedata_remove_metadata(base, "READNOIS");
+    framedata_remove_metadata(base, "GAIN");
 
     if (bias || bias_region_px)
     {
@@ -200,9 +209,9 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
         if (!bias)
         {
             readnoise = calculate_readnoise(base, data_cube, num_frames, bias_region, false);
-            printf("    Calculated CCD-READ: %f\n", readnoise);
+            printf("    Calculated READNOIS: %f\n", readnoise);
         }
-        else if (framedata_get_metadata(bias, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise))
+        else if (framedata_get_metadata(bias, "READNOIS", FRAME_METADATA_DOUBLE, &readnoise))
         {
             int unused;
             error_jump(skip_readgain, unused, "    Bias does not specify CCD-READ.");
@@ -214,7 +223,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
             error_jump(processing_error, ret, "    gain alloc failed");
 
         // Calculate mean dark level for gain calculation
-        double mean_dark = region_mean(image_region, dark->data, dark->cols);
+        double mean_dark = dark ? region_mean(image_region, dark->data, dark->cols) : 0;
         double mean_gain = 0;
 
         for (size_t k = 0; k < num_frames; k++)
@@ -247,10 +256,10 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
         // Set header keys for readout noise and gain
         if (bias || bias_region_px)
         {
-            framedata_put_metadata(base, "CCD-READ", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
-            framedata_put_metadata(base, "CCD-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");
+            framedata_put_metadata(base, "EST-RDNS", FRAME_METADATA_DOUBLE, &readnoise, "Estimated read noise (ADU)");
+            framedata_put_metadata(base, "EST-GAIN", FRAME_METADATA_DOUBLE, &median_gain, "Estimated gain (electrons/ADU)");
 
-            printf("    Calculated CCD-GAIN: %f\n", median_gain);
+            printf("    Calculated GAIN: %f\n", median_gain);
         }
 
         free(gain);
@@ -806,8 +815,8 @@ int create_reduction_file(char *outname)
     chdir(datadir);
     printf("Configure master flat frame:\n");
     
-    if (!data->dark_template)
-        printf("    Requires master dark. Skipping.\n");
+    if (!data->dark_template && !data->bias_template)
+        printf("    Requires master dark or bias. Skipping.\n");
     else if (create_master_calibration_file("master-flat.fits.gz", "flat", &data->flat_template, calibration_helper_create_flat, data))
         error_jump(create_flat_error, ret, "ERROR: master flat generation failed");
 

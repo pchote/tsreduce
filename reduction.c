@@ -1609,3 +1609,63 @@ int reduce_aperture_range(char *base_name, double min, double max, double step, 
     datafile_free(data);
     return ret;
 }
+
+int create_ptf_mask(const char *science_path, const char *local_mask_path, const char *global_mask_path)
+{
+    int ret = 0;
+
+    framedata *science = framedata_load(science_path);
+    if (!science)
+        error_jump(frame_error, ret, "Error loading frame %s", science_path);
+
+    framedata *local_mask = framedata_load(local_mask_path);
+    if (!local_mask)
+        error_jump(frame_error, ret, "Error loading frame %s", local_mask_path);
+
+    framedata *global_mask = framedata_load(global_mask_path);
+    if (!global_mask)
+        error_jump(frame_error, ret, "Error loading frame %s", global_mask_path);
+
+    double px[2];
+    double img[2];
+
+    double phi[2], theta[2], world[2];
+    int status = 0;
+    for (uint16_t y = 0; y < science->rows; y++)
+    {
+        for (uint16_t x = 0; x < science->cols; x++)
+        {
+            if (local_mask->data[y*science->cols + x] > 0)
+            {
+                science->data[y*science->cols + x] = 99999999;
+                continue;
+            }
+            continue;
+            px[0] = x + 0.5;
+            px[1] = y + 0.5;
+            if ((status = wcsp2s(science->wcs, 1, 2, px, img, phi, theta, world, &status)))
+                error_jump(wcs_error, ret, "failed with error %d", status);
+
+            if ((status = wcss2p(global_mask->wcs, 1, 2, world, phi, theta, img, px, &status)))
+                error_jump(wcs_error, ret, "failed with error %d", status);
+
+            //printf("%u %u -> %f %f\n", x, y, px[0] - 0.5, px[1] - 0.5);
+            // Need to add 0.5 so that truncating -> rounds, but this then
+            // cancels the -0.5 offset to convert from px center to index.
+            // So in the end, casting is sufficient
+            uint16_t mx = (uint16_t)px[0];
+            uint16_t my = (uint16_t)px[1];
+            if (mx > 0 && mx < global_mask->cols && my > 0 && my < global_mask->rows && global_mask->data[my*global_mask->cols + mx] > 0)
+                science->data[y*science->cols + x] = 0;
+        }
+    }
+
+    framedata_save(science, "test.fits.gz");
+wcs_error:
+
+frame_error:
+    framedata_free(global_mask);
+    framedata_free(local_mask);
+    framedata_free(science);
+    return ret;
+}

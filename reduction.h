@@ -25,5 +25,5 @@ int create_ts(char *reference_date, char *reference_time, char **filenames, size
 int display_tracer(char *dataPath);
 int frame_translation(const char *frame, const char *bias, const char *reference, const char *dark_path, const char *flat_path);
 int reduce_aperture_range(char *base_name, double min, double max, double step, char *prefix);
-
+int create_ptf_mask(const char *science_path, const char *local_mask_path, const char *global_mask_path);
 #endif

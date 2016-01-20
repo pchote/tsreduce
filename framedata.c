@@ -184,7 +184,8 @@ framedata *framedata_load(const char *filename)
         if (fits_read_record(input, i + 1, card, &status))
         {
             print_fits_error();
-            error_jump(error, ret, "Error reading card %zu", i);
+            error("Error reading card %zu - skipping", i);
+            continue;
         }
 
         // Ignore keywords we aren't interested in
@@ -264,7 +265,10 @@ framedata *framedata_load(const char *filename)
     char *header;
     int nkeyrec, nreject;
 
-    if (fits_hdr2str(input, 1, NULL, 0, &header, &nkeyrec, &status))
+    // Blacklist the PV*_* keys that SCAMP defines, which are invalid for modern WCS specs.
+    // This will break the wcs coords if it is not -TAN
+    char *exclude = "PV?_*";
+    if (fits_hdr2str(input, 1, &exclude, 1, &header, &nkeyrec, &status))
     {
         print_fits_error();
         error_jump(error, ret, "fits_hdr2str failed");

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <inttypes.h>
+#include <wcslib/getwcstab.h>
 
 #include "framedata.h"
 #include "helpers.h"
@@ -258,6 +259,35 @@ framedata *framedata_load(const char *filename)
             }
         }
     }
+
+    // Load WCS data
+    char *header;
+    int nkeyrec, nreject;
+
+    if (fits_hdr2str(input, 1, NULL, 0, &header, &nkeyrec, &status))
+    {
+        print_fits_error();
+        error_jump(error, ret, "fits_hdr2str failed");
+    }
+
+    if ((status = wcspih(header, nkeyrec, WCSHDR_all, 2, &nreject, &fd->nwcs, &fd->wcs)))
+    {
+        fprintf(stderr, "wcspih ERROR %d: %s.\n", status, wcshdr_errmsg[status]);
+    }
+
+    if (fits_read_wcstab(input, fd->wcs->nwtb, (wtbarr *)fd->wcs->wtb, &status))
+    {
+        print_fits_error();
+        error_jump(error, ret, "fits_read_wcstab failed");
+    }
+
+    if ((status = wcsset(fd->wcs)))
+    {
+        fprintf(stderr, "wcsset ERROR %d: %s.\n", status, wcs_errmsg[status]);
+        error_jump(error, ret, "wcsset failed");
+    }
+
+    free(header);
 
     fits_close_file(input, &status);
     if (padded_data)
@@ -588,6 +618,7 @@ void framedata_free(framedata *frame)
 
     hashmap_iterate(frame->metadata_map, free_metadata_entry, NULL);
     hashmap_free(frame->metadata_map);
+    wcsvfree(&frame->nwcs, &frame->wcs);
 
     free(frame);
 }

@@ -403,6 +403,7 @@ int histogram_export(struct histogram_data *hd, double center, double amplitude,
         error_jump(file_error, ret, "Unable to open histogram for writing: %s", path);
 
     fprintf(output, "# Fit parameters: ampl: %g mu: %g sigma: %g\n", amplitude, center, sigma);
+
     for (size_t i = 0; i < hd->bin_count; i++)
     {
         double arg = (hd->center[i] - center)/sigma;
@@ -1363,7 +1364,8 @@ static void step_freq_fit(struct ts_data *data, double freq_min, double freq_max
     while (fit_freq <= freq_max)
     {
         for (size_t j = 0; j < data->freq_count; j++)
-            data->freq[j] = 1e-6*(j+1)*fit_freq;
+            if (data->freq_mode[j] == 2)
+                data->freq[j] = 1e-6*(j+1)*fit_freq;
 
         if (ts_data_fit_sinusoids(data))
         {
@@ -1381,7 +1383,7 @@ static void step_freq_fit(struct ts_data *data, double freq_min, double freq_max
     }
 }
 
-int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_count,
+int gwlib_noise_histogram(const char *ts_path, const char *freq_path,
                     double min_mma, double max_mma, size_t bin_count, size_t randomize_count,
                     const char *output_prefix)
 {
@@ -1391,15 +1393,17 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
     if (!output_path_buffer)
         error_jump(load_failed_error, ret, "Allocation error");
 
+
+    struct ts_data *data = ts_data_load(ts_path, freq_path);
+    if (!data)
+        error_jump(load_failed_error, ret, "Error processing data");
+    double base_uhz = data->freq[0] * 1e6;
     double freq_search_min = base_uhz - 5;
     double freq_search_max = base_uhz + 5;
     double freq_search_step = 0.1;
 
-    struct ts_data *data = ts_data_load_harmonics(ts_path, 1e-6*base_uhz, freq_count);
-    if (!data)
-        error_jump(load_failed_error, ret, "Error processing data");
-
     // Optimize fit
+    /*
     {
         double old_chi2 = ts_data_chi2(data);
         double best_freq, best_chi2, best_ampl;
@@ -1412,6 +1416,7 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
         if (ts_data_fit_sinusoids(data))
             error_jump(alloc_failed, ret, "Amplitude fit failed");
     }
+    */
 
     double initial_freq = data->freq[0] * 1e6;
     double initial_ampl = sqrt(data->freq_amplitude[0]*data->freq_amplitude[0] + data->freq_amplitude[1]*data->freq_amplitude[1]);
@@ -1561,6 +1566,14 @@ int gwlib_noise_histogram(const char *ts_path, double base_uhz, size_t freq_coun
     snprintf(output_path_buffer, output_path_len, "%s.freqhist", output_prefix);
     if (histogram_export(freq_histogram, freq_center, freq_amplitude, freq_sigma, output_path_buffer))
         error_jump(freq_histogram_processing_failed, ret, "Freq histogram fit failed");
+
+    FILE *output = fopen(output_path_buffer, "a+");
+    double base_period = 1e6/base_uhz;
+    double up_period = 1e6/(base_uhz - freq_sigma);
+    double down_period = 1e6/(base_uhz + freq_sigma);
+        
+    fprintf(output, "# Freq: %.2f \\pm %.2f\n", base_period, (up_period - down_period) / 2);
+    fclose(output);
 
     struct histogram_data *ampl_histogram = histogram_create(fitted_ampl, randomize_count, ampl_search_min - initial_ampl, ampl_search_max - initial_ampl, (ampl_search_max - ampl_search_min) / ampl_search_step);
     if (!ampl_histogram)

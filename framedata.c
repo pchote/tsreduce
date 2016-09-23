@@ -673,7 +673,7 @@ int framedata_image_region(framedata *frame, uint16_t region[4])
     uint16_t r[4] = {0, frame->cols, 0, frame->rows};
     char *str;
     if (framedata_get_metadata(frame, "IMAG-RGN", FRAME_METADATA_STRING, &str) == FRAME_METADATA_OK)
-        sscanf(str, "[%hu, %hu, %hu, %hu]", &r[0], &r[1],
+        sscanf(str, "[%hu:%hu,%hu:%hu]", &r[0], &r[1],
                                             &r[2], &r[3]);
     memcpy(region, r, 4*sizeof(uint16_t));
     return 0;

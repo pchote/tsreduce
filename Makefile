@@ -12,7 +12,7 @@ LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline
 ifeq ($(shell uname),Darwin)
     LINKER = gfortran
     CFLAGS += -D_DARWIN_C_SOURCE -I/usr/local/include/
-    LFLAGS += -L/usr/X11R6/lib -lX11 -Wl,-framework -Wl,Foundation -lpng -L/usr/local/lib
+    LFLAGS += -lpng -L/usr/local/lib
 
     # Requires newer libreadline than osx provides by default - installed with hombrew
     LFLAGS += -L/usr/local/opt/readline/lib

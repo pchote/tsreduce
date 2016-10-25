@@ -76,8 +76,8 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
     framedata *dark = NULL;
     framedata *base = NULL;
 
-    if (!masterbias && !dark)
-        error_jump(setup_error, ret, "    Flat fielding requires either bias or dark");
+//    if (!masterbias && !dark)
+//        error_jump(setup_error, ret, "    Flat fielding requires either bias or dark");
 
     if (masterbias)
     {
@@ -99,7 +99,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
 
     framedata *check = dark ? dark : bias;
     const char *check_name = dark ? "Dark" : "Bias";
-    if (base->rows != check->rows || base->cols != check->cols)
+    if (check && (base->rows != check->rows || base->cols != check->cols))
         error_jump(setup_error, ret, "    %s and flat frame sizes don't match", check_name);
 
     uint16_t image_region[4];
@@ -244,7 +244,7 @@ int create_flat(const char *pattern, size_t minmax, const char *masterbias, cons
             gain[k] = (frame_mean[k] + mean_dark) / (var - readnoise*readnoise);
             mean_gain += gain[k];
 
-            if (verbosity >= 1)
+            if (verbosity >= 0)
                 printf("    %zu var: %f mean: %f dark: %f gain: %f\n", k, var, frame_mean[k], mean_dark, gain[k]);
         }
         mean_gain /= num_frames;
@@ -625,6 +625,7 @@ int update_reduction(char *dataPath)
         if (framedata_estimate_translation(frame, reference, &xt, &yt, &rotated))
             error_jump(process_error, ret, "Error calculating frame translation");
 
+        printf("%d %d %hhu\n", xt, yt, rotated);
         for (size_t i = 0; i < data->target_count; i++)
         {
             // Offset aperture position by frame offset
@@ -747,7 +748,7 @@ int create_master_calibration_file(char *default_name, char *default_prefix, cha
     int count;
     while (true)
     {
-        char *prefix = regex_escape_string(prompt_user_input("    Enter frame prefix", default_prefix, false));
+        char *prefix = prompt_user_input("    Enter frame prefix", default_prefix, false);
         int len = snprintf(NULL, 0, filename_fmt, prefix);
         pattern = malloc(len + 1);
         sprintf(pattern, filename_fmt, prefix);
@@ -815,9 +816,10 @@ int create_reduction_file(char *outname)
     chdir(datadir);
     printf("Configure master flat frame:\n");
     
-    if (!data->dark_template && !data->bias_template)
-        printf("    Requires master dark or bias. Skipping.\n");
-    else if (create_master_calibration_file("master-flat.fits.gz", "flat", &data->flat_template, calibration_helper_create_flat, data))
+    //if (!data->dark_template && !data->bias_template)
+    //    printf("    Requires master dark or bias. Skipping.\n");
+    //else
+    if (create_master_calibration_file("master-flat.fits.gz", "flat", &data->flat_template, calibration_helper_create_flat, data))
         error_jump(create_flat_error, ret, "ERROR: master flat generation failed");
 
     chdir(datadir);

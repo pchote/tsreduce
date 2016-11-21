@@ -49,6 +49,9 @@ int main( int argc, char *argv[] )
     else if (argc == 3 && strcmp(argv[1], "update") == 0)
         return update_reduction(argv[2]);
 
+    else if (argc == 3 && strcmp(argv[1], "details") == 0)
+        return reduction_details(argv[2]);
+
     // `tsreduce tracer test.dat`
     else if (argc == 3 && strcmp(argv[1], "tracer") == 0)
         return display_tracer(argv[2]);

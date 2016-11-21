@@ -503,6 +503,79 @@ int print_frame_metadata(char *frame_path)
 }
 
 // Load the reduction file at dataPath and reduce any new data
+int reduction_details(char *dataPath)
+{
+    int ret = 0;
+
+    // Read file header
+    datafile *data = datafile_load(dataPath);
+    if (data == NULL)
+        return error("Error opening data file");
+
+    char *datadir = getcwd(NULL, 0);
+    if (chdir(data->frame_dir))
+        error_jump(error, ret, "Invalid frame path: %s", data->frame_dir);
+
+    double total = 0;
+    for (struct observation *obs = data->obs_start->next; obs; obs = obs->next)
+    {
+        printf("%s\n", obs->filename);
+        bool skip = false;
+        for (size_t j = 0; j < data->num_blocked_ranges; j++)
+            if (obs->time >= data->blocked_ranges[j].x && obs->time <= data->blocked_ranges[j].y)
+            {
+                skip = true;
+                break;
+            }
+
+        if (skip)
+            continue;
+
+        framedata *frame = framedata_load(obs->filename);
+        if (!frame)
+        {
+            printf("Error loading frame %s\n", obs->filename);
+            goto next;
+        }
+
+        double exptime;
+        if (framedata_get_metadata(frame, "EXPTIME", FRAME_METADATA_DOUBLE, &exptime))
+        {
+            printf("EXPTIME undefined in %s\n", obs->filename);
+            goto next;
+        }
+
+        total += exptime;
+
+    next:
+        framedata_free(frame);
+    }
+
+    if (chdir(datadir))
+        error_jump(error, ret, "Invalid data path: %s", datadir);
+
+    double start_delta = data->obs_start->time;
+
+    char datetimebuf[24];
+    ts_time start_time = data->reference_time;
+    start_time.time += (int)start_delta;
+    start_time.ms += (int)(1000 * (start_delta - (int)start_delta));
+    serialize_time(start_time, datetimebuf);
+    
+    printf("%s ", datetimebuf);
+    double end_delta = data->obs_end->time;
+    ts_time end_time = data->reference_time;
+    end_time.time += (int)end_delta;
+    end_time.ms += (int)(1000 * (end_delta - (int)end_delta));
+    serialize_time(end_time, datetimebuf);
+
+    printf("%s %.2f\n", datetimebuf, total / 3600);
+
+error:
+    return ret;
+}
+
+// Load the reduction file at dataPath and reduce any new data
 int update_reduction(char *dataPath)
 {
     int ret = 0;

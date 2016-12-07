@@ -585,7 +585,7 @@ int shuffle_dft(char *ts_path, char *freq_path, double min_uhz, double max_uhz, 
         error_jump(dftampl_alloc_error, ret, "Error allocating dft_freq");
 
     // TODO: Seed correctly
-    uint32_t seed = 19937;
+    uint32_t seed = time(NULL);
     random_generator *rand = random_create(seed);
     if (!rand)
         error_jump(rand_alloc_error, ret, "Error allocating random generator");
@@ -623,6 +623,7 @@ int shuffle_dft(char *ts_path, char *freq_path, double min_uhz, double max_uhz, 
         }
         ampl_mean /= dft_count;
         fprintf(file, "%f %f %f\n", freq, ampl_max, ampl_mean);
+        fflush(file);
     }
     fclose(file);
 

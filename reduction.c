@@ -1561,7 +1561,7 @@ int create_jdratio(char *reference_date, char *reference_time, char **filenames,
             ts_time obstime = datafiles[i]->reference_time;
             obstime.time += (time_t)(pd->time[j]);
             obstime.ms += round(1000*fmod(pd->time[j], 1));
-            while (obstime.ms > 1000)
+            while (obstime.ms >= 1000)
             {
                 obstime.time += 1;
                 obstime.ms -= 1000;

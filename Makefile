@@ -5,8 +5,8 @@
 
 USE_READLINE := TRUE
 
-CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -D_BSD_SOURCE -DUSE_READLINE
-LFLAGS = -lcfitsio -lcpgplot -lpgplot -lsofa_c -lm -lreadline
+CFLAGS = -g -c -Wall -pedantic -Dlinux --std=c99 -D_POSIX_C_SOURCE=200112L -DUSE_READLINE
+LFLAGS = -lcfitsio -lcpgplot -lpgplot -lerfa -lm -lreadline
 
 # Mac OS X (with gcc, PGPLOT installed via fink)
 ifeq ($(shell uname),Darwin)
@@ -20,7 +20,7 @@ ifeq ($(shell uname),Darwin)
 else
     CC = gcc
     LINKER = gcc
-    LFLAGS += -L${HOME}/sw/lib -L/usr/lib64 -lpng -lgfortran -lX11
+    LFLAGS += -L${HOME}/sw/lib -L/usr/lib64 -lpng
     CFLAGS += -I${HOME}/sw/include -I/usr/include/cfitsio
 endif
 

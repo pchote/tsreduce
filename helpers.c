@@ -18,8 +18,8 @@
 #include <time.h>
 #include <signal.h>
 #include <sys/time.h>
-#include <sofa.h>
-#include <sofam.h>
+#include <erfa.h>
+#include <erfam.h>
 
 #ifdef USE_READLINE
 #include <readline/readline.h>
@@ -330,30 +330,30 @@ int ts_time_to_tdb(ts_time t, double *tdb1, double *tdb2)
         int ih = tt.tm_hour;
         int im = tt.tm_min;
         double sec = tt.tm_sec + t.ms / 1000.0f;
-        if (iauDtf2d("UTC", iy, imo, id, ih, im, sec, &utc1, &utc2))
+        if (eraDtf2d("UTC", iy, imo, id, ih, im, sec, &utc1, &utc2))
             return 1;
     }
 
     // Convert UTC -> TAI -> TT
     double tai1, tai2;
-    if (iauUtctai(utc1, utc2, &tai1, &tai2))
+    if (eraUtctai(utc1, utc2, &tai1, &tai2))
         return 1;
 
     double tt1, tt2;
-    if (iauTaitt(tai1, tai2, &tt1, &tt2))
+    if (eraTaitt(tai1, tai2, &tt1, &tt2))
         return 1;
 
     // Calculate TDB-TT offset
     // Assumes geocentric observer
     // Uses TT instead of TDB (introduces negligible error)
     double ut11, ut12;
-    if (iauUtcut1(utc1, utc2, 0.3341, &ut11, &ut12))
+    if (eraUtcut1(utc1, utc2, 0.3341, &ut11, &ut12))
         return 1;
     double ut = fmod(fmod(ut11, 1.0) + fmod(ut12, 1.0), 1.0) + 0.5;
-    double dtr = iauDtdb(tt1, tt2, ut, 0, 0, 0);
+    double dtr = eraDtdb(tt1, tt2, ut, 0, 0, 0);
 
     // Calculate TT -> TDB
-    if (iauTttdb(tt1, tt2, dtr, tdb1, tdb2))
+    if (eraTttdb(tt1, tt2, dtr, tdb1, tdb2))
         return 1;
 
     return 0;
@@ -370,15 +370,15 @@ long double ts_time_to_bjd(ts_time t, double ra, double dec)
     // Calculate earth position relative to the solar system barycenter
     // Assumes geocentric observer (introduces maximum error of ~21ms)
     double pvb[2][3];
-    iauEpv00(tdb1, tdb2, pvb, pvb);
+    eraEpv00(tdb1, tdb2, pvb, pvb);
 
     // Calculate the unit vector pointing towards the target
     double dir[3];
-    iauS2c(ra, dec, dir);
+    eraS2c(ra, dec, dir);
 
     // Additional light travel distance is just the dot product
     // of the barycenter->observer and observer->target vectors
-    long double offset = iauPdp(pvb[0], dir);
+    long double offset = eraPdp(pvb[0], dir);
 
     // Convert offset from AU to light travel time (in days)
     return (long double)tdb1 + (long double)tdb2 + 0.005775518331089534*offset;

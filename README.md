@@ -5,4 +5,4 @@ tsreduce is a tool for performing aperture photometry on CCD time-series observa
 
 tsreduce allows for simple online reductions of data as it acquired, and more comprehensive offline analysis to optimise the signal extracted from CCD frames.
 
-See INSTALL ([Ubuntu](https://github.com/pchote/tsreduce/blob/master/INSTALL.ubuntu), [Windows](https://github.com/pchote/tsreduce/blob/master/INSTALL.windows)) for instructions on compiling and running tsreduce, and the [Puoko-nui manual](http://pchote.github.io/Puoko-nui/images/manual-lowres.pdf) for an introduction on how to use the software.
+See INSTALL ([CentOS 8](https://github.com/pchote/tsreduce/blob/master/INSTALL.centos8)) for instructions on compiling and running tsreduce, and the [Puoko-nui manual](http://pchote.github.io/Puoko-nui/images/manual-lowres.pdf) for an introduction on how to use the software.

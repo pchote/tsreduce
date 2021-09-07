@@ -1,0 +1,13 @@
+Install EPEL and RPM Fusion repositories for pgplot and erfa
+sudo yum install epel-release
+sudo dnf install --nogpgcheck https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-8.noarch.rpm https://mirrors.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-8.noarch.rpm
+sudo dnf config-manager --enable powertools
+sudo yum install pgplot-devel erfa-devel
+
+Install ds9 and xpa (from e.g. w1m repo)
+
+Install other dependencies
+sudo yum install readline-devel cfitsio-devel
+
+Add tsreduce to the system path by appending to ~/.bashrc:
+export PATH=<path to tsreduce dir>:$PATH
